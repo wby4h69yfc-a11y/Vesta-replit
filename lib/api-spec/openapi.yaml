@@ -909,6 +909,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/PatternObservation"
 
+  /auth/otp/send:
+    post:
+      tags: [auth]
+      operationId: sendOtp
+      summary: Send WhatsApp OTP to phone number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendOtpBody"
+      responses:
+        "200":
+          description: OTP sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendOtpResponse"
+        "400":
+          description: Invalid phone number or send failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Failed to send message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /auth/otp/verify:
+    post:
+      tags: [auth]
+      operationId: verifyOtp
+      summary: Verify WhatsApp OTP and create authenticated session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyOtpBody"
+      responses:
+        "200":
+          description: OTP verified — session cookie set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyOtpResponse"
+        "400":
+          description: Invalid or expired code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /onboarding/state:
     get:
       tags: [onboarding]
@@ -980,6 +1036,8 @@ components:
         email:
           type: [string, 'null']
           format: email
+        phone:
+          type: [string, 'null']
         firstName:
           type: [string, 'null']
         lastName:
@@ -1638,3 +1696,40 @@ components:
       properties:
         success:
           type: boolean
+
+    SendOtpBody:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string
+          description: Phone number (E.164 or local Brazilian format)
+
+    SendOtpResponse:
+      type: object
+      required: [sent]
+      properties:
+        sent:
+          type: boolean
+        message:
+          type: [string, 'null']
+
+    VerifyOtpBody:
+      type: object
+      required: [phone, code]
+      properties:
+        phone:
+          type: string
+        code:
+          type: string
+
+    VerifyOtpResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        user:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/AuthUser"
