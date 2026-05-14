@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Layout from "@/components/Layout";
+import Landing from "@/pages/Landing";
 import Hoje from "@/pages/Hoje";
 import InboxPage from "@/pages/Inbox";
 import AgendaPage from "@/pages/Agenda";
@@ -20,11 +21,11 @@ const queryClient = new QueryClient({
   },
 });
 
-function Router() {
+function AppShell() {
   return (
     <Layout>
       <Switch>
-        <Route path="/" component={Hoje} />
+        <Route path="/hoje" component={Hoje} />
         <Route path="/inbox" component={InboxPage} />
         <Route path="/agenda" component={AgendaPage} />
         <Route path="/tarefas" component={TarefasPage} />
@@ -33,6 +34,15 @@ function Router() {
         <Route component={NotFound} />
       </Switch>
     </Layout>
+  );
+}
+
+function Router() {
+  return (
+    <Switch>
+      <Route path="/" component={Landing} />
+      <Route component={AppShell} />
+    </Switch>
   );
 }
 
