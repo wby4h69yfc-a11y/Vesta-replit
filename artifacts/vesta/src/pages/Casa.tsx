@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Users, Phone, Plus, Home, Trash2, Edit2 } from "lucide-react";
+import { Users, Phone, Plus, Home, Trash2, MessageCircle, Copy, CheckCheck, ExternalLink } from "lucide-react";
 import {
   useGetHousehold,
   useListMembers,
@@ -26,12 +26,22 @@ const CONTACT_CATS = [
   { id: "outros",   label: "Outros" },
 ];
 
+type WebhookInfo = {
+  webhook_url: string | null;
+  method: string;
+  description: string;
+  status: string;
+};
+
 export default function CasaPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [catFilter, setCatFilter] = useState<string | undefined>(undefined);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", category: "escola", notes: "" });
+  const [webhookInfo, setWebhookInfo] = useState<WebhookInfo | null>(null);
+  const [webhookLoading, setWebhookLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const { data: household } = useGetHousehold();
   const { data: members } = useListMembers();
@@ -56,6 +66,26 @@ export default function CasaPage() {
       },
     },
   });
+
+  async function loadWebhookInfo() {
+    setWebhookLoading(true);
+    try {
+      const res = await fetch("/api/webhook/whatsapp/info");
+      const data: WebhookInfo = await res.json();
+      setWebhookInfo(data);
+    } catch {
+      toast({ description: "Não foi possível carregar as informações do webhook.", variant: "destructive" });
+    } finally {
+      setWebhookLoading(false);
+    }
+  }
+
+  async function copyWebhookUrl() {
+    if (!webhookInfo?.webhook_url) return;
+    await navigator.clipboard.writeText(webhookInfo.webhook_url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   return (
     <div className="p-4 space-y-5 animate-fade-in-up">
@@ -98,6 +128,74 @@ export default function CasaPage() {
           </div>
         </section>
       )}
+
+      {/* WhatsApp Webhook */}
+      <section>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">WhatsApp</h2>
+        <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+              <MessageCircle className="w-5 h-5 text-green-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground">Integração via Twilio</p>
+              <p className="text-xs text-muted-foreground leading-snug">
+                Receba mensagens do WhatsApp diretamente no Para Processar — a Vesta classifica automaticamente.
+              </p>
+            </div>
+          </div>
+
+          {!webhookInfo ? (
+            <button
+              onClick={loadWebhookInfo}
+              disabled={webhookLoading}
+              className="w-full py-2 rounded-xl text-xs font-medium bg-green-600 text-white disabled:opacity-50"
+            >
+              {webhookLoading ? "Carregando…" : "Ver URL do webhook"}
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <div className="bg-muted rounded-xl p-3">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">URL para o console do Twilio</p>
+                <p className="text-xs font-mono text-foreground break-all leading-relaxed">
+                  {webhookInfo.webhook_url ?? "Publique o app para obter a URL"}
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                {webhookInfo.webhook_url && (
+                  <button
+                    onClick={copyWebhookUrl}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium bg-primary text-primary-foreground"
+                  >
+                    {copied ? <CheckCheck className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? "Copiado!" : "Copiar URL"}
+                  </button>
+                )}
+                <a
+                  href="https://console.twilio.com/us1/develop/phone-numbers/manage/active"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium bg-muted text-foreground border border-border"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Console Twilio
+                </a>
+              </div>
+
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 space-y-1">
+                <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Como configurar</p>
+                <ol className="text-xs text-amber-800 space-y-0.5 list-decimal list-inside">
+                  <li>Abra o Console do Twilio</li>
+                  <li>Vá em Messaging → Active Numbers</li>
+                  <li>Cole a URL acima em "A message comes in"</li>
+                  <li>Selecione método HTTP POST e salve</li>
+                </ol>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Contacts */}
       <section>

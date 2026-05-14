@@ -9,6 +9,7 @@ import contactsRouter from "./contacts";
 import rulesRouter from "./rules";
 import householdRouter from "./household";
 import patternsRouter from "./patterns";
+import webhookRouter from "./webhook";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(contactsRouter);
 router.use(rulesRouter);
 router.use(householdRouter);
 router.use(patternsRouter);
+router.use(webhookRouter);
 
 export default router;
