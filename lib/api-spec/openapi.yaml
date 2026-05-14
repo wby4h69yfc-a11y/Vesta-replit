@@ -909,6 +909,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/PatternObservation"
 
+  /onboarding/state:
+    get:
+      tags: [onboarding]
+      operationId: getOnboardingState
+      summary: Get or create onboarding state for current user
+      responses:
+        "200":
+          description: Current onboarding state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingStateEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /onboarding/complete:
+    post:
+      tags: [onboarding]
+      operationId: completeOnboarding
+      summary: Mark onboarding complete and save collected data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingCompleteInput"
+      responses:
+        "200":
+          description: Onboarding completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingCompleteSuccess"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -1512,3 +1556,85 @@ components:
           type: integer
         label:
           type: string
+
+    OnboardingComposition:
+      type: object
+      required: [adults, children, others]
+      properties:
+        adults:
+          type: integer
+        children:
+          type: integer
+        others:
+          type: integer
+
+    OnboardingState:
+      type: object
+      required: [id, user_id, household_id, completed, current_step, whatsapp_verified, calendar_connected, pain_points]
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: string
+        household_id:
+          type: integer
+        completed:
+          type: boolean
+        current_step:
+          type: integer
+        whatsapp_verified:
+          type: boolean
+        calendar_connected:
+          type: boolean
+        pain_points:
+          type: array
+          items:
+            type: string
+        composition:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/OnboardingComposition"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    OnboardingStateEnvelope:
+      type: object
+      required: [state]
+      properties:
+        state:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/OnboardingState"
+
+    OnboardingCompleteInput:
+      type: object
+      properties:
+        household_name:
+          type: string
+        display_name:
+          type: string
+        composition:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/OnboardingComposition"
+        pain_points:
+          type: array
+          items:
+            type: string
+        whatsapp_phone:
+          type: ["string", "null"]
+        whatsapp_verified:
+          type: boolean
+        calendar_connected:
+          type: boolean
+
+    OnboardingCompleteSuccess:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
