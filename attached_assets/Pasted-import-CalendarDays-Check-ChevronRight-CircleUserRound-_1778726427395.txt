@@ -1,0 +1,707 @@
+import {
+  CalendarDays,
+  Check,
+  ChevronRight,
+  CircleUserRound,
+  Cloud,
+  Home,
+  Inbox,
+  Lock,
+  Mail,
+  Menu,
+  MoreHorizontal,
+  Play,
+  Plus,
+  Search,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Users,
+  WalletCards,
+  Wand2,
+  MessageCircle,
+  Camera,
+  ListChecks,
+  Car,
+  ShoppingBag,
+} from "lucide-react";
+
+const tokens = {
+  primary: "#0E3B2E",
+  deep: "#08251E",
+  sage: "#6F856F",
+  ivory: "#F7F4EA",
+  cream: "#FFFDF6",
+  beige: "#EEE6D6",
+  gold: "#D9B95F",
+};
+
+function Button({
+  children,
+  variant = "primary",
+  className = "",
+}: {
+  children: React.ReactNode;
+  variant?: "primary" | "ghost" | "light";
+  className?: string;
+}) {
+  const styles = {
+    primary:
+      "bg-[#0E3B2E] text-white hover:bg-[#08251E] shadow-[0_12px_30px_rgba(14,59,46,0.18)]",
+    ghost:
+      "bg-transparent text-[#12231C] hover:bg-[#0E3B2E]/5 border border-[#0E3B2E]/10",
+    light:
+      "bg-[#FFFDF6] text-[#0E3B2E] hover:bg-white border border-[#0E3B2E]/10",
+  };
+
+  return (
+    <button
+      className={`inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition ${styles[variant]} ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="inline-flex items-center rounded-full bg-[#EAF1E5] px-4 py-1.5 text-[11px] font-semibold tracking-[0.12em] text-[#0E3B2E]">
+      {children}
+    </div>
+  );
+}
+
+function Logo() {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#0E3B2E]/20">
+        <Home className="h-6 w-6 text-[#0E3B2E]" strokeWidth={1.8} />
+      </div>
+      <span className="text-3xl font-semibold tracking-tight text-[#12231C]">
+        vesta
+      </span>
+    </div>
+  );
+}
+
+function Nav() {
+  return (
+    <header className="mx-auto flex max-w-7xl items-center justify-between px-6 py-7">
+      <Logo />
+
+      <nav className="hidden items-center gap-9 text-sm font-medium text-[#12231C] md:flex">
+        <a href="#recursos">Recursos</a>
+        <a href="#familias">Para famílias</a>
+        <a href="#precos">Preços</a>
+        <a href="#sobre">Sobre nós</a>
+      </nav>
+
+      <div className="hidden items-center gap-4 md:flex">
+        <button className="text-sm font-semibold text-[#12231C]">Entrar</button>
+        <Button>Começar grátis</Button>
+      </div>
+
+      <button className="md:hidden">
+        <Menu className="h-6 w-6 text-[#0E3B2E]" />
+      </button>
+    </header>
+  );
+}
+
+function IntakeCard({
+  icon,
+  title,
+  children,
+  className = "",
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-3xl border border-[#0E3B2E]/10 bg-[#FFFDF6]/95 p-5 shadow-[0_20px_50px_rgba(24,38,30,0.08)] backdrop-blur ${className}`}
+    >
+      <div className="mb-3 flex items-center gap-2">
+        {icon}
+        <p className="text-sm font-bold text-[#12231C]">{title}</p>
+      </div>
+      <div className="text-sm leading-relaxed text-[#3D4A40]">{children}</div>
+    </div>
+  );
+}
+
+function PhoneMockup() {
+  const tasks = [
+    {
+      icon: <Inbox className="h-4 w-4" />,
+      title: "Entrega de trabalho",
+      time: "10:00 · Home Office",
+      tag: "",
+    },
+    {
+      icon: <CalendarDays className="h-4 w-4" />,
+      title: "Vacina da Sofia",
+      time: "14:30 · Clínica Vida",
+      tag: "Saúde",
+    },
+    {
+      icon: <Sparkles className="h-4 w-4" />,
+      title: "Treino do Miguel",
+      time: "16:00 · Escola Arena",
+      tag: "Esporte",
+    },
+    {
+      icon: <Users className="h-4 w-4" />,
+      title: "Jantar em família",
+      time: "19:30",
+      tag: "Casa",
+    },
+    {
+      icon: <WalletCards className="h-4 w-4" />,
+      title: "Pagar conta de luz",
+      time: "Vence amanhã",
+      tag: "Financeiro",
+    },
+  ];
+
+  return (
+    <div className="relative mx-auto h-[590px] w-[302px] rounded-[46px] border-[8px] border-[#111] bg-[#F7F4EA] shadow-[0_30px_80px_rgba(0,0,0,0.28)]">
+      <div className="absolute left-1/2 top-2 h-7 w-28 -translate-x-1/2 rounded-full bg-black" />
+
+      <div className="flex h-full flex-col overflow-hidden rounded-[36px] bg-[#F8F5EC] px-5 pb-4 pt-12">
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <p className="text-lg font-bold text-[#12231C]">
+              Bom dia, Camila ☀️
+            </p>
+            <p className="text-xs text-[#5F6B61]">Sua casa, organizada com você.</p>
+          </div>
+          <Search className="h-5 w-5 text-[#12231C]" />
+        </div>
+
+        <div>
+          <p className="mb-3 text-sm font-bold text-[#12231C]">
+            Hoje · 18 de maio
+          </p>
+
+          <div className="space-y-2">
+            {tasks.map((task) => (
+              <div
+                key={task.title}
+                className="rounded-2xl border border-[#0E3B2E]/8 bg-[#FFFDF6] p-3 shadow-sm"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#EAF1E5] text-[#0E3B2E]">
+                      {task.icon}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-[#12231C]">
+                        {task.title}
+                      </p>
+                      <p className="text-[10px] text-[#5F6B61]">{task.time}</p>
+                    </div>
+                  </div>
+
+                  {task.tag ? (
+                    <span className="rounded-full bg-[#DDE8D8] px-2 py-1 text-[9px] font-semibold text-[#0E3B2E]">
+                      {task.tag}
+                    </span>
+                  ) : (
+                    <div className="h-4 w-4 rounded-full border border-[#0E3B2E]/30" />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <p className="mb-3 text-sm font-bold text-[#12231C]">Em andamento</p>
+          <div className="rounded-2xl border border-[#0E3B2E]/8 bg-[#FFFDF6] p-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-[#12231C]">
+                  Organizar festa da Bia
+                </p>
+                <p className="text-[10px] text-[#5F6B61]">3 tarefas</p>
+              </div>
+              <div className="flex -space-x-2">
+                <div className="h-7 w-7 rounded-full bg-[#CDAA7D]" />
+                <div className="h-7 w-7 rounded-full bg-[#8C9C80]" />
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#EEE6D6] text-[10px] text-[#12231C]">
+                  +2
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-auto grid grid-cols-5 items-center rounded-3xl bg-[#FFFDF6] px-2 py-2 text-[#0E3B2E] shadow-sm">
+          <Tab icon={<Home />} label="Início" active />
+          <Tab icon={<CalendarDays />} label="Planej." />
+          <button className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#0E3B2E] text-white shadow-lg">
+            <Plus className="h-6 w-6" />
+          </button>
+          <Tab icon={<Users />} label="Pessoas" />
+          <Tab icon={<MoreHorizontal />} label="Mais" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Tab({
+  icon,
+  label,
+  active,
+}: {
+  icon: React.ReactElement;
+  label: string;
+  active?: boolean;
+}) {
+  return (
+    <div
+      className={`flex flex-col items-center gap-1 text-[9px] ${
+        active ? "text-[#0E3B2E]" : "text-[#6F856F]"
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function Hero() {
+  return (
+    <section className="mx-auto grid max-w-7xl items-center gap-12 px-6 pb-10 pt-8 lg:grid-cols-[1fr_1.25fr]">
+      <div>
+        <Badge>+ A CASA ANDANDO. VOCÊ PRESENTE.</Badge>
+
+        <h1 className="mt-7 max-w-xl font-serif text-6xl font-semibold leading-[0.95] tracking-[-0.04em] text-[#12231C] md:text-7xl">
+          Tire a rotina da sua cabeça.
+        </h1>
+
+        <p className="mt-4 font-serif text-4xl leading-tight tracking-[-0.03em] text-[#6F856F] md:text-5xl">
+          A casa em movimento.
+        </p>
+
+        <p className="mt-7 max-w-xl text-lg leading-8 text-[#4D5A50]">
+          A Vesta captura o que precisa ser feito, transforma em ações
+          aprovadas, escreve no lugar certo, delega para as pessoas certas e
+          ajuda a resolver quando você quiser.
+        </p>
+
+        <div className="mt-9 flex flex-wrap items-center gap-5">
+          <Button>Começar grátis</Button>
+          <button className="inline-flex items-center gap-3 text-sm font-semibold text-[#12231C]">
+            <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#0E3B2E]/30">
+              <Play className="h-4 w-4 fill-[#0E3B2E] text-[#0E3B2E]" />
+            </span>
+            Ver como funciona
+          </button>
+        </div>
+
+        <div className="mt-10 flex items-center gap-5">
+          <div className="flex -space-x-3">
+            {["#CDAA7D", "#6F856F", "#D8B9A0", "#2E473B"].map((color) => (
+              <div
+                key={color}
+                className="h-11 w-11 rounded-full border-2 border-[#F7F4EA]"
+                style={{ backgroundColor: color }}
+              />
+            ))}
+          </div>
+          <div>
+            <div className="flex gap-1 text-[#D9B95F]">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <span key={i}>★</span>
+              ))}
+            </div>
+            <p className="text-sm text-[#5F6B61]">
+              Mais de 2.000 famílias já usam a Vesta
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="relative min-h-[660px]">
+        <div className="absolute left-2 top-12 hidden w-44 lg:block">
+          <IntakeCard
+            icon={<MessageCircle className="h-5 w-5 text-green-600" />}
+            title="Grupo da escola"
+          >
+            Festa junina dia 24/05. Quem pode ajudar com as barracas? 🎉
+          </IntakeCard>
+        </div>
+
+        <div className="absolute left-10 top-64 hidden w-48 lg:block">
+          <IntakeCard icon={<Mail className="h-5 w-5 text-blue-500" />} title="E-mail da escola">
+            Autorização para passeio pedagógico em anexo.
+          </IntakeCard>
+        </div>
+
+        <div className="absolute bottom-24 left-0 hidden w-44 lg:block">
+          <IntakeCard icon={<Camera className="h-5 w-5 text-[#B58445]" />} title="Foto do bilhete">
+            Trazer 1kg de alimento não perecível até 20/06.
+          </IntakeCard>
+        </div>
+
+        <div className="absolute left-[280px] top-[185px] hidden h-px w-20 rotate-12 bg-[#0E3B2E]/40 lg:block" />
+        <div className="absolute left-[300px] top-[365px] hidden h-px w-20 rotate-[28deg] bg-[#0E3B2E]/40 lg:block" />
+
+        <div className="relative z-10 mx-auto pt-4 lg:ml-[230px]">
+          <PhoneMockup />
+        </div>
+
+        <div className="absolute right-0 top-8 hidden h-[560px] w-[260px] overflow-hidden rounded-[34px] bg-[#E8D8BE] shadow-[0_24px_70px_rgba(24,38,30,0.14)] xl:block">
+          <div className="h-full w-full bg-[radial-gradient(circle_at_50%_20%,#d8c4a6,transparent_35%),linear-gradient(160deg,#efe3cf,#c9ad87)]" />
+          <div className="absolute bottom-0 left-0 right-0 rounded-t-[28px] bg-[#0E3B2E] p-6 text-white">
+            <p className="font-serif text-2xl leading-tight">
+              Menos cobrança. <br /> Mais combinados.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Integrations() {
+  const integrations = [
+    ["Google Calendar", <CalendarDays className="h-6 w-6 text-blue-500" />],
+    ["Outlook", <Mail className="h-6 w-6 text-blue-600" />],
+    ["Apple Calendar", <CalendarDays className="h-6 w-6 text-red-500" />],
+    ["WhatsApp", <MessageCircle className="h-6 w-6 text-green-600" />],
+    ["iCloud", <Cloud className="h-6 w-6 text-sky-400" />],
+    ["e mais", <Plus className="h-5 w-5 text-[#0E3B2E]" />],
+  ];
+
+  return (
+    <section className="mx-auto max-w-7xl px-6">
+      <div className="flex flex-wrap items-center justify-between gap-6 rounded-3xl border border-[#0E3B2E]/10 bg-[#FFFDF6]/70 px-8 py-6 shadow-sm">
+        <p className="max-w-[180px] text-sm font-bold text-[#12231C]">
+          Funciona com o que sua família já usa
+        </p>
+        <div className="flex flex-1 flex-wrap items-center justify-between gap-5">
+          {integrations.map(([name, icon]) => (
+            <div key={name as string} className="flex items-center gap-3 text-sm text-[#12231C]">
+              {icon}
+              <span>{name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FeatureCard({
+  icon,
+  title,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="text-center">
+      <div className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-[2rem] bg-[#EAF1E5] text-[#0E3B2E]">
+        {icon}
+      </div>
+      <h3 className="mb-3 text-base font-bold text-[#12231C]">{title}</h3>
+      <p className="text-sm leading-7 text-[#4D5A50]">{children}</p>
+    </div>
+  );
+}
+
+function Features() {
+  const items = [
+    {
+      icon: <Inbox className="h-10 w-10" />,
+      title: "Capture de qualquer jeito",
+      text: "Fale, digite, envie um print, foto ou encaminhe uma mensagem. A Vesta entende.",
+    },
+    {
+      icon: <ListChecks className="h-10 w-10" />,
+      title: "Organiza e prioriza",
+      text: "A Vesta transforma o caos em planos claros, com prazos e prioridades.",
+    },
+    {
+      icon: <Users className="h-10 w-10" />,
+      title: "Delega sem estresse",
+      text: "Tarefas vão para as pessoas certas, com contexto e sem cobranças.",
+    },
+    {
+      icon: <CalendarDays className="h-10 w-10" />,
+      title: "Escreve no lugar certo",
+      text: "Compromissos e lembretes no calendário certo, sempre atualizados.",
+    },
+    {
+      icon: <Car className="h-10 w-10" />,
+      title: "Resolve por você",
+      text: "Precisa de ajuda? A Vesta encontra, agenda e acompanha.",
+    },
+    {
+      icon: <ShieldCheck className="h-10 w-10" />,
+      title: "Privacidade é inegociável",
+      text: "Seus dados são seus. Seguros, privados e nunca compartilhados.",
+    },
+  ];
+
+  return (
+    <section id="recursos" className="mx-auto max-w-7xl px-6 py-20">
+      <h2 className="mx-auto mb-14 max-w-3xl text-center font-serif text-4xl font-semibold tracking-[-0.03em] text-[#12231C] md:text-5xl">
+        Tudo o que sua família precisa. Em um só lugar.
+      </h2>
+
+      <div className="grid gap-10 md:grid-cols-3 lg:grid-cols-6">
+        {items.map((item) => (
+          <FeatureCard key={item.title} icon={item.icon} title={item.title}>
+            {item.text}
+          </FeatureCard>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function HowItWorks() {
+  const steps = [
+    {
+      title: "Você envia para a Vesta",
+      text: "Pode ser por WhatsApp, e-mail, foto, voz ou texto.",
+      icon: <Send className="h-10 w-10" />,
+    },
+    {
+      title: "A Vesta entende e organiza",
+      text: "Ela identifica o que precisa ser feito e o contexto.",
+      icon: <Wand2 className="h-10 w-10" />,
+    },
+    {
+      title: "Você aprova e delega",
+      text: "Confirme, ajuste e escolha quem vai fazer o quê.",
+      icon: <Check className="h-10 w-10" />,
+    },
+    {
+      title: "A Vesta coloca em ação",
+      text: "No calendário, nas listas e na vida real — com lembretes.",
+      icon: <CalendarDays className="h-10 w-10" />,
+    },
+  ];
+
+  return (
+    <section className="mx-auto max-w-7xl px-6 pb-6">
+      <div className="rounded-[2rem] bg-[#F1EBDD] px-8 py-12">
+        <h2 className="mb-12 text-center font-serif text-4xl font-semibold text-[#12231C]">
+          Como funciona
+        </h2>
+
+        <div className="grid gap-8 md:grid-cols-4">
+          {steps.map((step, index) => (
+            <div key={step.title} className="relative">
+              <div className="mb-5 flex h-24 items-center justify-center rounded-3xl bg-[#FFFDF6] text-[#0E3B2E] shadow-sm">
+                {step.icon}
+              </div>
+              <div className="mb-4 flex h-8 w-8 items-center justify-center rounded-full bg-[#0E3B2E] text-sm font-bold text-white">
+                {index + 1}
+              </div>
+              <h3 className="mb-2 text-lg font-bold text-[#12231C]">{step.title}</h3>
+              <p className="text-sm leading-7 text-[#4D5A50]">{step.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BottomCTA() {
+  return (
+    <section className="mx-auto max-w-7xl px-6 py-8">
+      <div className="grid overflow-hidden rounded-[2rem] bg-[#FFFDF6] shadow-sm md:grid-cols-[1fr_1.35fr]">
+        <div className="border-b border-[#0E3B2E]/10 p-10 md:border-b-0 md:border-r">
+          <p className="font-serif text-6xl leading-none text-[#6F856F]">“</p>
+          <blockquote className="max-w-md text-xl leading-8 text-[#12231C]">
+            A Vesta virou o coração da nossa casa. Nada fica esquecido, e a
+            rotina finalmente não depende só de mim.
+          </blockquote>
+          <p className="mt-6 text-sm text-[#5F6B61]">Juliana, mãe do Theo e da Bia</p>
+        </div>
+
+        <div className="relative flex min-h-[270px] items-center overflow-hidden p-10">
+          <div className="relative z-10 max-w-md">
+            <h2 className="font-serif text-4xl font-semibold leading-tight tracking-[-0.03em] text-[#12231C]">
+              Pronto para sentir sua casa mais leve?
+            </h2>
+            <p className="mt-3 text-[#5F6B61]">Comece grátis. Sem compromisso.</p>
+            <Button className="mt-7">Começar agora</Button>
+          </div>
+
+          <div className="absolute right-10 top-10 hidden rotate-6 rounded-xl bg-[#EEE6D6] p-5 text-sm leading-6 text-[#12231C] shadow-md md:block">
+            Planos existem.
+            <br />
+            O que faz a casa
+            <br />
+            andar são os
+            <br />
+            combinados. ♡
+          </div>
+
+          <div className="absolute bottom-0 right-0 h-56 w-56 rounded-full bg-[#DDE8D8]" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DashboardPreview() {
+  return (
+    <section className="mx-auto max-w-7xl px-6 py-20">
+      <div className="mb-8">
+        <Badge>WEBAPP + IOS APP</Badge>
+        <h2 className="mt-5 font-serif text-5xl font-semibold tracking-[-0.04em] text-[#12231C]">
+          A mesma linguagem visual dentro do produto.
+        </h2>
+        <p className="mt-4 max-w-2xl text-lg leading-8 text-[#5F6B61]">
+          A landing page, o dashboard e o app móvel usam os mesmos tokens,
+          componentes, cartões, ícones e comportamento visual.
+        </p>
+      </div>
+
+      <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
+        <aside className="rounded-[2rem] bg-[#0E3B2E] p-6 text-white">
+          <LogoDark />
+          <nav className="mt-10 space-y-2">
+            {[
+              ["Início", Home],
+              ["Caixa de entrada", Inbox],
+              ["Planejamento", CalendarDays],
+              ["Tarefas", ListChecks],
+              ["Pessoas", Users],
+              ["Regras", ShieldCheck],
+              ["Concierge", ShoppingBag],
+            ].map(([label, Icon]: any) => (
+              <div
+                key={label}
+                className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-white/80 hover:bg-white/10"
+              >
+                <Icon className="h-5 w-5" />
+                {label}
+              </div>
+            ))}
+          </nav>
+        </aside>
+
+        <main className="rounded-[2rem] border border-[#0E3B2E]/10 bg-[#FFFDF6] p-7 shadow-sm">
+          <div className="mb-7 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-sm text-[#5F6B61]">Quarta-feira, 18 de maio</p>
+              <h3 className="font-serif text-4xl font-semibold tracking-[-0.03em] text-[#12231C]">
+                Bom dia, Camila
+              </h3>
+            </div>
+            <Button>
+              <Plus className="h-4 w-4" />
+              Nova captura
+            </Button>
+          </div>
+
+          <div className="grid gap-5 md:grid-cols-3">
+            <DashboardCard title="Aprovações pendentes" value="7" />
+            <DashboardCard title="Tarefas em andamento" value="18" />
+            <DashboardCard title="Resolvidas esta semana" value="24" />
+          </div>
+
+          <div className="mt-7 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-3xl bg-[#F7F4EA] p-5">
+              <h4 className="mb-4 font-bold text-[#12231C]">Caixa de entrada</h4>
+              <div className="space-y-3">
+                {[
+                  ["WhatsApp", "Festa junina: confirmar barraca até sexta."],
+                  ["E-mail", "Autorização de passeio precisa de assinatura."],
+                  ["Foto", "Bilhete: levar 1kg de alimento até 20/06."],
+                ].map(([source, text]) => (
+                  <div
+                    key={text}
+                    className="flex items-start justify-between rounded-2xl bg-[#FFFDF6] p-4"
+                  >
+                    <div>
+                      <p className="text-xs font-semibold text-[#6F856F]">{source}</p>
+                      <p className="mt-1 text-sm font-medium text-[#12231C]">{text}</p>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-[#6F856F]" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-3xl bg-[#F7F4EA] p-5">
+              <h4 className="mb-4 font-bold text-[#12231C]">Fila de aprovação</h4>
+              <div className="space-y-3">
+                {[
+                  "Adicionar vacina da Sofia ao calendário",
+                  "Delegar compra do presente para Rafael",
+                  "Contratar eletricista para tomada da cozinha",
+                ].map((text) => (
+                  <div key={text} className="rounded-2xl bg-[#FFFDF6] p-4">
+                    <p className="text-sm font-medium text-[#12231C]">{text}</p>
+                    <div className="mt-3 flex gap-2">
+                      <button className="rounded-full bg-[#0E3B2E] px-3 py-1.5 text-xs font-semibold text-white">
+                        Aprovar
+                      </button>
+                      <button className="rounded-full border border-[#0E3B2E]/15 px-3 py-1.5 text-xs font-semibold text-[#0E3B2E]">
+                        Editar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
+  );
+}
+
+function LogoDark() {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/20">
+        <Home className="h-6 w-6 text-white" strokeWidth={1.8} />
+      </div>
+      <span className="text-3xl font-semibold tracking-tight text-white">
+        vesta
+      </span>
+    </div>
+  );
+}
+
+function DashboardCard({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="rounded-3xl bg-[#F7F4EA] p-5">
+      <p className="text-sm text-[#5F6B61]">{title}</p>
+      <p className="mt-3 font-serif text-5xl font-semibold text-[#12231C]">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <div className="min-h-screen bg-[#F7F4EA] font-sans text-[#12231C]">
+      <Nav />
+      <Hero />
+      <Integrations />
+      <Features />
+      <HowItWorks />
+      <DashboardPreview />
+      <BottomCTA />
+    </div>
+  );
+}
