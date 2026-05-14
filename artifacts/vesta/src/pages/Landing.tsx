@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import {
-  CalendarDays, Check, ChevronRight, Cloud, Home, Inbox,
-  ListChecks, Mail, Menu, MoreHorizontal, Play, Plus,
-  Search, Send, ShieldCheck, Sparkles, Users, WalletCards,
-  Wand2, MessageCircle, Camera, Car, ShoppingBag, X,
+  ArrowRight, CalendarDays, Camera, Car, Check, ChevronDown,
+  ChevronRight, Cloud, Home, Inbox, ListChecks, Mail, Menu,
+  MessageCircle, MoreHorizontal, Play, Plus, Search, Send,
+  ShieldCheck, Sparkles, Users, WalletCards, Wand2, X,
 } from "lucide-react";
 
 /* ── Design tokens ── */
@@ -37,33 +37,15 @@ function VButton({
   onClick?: () => void;
 }) {
   const base = "inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition-all";
-  const styles = {
-    primary: `bg-[${V.primary}] text-white hover:bg-[${V.deep}] shadow-[0_12px_30px_rgba(14,59,46,0.18)]`,
-    ghost:   `bg-transparent text-[${V.ink}] hover:bg-[${V.primary}]/5 border border-[${V.primary}]/10`,
-    light:   `bg-[${V.cream}] text-[${V.primary}] hover:bg-white border border-[${V.primary}]/10`,
-  };
   const cls = `${base} ${className}`;
-  if (href) {
-    return (
-      <Link href={href} className={cls} style={{
-        background: variant === "primary" ? V.primary : variant === "light" ? V.cream : "transparent",
-        color: variant === "primary" ? "white" : V.ink,
-        border: variant !== "primary" ? `1px solid rgba(14,59,46,0.12)` : "none",
-      }}>
-        {children}
-      </Link>
-    );
-  }
-  return (
-    <button onClick={onClick} className={cls} style={{
-      background: variant === "primary" ? V.primary : variant === "light" ? V.cream : "transparent",
-      color: variant === "primary" ? "white" : V.ink,
-      border: variant !== "primary" ? `1px solid rgba(14,59,46,0.12)` : "none",
-      boxShadow: variant === "primary" ? "0 12px 30px rgba(14,59,46,0.18)" : "none",
-    }}>
-      {children}
-    </button>
-  );
+  const style = {
+    background: variant === "primary" ? V.primary : variant === "light" ? V.cream : "transparent",
+    color: variant === "primary" ? "white" : V.ink,
+    border: variant !== "primary" ? `1px solid rgba(14,59,46,0.12)` : "none",
+    boxShadow: variant === "primary" ? "0 12px 30px rgba(14,59,46,0.18)" : "none",
+  };
+  if (href) return <Link href={href} className={cls} style={style}>{children}</Link>;
+  return <button onClick={onClick} className={cls} style={style}>{children}</button>;
 }
 
 function VBadge({ children }: { children: React.ReactNode }) {
@@ -99,7 +81,6 @@ function PhoneMockup() {
     { icon: <Users className="h-4 w-4" />,        title: "Jantar em família",   time: "19:30",                tag: "Casa" },
     { icon: <WalletCards className="h-4 w-4" />,  title: "Pagar conta de luz",  time: "Vence amanhã",         tag: "Financeiro" },
   ];
-
   return (
     <div className="relative mx-auto h-[590px] w-[302px] rounded-[46px] border-[8px] border-[#111] shadow-[0_30px_80px_rgba(0,0,0,0.28)]"
       style={{ background: V.ivory }}>
@@ -144,16 +125,16 @@ function PhoneMockup() {
             { icon: <Users className="h-4 w-4" />, label: "Pessoas" },
             { icon: <MoreHorizontal className="h-4 w-4" />, label: "Mais" },
           ].map((tab, i) =>
-            tab.center ? (
+            (tab as { center?: boolean }).center ? (
               <button key={i} className="mx-auto flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg"
                 style={{ background: V.primary }}>
                 <Plus className="h-6 w-6" />
               </button>
             ) : (
               <div key={i} className="flex flex-col items-center gap-1 text-[9px]"
-                style={{ color: tab.active ? V.primary : V.sage }}>
+                style={{ color: (tab as { active?: boolean }).active ? V.primary : V.sage }}>
                 {tab.icon}
-                <span>{tab.label}</span>
+                <span>{(tab as { label?: string }).label}</span>
               </div>
             )
           )}
@@ -199,8 +180,8 @@ function Nav({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; setMobileOpen
       {mobileOpen && (
         <div className="border-t px-6 pb-6 md:hidden" style={{ borderColor: `rgba(14,59,46,0.08)` }}>
           <div className="space-y-3 pt-4">
-            {["Recursos", "Para famílias", "Preços", "Sobre nós"].map((l) => (
-              <a key={l} href="#" className="block text-sm font-medium" style={{ color: V.ink }}>{l}</a>
+            {[["Recursos","#recursos"],["Para famílias","#para-familias"],["Preços","#precos"],["Sobre nós","#sobre-nos"]].map(([l, h]) => (
+              <a key={l} href={h} className="block text-sm font-medium" style={{ color: V.ink }} onClick={() => setMobileOpen(false)}>{l}</a>
             ))}
           </div>
           <VButton href="/app" className="mt-5 w-full">Começar grátis</VButton>
@@ -217,12 +198,12 @@ function Hero() {
         <VBadge>A CASA ANDANDO. VOCÊ PRESENTE.</VBadge>
 
         <h1 className="mt-7 max-w-xl font-serif text-5xl font-semibold leading-[0.95] tracking-[-0.04em] md:text-7xl" style={{ color: V.ink }}>
-          Tire a rotina<br />da sua cabeça.
+          Tire a rotina<br />da <em className="not-italic" style={{ color: V.sage }}>sua</em> cabeça.
         </h1>
-        <p className="mt-4 font-serif text-3xl leading-tight tracking-[-0.03em] md:text-5xl" style={{ color: V.sage }}>
+        <p className="mt-4 font-serif text-3xl leading-tight tracking-[-0.03em] md:text-4xl" style={{ color: V.sage }}>
           A casa em movimento.
         </p>
-        <p className="mt-7 max-w-xl text-lg leading-8" style={{ color: "#4D5A50" }}>
+        <p className="mt-7 max-w-lg text-lg leading-8" style={{ color: "#4D5A50" }}>
           A Vesta captura o que precisa ser feito, transforma em ações aprovadas, escreve no lugar certo, delega para as pessoas certas e ajuda a resolver quando você quiser.
         </p>
 
@@ -236,17 +217,9 @@ function Hero() {
           </a>
         </div>
 
-        <div className="mt-10 flex items-center gap-5">
-          <div className="flex -space-x-3">
-            {["#CDAA7D", "#6F856F", "#D8B9A0", "#2E473B"].map((c) => (
-              <div key={c} className="h-11 w-11 rounded-full border-2" style={{ backgroundColor: c, borderColor: V.ivory }} />
-            ))}
-          </div>
-          <div>
-            <div className="flex gap-1 text-lg" style={{ color: V.gold }}>{"★★★★★"}</div>
-            <p className="text-sm" style={{ color: V.muted }}>Mais de 2.000 famílias já usam a Vesta</p>
-          </div>
-        </div>
+        <p className="mt-10 text-sm" style={{ color: V.muted }}>
+          Famílias selecionadas já estão testando a Vesta.
+        </p>
       </div>
 
       {/* Product visualization */}
@@ -267,7 +240,6 @@ function Hero() {
           </IntakeCard>
         </div>
 
-        {/* Arrow connectors */}
         <div className="absolute left-[280px] top-[185px] hidden h-px w-20 rotate-12 bg-[#0E3B2E]/40 lg:block" />
         <div className="absolute left-[300px] top-[365px] hidden h-px w-20 rotate-[28deg] bg-[#0E3B2E]/40 lg:block" />
 
@@ -275,13 +247,10 @@ function Hero() {
           <PhoneMockup />
         </div>
 
-        {/* Lifestyle card — only at 2xl+ where there is enough column width */}
-        <div className="absolute right-0 top-8 hidden h-[560px] w-[240px] overflow-hidden rounded-[34px] shadow-[0_24px_70px_rgba(24,38,30,0.14)] 2xl:block"
-          style={{ background: V.beige }}>
-          <div className="h-full w-full" style={{ background: "radial-gradient(circle at 50% 20%, #d8c4a6, transparent 35%), linear-gradient(160deg, #efe3cf, #c9ad87)" }} />
-          <div className="absolute bottom-0 left-0 right-0 rounded-t-[28px] p-6 text-white" style={{ background: V.primary }}>
-            <p className="font-serif text-2xl leading-tight">Menos cobrança. <br />Mais combinados.</p>
-          </div>
+        {/* Small lifestyle pill — replaces the large card that was causing overlap */}
+        <div className="absolute bottom-32 right-4 hidden rounded-2xl px-4 py-3 text-sm font-medium shadow-md lg:block"
+          style={{ background: V.primary, color: "white" }}>
+          Menos cobrança.<br />Mais combinados.
         </div>
       </div>
     </section>
@@ -290,21 +259,22 @@ function Hero() {
 
 function Integrations() {
   const items = [
-    { label: "Google Calendar", icon: <CalendarDays className="h-5 w-5 text-blue-500" /> },
-    { label: "Outlook",         icon: <Mail className="h-5 w-5 text-blue-600" /> },
-    { label: "Apple Calendar",  icon: <CalendarDays className="h-5 w-5 text-red-500" /> },
-    { label: "WhatsApp",        icon: <MessageCircle className="h-5 w-5 text-green-600" /> },
-    { label: "iCloud",          icon: <Cloud className="h-5 w-5 text-sky-400" /> },
-    { label: "e mais",          icon: <Plus className="h-4 w-4" style={{ color: V.primary }} /> },
+    { label: "Google Agenda", icon: <CalendarDays className="h-5 w-5 text-blue-500" /> },
+    { label: "Outlook",       icon: <Mail className="h-5 w-5 text-blue-600" /> },
+    { label: "Apple Calendar",icon: <CalendarDays className="h-5 w-5 text-red-500" /> },
+    { label: "WhatsApp",      icon: <MessageCircle className="h-5 w-5 text-green-600" /> },
+    { label: "iCloud",        icon: <Cloud className="h-5 w-5 text-sky-400" /> },
+    { label: "E-mail",        icon: <Mail className="h-5 w-5" style={{ color: V.sage }} /> },
+    { label: "e mais",        icon: <Plus className="h-4 w-4" style={{ color: V.primary }} /> },
   ];
   return (
     <section className="mx-auto max-w-7xl px-6 py-4">
-      <div className="flex flex-wrap items-center justify-between gap-6 rounded-3xl px-8 py-6 shadow-sm"
+      <div className="flex flex-wrap items-center gap-6 rounded-3xl px-8 py-6 shadow-sm"
         style={{ background: "rgba(255,253,246,0.7)", border: `1px solid rgba(14,59,46,0.10)` }}>
-        <p className="max-w-[180px] text-sm font-bold" style={{ color: V.ink }}>
-          Funciona com o que sua família já usa
+        <p className="w-full max-w-[200px] text-sm font-bold sm:w-auto" style={{ color: V.ink }}>
+          Pensado para funcionar com o que sua família já usa
         </p>
-        <div className="flex flex-1 flex-wrap items-center justify-between gap-5">
+        <div className="flex flex-1 flex-wrap items-center gap-x-6 gap-y-3">
           {items.map((i) => (
             <div key={i.label} className="flex items-center gap-2.5 text-sm" style={{ color: V.ink }}>
               {i.icon}
@@ -319,28 +289,92 @@ function Integrations() {
 
 function Features() {
   const items = [
-    { icon: <Inbox className="h-10 w-10" />,      title: "Capture de qualquer jeito", text: "Fale, digite, envie um print, foto ou encaminhe uma mensagem. A Vesta entende." },
-    { icon: <ListChecks className="h-10 w-10" />, title: "Organiza e prioriza",        text: "A Vesta transforma o caos em planos claros, com prazos e prioridades." },
-    { icon: <Users className="h-10 w-10" />,      title: "Delega sem estresse",        text: "Tarefas vão para as pessoas certas, com contexto e sem cobranças." },
-    { icon: <CalendarDays className="h-10 w-10" />, title: "Escreve no lugar certo",   text: "Compromissos e lembretes no calendário certo, sempre atualizados." },
-    { icon: <Car className="h-10 w-10" />,        title: "Resolve por você",           text: "Precisa de ajuda? A Vesta encontra, agenda e acompanha." },
-    { icon: <ShieldCheck className="h-10 w-10" />, title: "Privacidade é inegociável", text: "Seus dados são seus. Seguros, privados e nunca compartilhados." },
+    { icon: <Inbox className="h-10 w-10" />,        title: "Captura de qualquer jeito",  text: "Fale, digita, manda print, foto ou encaminha mensagem. A Vesta entende." },
+    { icon: <ListChecks className="h-10 w-10" />,   title: "Organiza e prioriza",         text: "A Vesta transforma o caos em planos claros, com prazos e prioridades." },
+    { icon: <Users className="h-10 w-10" />,        title: "Delega sem cobrança",         text: "As tarefas vão pras pessoas certas, com contexto — sem você ter que ficar lembrando." },
+    { icon: <CalendarDays className="h-10 w-10" />, title: "Escreve no lugar certo",      text: "Compromissos e lembretes na agenda certa, sempre atualizados." },
+    { icon: <Car className="h-10 w-10" />,          title: "Ajuda a resolver",            text: "Precisa de uma mão? A Vesta encontra, organiza e acompanha — com seu sim." },
+    { icon: <ShieldCheck className="h-10 w-10" />,  title: "Privacidade desde o começo",  text: "Pensado pra proteger os dados da sua família. Seus, sempre." },
   ];
   return (
     <section id="recursos" className="mx-auto max-w-7xl px-6 py-20">
       <span id="para-familias" className="sr-only" />
-      <h2 className="mx-auto mb-14 max-w-3xl text-center font-serif text-4xl font-semibold tracking-[-0.03em] md:text-5xl" style={{ color: V.ink }}>
-        Tudo o que sua família precisa. Em um só lugar.
+      <div className="mb-4">
+        <VBadge>TUDO NUM LUGAR SÓ</VBadge>
+      </div>
+      <h2 className="mx-auto mb-14 max-w-3xl font-serif text-4xl font-semibold tracking-[-0.03em] md:text-5xl" style={{ color: V.ink }}>
+        Tudo o que sua família precisa. <em className="not-italic" style={{ color: V.sage }}>Em um só lugar.</em>
       </h2>
-      <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((f) => (
-          <div key={f.title} className="text-center">
-            <div className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-[2rem]"
+          <div key={f.title} className="rounded-3xl p-6" style={{ background: V.cream, border: `1px solid rgba(14,59,46,0.08)` }}>
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
               style={{ background: "#EAF1E5", color: V.primary }}>
-              {f.icon}
+              {f.icon && <div className="scale-75">{f.icon}</div>}
             </div>
-            <h3 className="mb-3 text-base font-bold" style={{ color: V.ink }}>{f.title}</h3>
+            <h3 className="mb-2 text-base font-bold" style={{ color: V.ink }}>{f.title}</h3>
             <p className="text-sm leading-7" style={{ color: "#4D5A50" }}>{f.text}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PracticeDemo() {
+  const steps = [
+    {
+      step: "1. CHEGA NO WHATSAPP",
+      title: "Grupo da escola",
+      content: "\"Lembrete: Dia da Foto é terça, 14/10. Roupa branca. Crianças com camiseta branca.\"",
+      icon: <MessageCircle className="h-5 w-5 text-green-600" />,
+      bg: V.cream,
+    },
+    {
+      step: "2. A VESTA ENTENDE",
+      title: "Identifica e organiza",
+      content: "Evento: 14/10 — roupa branca responsável: Helena. Lembrete no domingo.",
+      icon: <Wand2 className="h-5 w-5" style={{ color: V.primary }} />,
+      bg: V.cream,
+    },
+    {
+      step: "3. VOCÊ APROVA",
+      title: "Um toque pra confirmar",
+      content: "Confirma com 1 toque ou ajusta. Da próxima vez parecida, já vai sozinho.",
+      icon: <Check className="h-5 w-5" style={{ color: V.primary }} />,
+      bg: V.cream,
+    },
+    {
+      step: "4. VAI PRA VIDA REAL",
+      title: "Na agenda da família",
+      content: "Entra no Google/Apple/Outlook, vira lembrete e avisa quem precisa ser avisado.",
+      icon: <CalendarDays className="h-5 w-5" style={{ color: V.primary }} />,
+      bg: V.cream,
+    },
+  ];
+  return (
+    <section className="mx-auto max-w-7xl px-6 pb-20">
+      <div className="mb-4">
+        <VBadge>VEJA NA PRÁTICA</VBadge>
+      </div>
+      <h2 className="mb-12 max-w-2xl font-serif text-3xl font-semibold tracking-[-0.03em] md:text-4xl" style={{ color: V.ink }}>
+        Do grupo da escola{" "}
+        <em className="not-italic" style={{ color: V.sage }}>pra agenda da família,</em>{" "}
+        em segundos.
+      </h2>
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {steps.map((s, i) => (
+          <div key={s.step} className="relative flex flex-col rounded-3xl p-6"
+            style={{ background: s.bg, border: `1px solid rgba(14,59,46,0.09)` }}>
+            {i < steps.length - 1 && (
+              <ChevronRight className="absolute -right-3 top-1/2 z-10 hidden -translate-y-1/2 text-[#0E3B2E]/30 lg:block" />
+            )}
+            <p className="mb-4 text-[10px] font-bold tracking-widest" style={{ color: V.sage }}>{s.step}</p>
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "#EAF1E5" }}>
+              {s.icon}
+            </div>
+            <p className="mb-2 text-sm font-bold" style={{ color: V.ink }}>{s.title}</p>
+            <p className="text-sm leading-relaxed" style={{ color: V.muted }}>{s.content}</p>
           </div>
         ))}
       </div>
@@ -350,31 +384,114 @@ function Features() {
 
 function HowItWorks() {
   const steps = [
-    { title: "Você envia para a Vesta",     text: "Pode ser por WhatsApp, e-mail, foto, voz ou texto.",          icon: <Send className="h-10 w-10" /> },
-    { title: "A Vesta entende e organiza",  text: "Ela identifica o que precisa ser feito e o contexto.",         icon: <Wand2 className="h-10 w-10" /> },
-    { title: "Você aprova e delega",        text: "Confirme, ajuste e escolha quem vai fazer o quê.",             icon: <Check className="h-10 w-10" /> },
-    { title: "A Vesta coloca em ação",      text: "No calendário, nas listas e na vida real — com lembretes.",    icon: <CalendarDays className="h-10 w-10" /> },
+    { title: "Você envia para a Vesta",    text: "Pode ser por WhatsApp, e-mail, foto, voz ou texto.",         icon: <Send className="h-10 w-10" />,        num: "01" },
+    { title: "A Vesta entende e organiza", text: "Ela identifica o que precisa ser feito e o contexto.",        icon: <Wand2 className="h-10 w-10" />,       num: "02" },
+    { title: "Você aprova e delega",       text: "Confirme, ajuste e escolha quem vai fazer o quê.",            icon: <Check className="h-10 w-10" />,       num: "03" },
+    { title: "A Vesta coloca em ação",     text: "No calendário, nas listas e na vida real — com lembretes.",   icon: <CalendarDays className="h-10 w-10" />, num: "04" },
   ];
   return (
     <section id="como-funciona" className="mx-auto max-w-7xl px-6 pb-6">
-      <div className="rounded-[2rem] px-8 py-12" style={{ background: V.warm }}>
-        <h2 className="mb-12 text-center font-serif text-4xl font-semibold" style={{ color: V.ink }}>Como funciona</h2>
+      <div className="rounded-[2rem] px-8 py-14" style={{ background: V.warm }}>
+        <div className="mb-4">
+          <VBadge>COMO FUNCIONA</VBadge>
+        </div>
+        <h2 className="mb-12 max-w-xl font-serif text-3xl font-semibold tracking-[-0.03em] md:text-4xl" style={{ color: V.ink }}>
+          Do recado bagunçado ao próximo passo claro.
+        </h2>
         <div className="grid gap-8 sm:grid-cols-2 md:grid-cols-4">
-          {steps.map((s, i) => (
+          {steps.map((s) => (
             <div key={s.title}>
               <div className="mb-5 flex h-24 items-center justify-center rounded-3xl shadow-sm"
                 style={{ background: V.cream, color: V.primary }}>
                 {s.icon}
               </div>
-              <div className="mb-4 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
-                style={{ background: V.primary }}>
-                {i + 1}
-              </div>
+              <p className="mb-1 text-xs font-bold tracking-widest" style={{ color: V.sage }}>{s.num}</p>
               <h3 className="mb-2 text-base font-bold" style={{ color: V.ink }}>{s.title}</h3>
               <p className="text-sm leading-7" style={{ color: "#4D5A50" }}>{s.text}</p>
             </div>
           ))}
         </div>
+        <p className="mt-10 max-w-lg text-sm leading-7" style={{ color: V.muted }}>
+          No começo a Vesta confirma com você. Com o tempo, ela aprende seus combinados e só te chama quando algo foge da rotina.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function YouInControl() {
+  const rules = [
+    "Sempre pedir aprovação antes de compartilhar algo fora de casa",
+    "Adicionar lembretes simples automaticamente",
+    "Sugerir quem deve cuidar de cada tarefa",
+    "Avisar quando tiver conflito na agenda",
+    "Te manter no controle sem perguntar tudo toda hora",
+  ];
+  return (
+    <section className="mx-auto max-w-7xl px-6 py-20">
+      <div className="grid items-center gap-12 lg:grid-cols-2">
+        <div>
+          <div className="mb-4">
+            <VBadge>VOCÊ NO CONTROLE</VBadge>
+          </div>
+          <h2 className="mb-6 font-serif text-3xl font-semibold tracking-[-0.03em] md:text-4xl" style={{ color: V.ink }}>
+            Você decide as regras.{" "}
+            <em className="not-italic" style={{ color: V.sage }}>A Vesta aprende a rotina.</em>
+          </h2>
+          <p className="max-w-md text-base leading-8" style={{ color: V.muted }}>
+            No começo, a Vesta confirma com você o que importa. Com o tempo, aprende os seus combinados: o que vira lembrete sozinho, o que precisa de aprovação e quando alguém da casa deve ser avisado.
+          </p>
+        </div>
+        <div className="rounded-[2rem] p-8" style={{ background: V.cream, border: `1px solid rgba(14,59,46,0.09)` }}>
+          <p className="mb-5 text-xs font-bold tracking-widest" style={{ color: V.sage }}>REGRAS DA SUA FAMÍLIA</p>
+          <div className="space-y-4">
+            {rules.map((r) => (
+              <div key={r} className="flex items-start gap-4 rounded-2xl px-4 py-3.5" style={{ background: V.ivory }}>
+                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full" style={{ background: V.softSage }}>
+                  <Check className="h-3 w-3" style={{ color: V.primary }} />
+                </div>
+                <p className="text-sm leading-6" style={{ color: V.ink }}>{r}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ConciergeBanner() {
+  return (
+    <section className="mx-auto max-w-7xl px-6 pb-20">
+      <div className="relative overflow-hidden rounded-[2rem] px-10 py-14"
+        style={{ background: V.primary }}>
+        <div className="relative z-10 max-w-xl">
+          <div className="mb-4">
+            <span className="rounded-full px-4 py-1.5 text-[11px] font-bold tracking-[0.12em]"
+              style={{ background: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.85)" }}>
+              CONCIERGE
+            </span>
+          </div>
+          <h2 className="mb-5 font-serif text-3xl font-semibold leading-tight tracking-[-0.03em] text-white md:text-4xl">
+            Quando precisa sair do combinado e{" "}
+            <em className="not-italic opacity-75">virar solução.</em>
+          </h2>
+          <p className="mb-8 max-w-md text-base leading-8" style={{ color: "rgba(255,255,255,0.72)" }}>
+            Além de organizar a rotina, a Vesta pode ajudar a encaminhar tarefas que precisam de apoio externo — conserto, compras, serviços, orçamentos, entregas ou pequenas pendências da casa.
+          </p>
+          <div className="flex flex-wrap items-center gap-5">
+            <Link href="/concierge"
+              className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition-all"
+              style={{ background: V.sage, color: "white" }}>
+              Conhecer o Concierge <ArrowRight className="h-4 w-4" />
+            </Link>
+            <p className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
+              Nada é enviado, contratado ou agendado sem a seu sim
+            </p>
+          </div>
+        </div>
+        <div className="absolute -right-16 -top-16 h-72 w-72 rounded-full opacity-10" style={{ background: V.sage }} />
+        <div className="absolute -bottom-20 right-20 h-56 w-56 rounded-full opacity-8" style={{ background: "white" }} />
       </div>
     </section>
   );
@@ -384,61 +501,56 @@ function Pricing() {
   const plans = [
     {
       name: "Grátis",
-      price: "R$0",
-      period: "/mês",
-      description: "Para experimentar sem compromisso.",
+      description: "Pra começar a tirar a rotina da cabeça.",
       cta: "Começar grátis",
-      ctaVariant: "ghost" as const,
-      features: [
-        "1 pessoa",
-        "Até 30 capturas por mês",
-        "Agenda básica",
-        "App mobile",
-      ],
       highlight: false,
+      badge: null,
+      features: [
+        "Captura básica de tarefas",
+        "Lista da casa",
+        "Lembretes simples",
+        "1 agenda conectada",
+      ],
     },
     {
-      name: "Família",
-      price: "R$47",
-      period: "/mês",
-      description: "Para a casa toda funcionar em sincronia.",
-      cta: "Começar agora",
-      ctaVariant: "primary" as const,
-      features: [
-        "Até 6 pessoas",
-        "Capturas ilimitadas",
-        "Delegação e aprovações",
-        "Integração com calendários",
-        "WhatsApp, e-mail e foto",
-        "Lembretes automáticos",
-      ],
+      name: "Premium",
+      description: "Pra família que quer a rotina mais organizada.",
+      cta: "Entrar na lista",
       highlight: true,
+      badge: "MAIS ESCOLHIDO",
+      features: [
+        "Regras inteligentes",
+        "Várias agendas e lembretes",
+        "Delegação pro quem mora junto",
+        "Histórico e acompanhamento",
+      ],
     },
     {
-      name: "Casa+",
-      price: "R$79",
-      period: "/mês",
-      description: "Para quem gerencia mais de uma casa.",
-      cta: "Falar com a equipe",
-      ctaVariant: "ghost" as const,
-      features: [
-        "Residências ilimitadas",
-        "Tudo do plano Família",
-        "Concierge ativo",
-        "Suporte prioritário",
-        "Relatórios mensais",
-      ],
+      name: "Concierge",
+      description: "Pro quem quer ajuda pra resolver.",
+      cta: "Quero saber mais",
       highlight: false,
+      badge: null,
+      features: [
+        "Apoio em tarefas selecionadas",
+        "Orçamentos e serviços",
+        "Acompanhamento de pendências",
+        "Aprovação antes de qualquer ação externa",
+      ],
     },
   ];
-
   return (
     <section id="precos" className="mx-auto max-w-7xl px-6 py-20">
-      <h2 className="mx-auto mb-4 max-w-2xl text-center font-serif text-4xl font-semibold tracking-[-0.03em] md:text-5xl" style={{ color: V.ink }}>
-        Simples assim.
+      <div className="mb-4">
+        <VBadge>PLANOS EM DEFINIÇÃO</VBadge>
+      </div>
+      <h2 className="mb-3 font-serif text-3xl font-semibold tracking-[-0.03em] md:text-4xl" style={{ color: V.ink }}>
+        Um plano{" "}
+        <em className="not-italic" style={{ color: V.sage }}>pra cada momento</em>{" "}
+        da sua casa.
       </h2>
-      <p className="mb-14 text-center text-lg" style={{ color: V.muted }}>
-        Comece grátis. Upgrade quando fizer sentido.
+      <p className="mb-14 max-w-xl text-base leading-7" style={{ color: V.muted }}>
+        Os valores serão divulgados em breve. As primeiras famílias entram com condições especiais.
       </p>
       <div className="grid gap-6 md:grid-cols-3">
         {plans.map((plan) => (
@@ -451,25 +563,25 @@ function Pricing() {
               boxShadow: plan.highlight ? "0 24px 60px rgba(14,59,46,0.22)" : "0 2px 12px rgba(14,59,46,0.06)",
             }}
           >
-            {plan.highlight && (
+            {plan.badge && (
               <div className="mb-4">
-                <span className="rounded-full px-3 py-1 text-xs font-bold" style={{ background: "rgba(255,255,255,0.18)", color: "white" }}>
-                  MAIS POPULAR
+                <span className="rounded-full px-3 py-1 text-[10px] font-bold tracking-widest"
+                  style={{ background: "rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.9)" }}>
+                  {plan.badge}
                 </span>
               </div>
             )}
-            <p className="text-sm font-semibold" style={{ color: plan.highlight ? "rgba(255,255,255,0.7)" : V.muted }}>{plan.name}</p>
-            <div className="mt-2 flex items-end gap-1">
-              <span className="font-serif text-5xl font-semibold" style={{ color: plan.highlight ? "white" : V.ink }}>{plan.price}</span>
-              <span className="mb-1 text-sm" style={{ color: plan.highlight ? "rgba(255,255,255,0.6)" : V.muted }}>{plan.period}</span>
-            </div>
-            <p className="mt-3 text-sm leading-6" style={{ color: plan.highlight ? "rgba(255,255,255,0.75)" : V.muted }}>
+            <p className="text-base font-bold" style={{ color: plan.highlight ? "rgba(255,255,255,0.9)" : V.ink }}>{plan.name}</p>
+            <p className="mt-1 text-sm leading-6" style={{ color: plan.highlight ? "rgba(255,255,255,0.6)" : V.muted }}>
               {plan.description}
             </p>
-            <ul className="my-8 flex-1 space-y-3">
+            <p className="my-6 font-serif text-4xl font-semibold" style={{ color: plan.highlight ? "rgba(255,255,255,0.6)" : V.muted }}>
+              Em breve
+            </p>
+            <ul className="mb-8 flex-1 space-y-3">
               {plan.features.map((f) => (
-                <li key={f} className="flex items-start gap-3 text-sm" style={{ color: plan.highlight ? "rgba(255,255,255,0.9)" : V.ink }}>
-                  <Check className="mt-0.5 h-4 w-4 shrink-0" style={{ color: plan.highlight ? "rgba(255,255,255,0.8)" : V.sage }} />
+                <li key={f} className="flex items-start gap-3 text-sm" style={{ color: plan.highlight ? "rgba(255,255,255,0.85)" : V.ink }}>
+                  <Check className="mt-0.5 h-4 w-4 shrink-0" style={{ color: plan.highlight ? "rgba(255,255,255,0.6)" : V.sage }} />
                   {f}
                 </li>
               ))}
@@ -480,38 +592,181 @@ function Pricing() {
           </div>
         ))}
       </div>
-      <p className="mt-10 text-center text-sm" style={{ color: V.muted }}>
-        Sem contrato. Cancele quando quiser. Dados sempre seus.
-      </p>
     </section>
   );
 }
 
-function BottomCTA() {
+function Testimonial() {
   return (
-    <section id="sobre-nos" className="mx-auto max-w-7xl px-6 py-8">
-      <div className="grid overflow-hidden rounded-[2rem] shadow-sm md:grid-cols-[1fr_1.35fr]" style={{ background: V.cream }}>
-        <div className="p-10" style={{ borderRight: `1px solid rgba(14,59,46,0.10)` }}>
-          <p className="font-serif text-6xl leading-none" style={{ color: V.sage }}>"</p>
-          <blockquote className="max-w-md text-xl leading-8" style={{ color: V.ink }}>
-            A Vesta virou o coração da nossa casa. Nada fica esquecido, e a rotina finalmente não depende só de mim.
-          </blockquote>
-          <p className="mt-6 text-sm" style={{ color: V.muted }}>Juliana, mãe do Theo e da Bia</p>
-        </div>
-        <div className="relative flex min-h-[270px] items-center overflow-hidden p-10">
-          <div className="relative z-10 max-w-md">
-            <h2 className="font-serif text-4xl font-semibold leading-tight tracking-[-0.03em]" style={{ color: V.ink }}>
-              Pronto para sentir sua casa mais leve?
-            </h2>
-            <p className="mt-3" style={{ color: V.muted }}>Comece grátis. Sem compromisso.</p>
-            <VButton href="/app" className="mt-7">Começar agora</VButton>
+    <section className="mx-auto max-w-7xl px-6 pb-10">
+      <div className="rounded-[2rem] p-10 md:p-14" style={{ background: V.cream, border: `1px solid rgba(14,59,46,0.09)` }}>
+        <p className="mb-6 font-serif text-6xl leading-none" style={{ color: V.sage }}>"</p>
+        <blockquote className="max-w-2xl font-serif text-2xl font-semibold leading-snug tracking-[-0.02em] md:text-3xl" style={{ color: V.ink }}>
+          A Vesta virou o coração da nossa casa. Nada fica esquecido, e a rotina finalmente não depende só de mim.
+        </blockquote>
+        <div className="mt-8 flex items-center gap-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full font-bold text-white text-sm"
+            style={{ background: V.sage }}>J</div>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: V.ink }}>Juliana</p>
+            <p className="text-xs" style={{ color: V.muted }}>mãe do Theo e da Bia</p>
           </div>
-          <div className="absolute right-10 top-10 hidden rotate-6 rounded-xl p-5 text-sm leading-6 shadow-md md:block"
-            style={{ background: V.beige, color: V.ink }}>
-            Planos existem.<br />O que faz a casa<br />andar são os<br />combinados. ♡
-          </div>
-          <div className="absolute bottom-0 right-0 h-56 w-56 rounded-full" style={{ background: V.softSage }} />
+          <span className="ml-auto rounded-full px-3 py-1 text-[10px] font-bold tracking-widest"
+            style={{ background: "#EAF1E5", color: V.primary }}>COMO UMA FAMÍLIA IMAGINA</span>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function WaitlistCTA() {
+  const [email, setEmail] = useState("");
+  return (
+    <section id="sobre-nos" className="mx-auto max-w-7xl px-6 pb-20">
+      <div className="grid overflow-hidden rounded-[2rem] md:grid-cols-[1fr_1.1fr]"
+        style={{ background: V.ivory, border: `1px solid rgba(14,59,46,0.09)` }}>
+        <div className="p-10 md:p-12" style={{ borderRight: `1px solid rgba(14,59,46,0.09)` }}>
+          <div className="mb-4">
+            <span className="rounded-full px-4 py-1.5 text-[11px] font-bold tracking-widest"
+              style={{ background: "#EAF1E5", color: V.primary }}>
+              LISTA DE ESPERA — VAGAS LIMITADAS
+            </span>
+          </div>
+          <h2 className="mb-4 font-serif text-3xl font-semibold tracking-[-0.03em]" style={{ color: V.ink }}>
+            Garanta sua vaga
+          </h2>
+          <p className="mb-8 max-w-sm text-base leading-8" style={{ color: V.muted }}>
+            Conta um pouco da sua família. A gente chama em pequenos grupos pra cuidar bem de cada uma.
+          </p>
+          <div className="space-y-3">
+            {[
+              "Pré-lançamento — ainda não está aberto pra todo mundo",
+              "Chamando as primeiras famílias",
+              "Atendimento de perto no começo",
+            ].map((step, i) => (
+              <div key={step} className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                  style={{ background: i === 0 ? V.primary : i === 1 ? V.sage : `rgba(14,59,46,0.2)`, color: i < 2 ? "white" : V.muted }}>
+                  {i + 1}
+                </span>
+                <p className="text-sm leading-6" style={{ color: i < 2 ? V.ink : V.muted }}>{step}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col justify-center p-10 md:p-12">
+          <div className="mx-auto w-full max-w-sm rounded-3xl p-8 shadow-md" style={{ background: "white" }}>
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-[10px] font-bold tracking-widest" style={{ color: V.muted }}>EMAIL</span>
+              <span className="text-[10px] font-bold tracking-widest" style={{ color: V.muted }}>SUA FAMÍLIA</span>
+            </div>
+            <h3 className="mb-1 font-serif text-xl font-semibold" style={{ color: V.ink }}>Começa pelo seu email.</h3>
+            <p className="mb-6 text-xs leading-5" style={{ color: V.muted }}>
+              Em seguida a gente faz umas perguntas rápidas sobre a sua família.
+            </p>
+            <label className="mb-1.5 block text-xs font-semibold" style={{ color: V.ink }}>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="voce@familia.com"
+              className="mb-4 w-full rounded-2xl border px-4 py-3 text-sm outline-none transition-all"
+              style={{ borderColor: `rgba(14,59,46,0.2)`, background: V.ivory, color: V.ink }}
+            />
+            <button
+              className="flex w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-semibold text-white transition-all"
+              style={{ background: V.primary }}
+            >
+              Continuar <ArrowRight className="h-4 w-4" />
+            </button>
+            <p className="mt-4 text-center text-xs" style={{ color: V.muted }}>
+              Leva até 30 segundos. Spam, nunca.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FAQ() {
+  const [open, setOpen] = useState<number | null>(0);
+  const items = [
+    {
+      q: "É só mais um app de agenda?",
+      a: "Não. Agenda mostra o que já foi decidido. A Vesta entra antes — no recado do WhatsApp, na pendência da casa, na tarefa que alguém precisa pegar e no lembrete que não pode passar batido.",
+    },
+    {
+      q: "Com quais agendas funciona?",
+      a: "Google Calendar, Apple Calendar (iCloud), Outlook e Exchange. O que bate com a sua regra entra na agenda certa — da família ou sua.",
+    },
+    {
+      q: "Vocês marcam serviço por mim?",
+      a: "Não automaticamente. Pelo Concierge, a Vesta pode ajudar a encontrar, orçar e acompanhar — mas nada é confirmado sem a sua aprovação.",
+    },
+    {
+      q: "Babá, diarista, avós e crianças podem usar?",
+      a: "Sim. Cada pessoa acessa só o que é dela. Você decide o que cada um pode ver e fazer.",
+    },
+    {
+      q: "Já tá aberto?",
+      a: "Ainda não. Estamos chamando as primeiras famílias em pequenos grupos. Entre na lista de espera e a gente te avisa.",
+    },
+    {
+      q: "E meus dados?",
+      a: "São seus. Nunca vendemos, nunca compartilhamos, nunca treinamos modelos com o conteúdo da sua casa. Privacidade desde o começo.",
+    },
+  ];
+  return (
+    <section className="mx-auto max-w-3xl px-6 pb-20">
+      <div className="mb-4">
+        <VBadge>DÚVIDAS</VBadge>
+      </div>
+      <h2 className="mb-12 font-serif text-3xl font-semibold tracking-[-0.03em] md:text-4xl" style={{ color: V.ink }}>
+        Respostas honestas sobre o que é (e o que não é) a Vesta.
+      </h2>
+      <div className="space-y-3">
+        {items.map((item, i) => (
+          <div key={item.q} className="overflow-hidden rounded-2xl" style={{ border: `1px solid rgba(14,59,46,0.10)` }}>
+            <button
+              onClick={() => setOpen(open === i ? null : i)}
+              className="flex w-full items-center justify-between px-6 py-5 text-left text-sm font-semibold transition-colors"
+              style={{ background: open === i ? V.cream : "white", color: V.ink }}
+            >
+              {item.q}
+              <ChevronDown
+                className="h-4 w-4 shrink-0 transition-transform"
+                style={{ color: V.sage, transform: open === i ? "rotate(180deg)" : "rotate(0deg)" }}
+              />
+            </button>
+            {open === i && (
+              <div className="px-6 pb-5 text-sm leading-7" style={{ background: V.cream, color: V.muted }}>
+                {item.a}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FinalCTA() {
+  return (
+    <section className="mx-auto max-w-7xl px-6 pb-20">
+      <div className="flex flex-col items-center rounded-[2rem] py-16 text-center"
+        style={{ background: V.cream, border: `1px solid rgba(14,59,46,0.09)` }}>
+        <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl"
+          style={{ border: `1px solid rgba(14,59,46,0.2)` }}>
+          <Home className="h-8 w-8" style={{ color: V.primary }} strokeWidth={1.5} />
+        </div>
+        <h2 className="mb-3 font-serif text-3xl font-semibold tracking-[-0.03em] md:text-4xl" style={{ color: V.ink }}>
+          Pronto pra sentir sua casa mais leve?
+        </h2>
+        <p className="mb-8 text-base" style={{ color: V.muted }}>Comece grátis. Sem compromisso.</p>
+        <VButton href="/app">
+          Começar agora <ArrowRight className="h-4 w-4" />
+        </VButton>
       </div>
     </section>
   );
@@ -546,9 +801,15 @@ export default function Landing() {
       <Hero />
       <Integrations />
       <Features />
+      <PracticeDemo />
       <HowItWorks />
+      <YouInControl />
+      <ConciergeBanner />
       <Pricing />
-      <BottomCTA />
+      <Testimonial />
+      <WaitlistCTA />
+      <FAQ />
+      <FinalCTA />
       <Footer />
     </div>
   );
