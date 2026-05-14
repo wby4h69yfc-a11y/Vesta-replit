@@ -176,8 +176,13 @@ function Nav({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; setMobileOpen
         </div>
 
         <nav className="hidden items-center gap-8 text-sm font-medium md:flex" style={{ color: V.ink }}>
-          {["Recursos", "Para famílias", "Preços", "Sobre nós"].map((l) => (
-            <a key={l} href={`#${l.toLowerCase().replace(/\s+/g, "-")}`} className="hover:opacity-60 transition-opacity">{l}</a>
+          {[
+            ["Recursos",      "#recursos"],
+            ["Para famílias", "#para-familias"],
+            ["Preços",        "#precos"],
+            ["Sobre nós",     "#sobre-nos"],
+          ].map(([label, href]) => (
+            <a key={label} href={href} className="hover:opacity-60 transition-opacity">{label}</a>
           ))}
         </nav>
 
@@ -323,6 +328,7 @@ function Features() {
   ];
   return (
     <section id="recursos" className="mx-auto max-w-7xl px-6 py-20">
+      <span id="para-familias" className="sr-only" />
       <h2 className="mx-auto mb-14 max-w-3xl text-center font-serif text-4xl font-semibold tracking-[-0.03em] md:text-5xl" style={{ color: V.ink }}>
         Tudo o que sua família precisa. Em um só lugar.
       </h2>
@@ -374,101 +380,116 @@ function HowItWorks() {
   );
 }
 
-function DashboardPreview() {
-  const navItems: Array<[string, React.ComponentType<{ className?: string }>]> = [
-    ["Início",          Home],
-    ["Caixa de entrada",Inbox],
-    ["Planejamento",    CalendarDays],
-    ["Tarefas",         ListChecks],
-    ["Pessoas",         Users],
-    ["Regras",          ShieldCheck],
-    ["Concierge",       ShoppingBag],
+function Pricing() {
+  const plans = [
+    {
+      name: "Grátis",
+      price: "R$0",
+      period: "/mês",
+      description: "Para experimentar sem compromisso.",
+      cta: "Começar grátis",
+      ctaVariant: "ghost" as const,
+      features: [
+        "1 pessoa",
+        "Até 30 capturas por mês",
+        "Agenda básica",
+        "App mobile",
+      ],
+      highlight: false,
+    },
+    {
+      name: "Família",
+      price: "R$47",
+      period: "/mês",
+      description: "Para a casa toda funcionar em sincronia.",
+      cta: "Começar agora",
+      ctaVariant: "primary" as const,
+      features: [
+        "Até 6 pessoas",
+        "Capturas ilimitadas",
+        "Delegação e aprovações",
+        "Integração com calendários",
+        "WhatsApp, e-mail e foto",
+        "Lembretes automáticos",
+      ],
+      highlight: true,
+    },
+    {
+      name: "Casa+",
+      price: "R$79",
+      period: "/mês",
+      description: "Para quem gerencia mais de uma casa.",
+      cta: "Falar com a equipe",
+      ctaVariant: "ghost" as const,
+      features: [
+        "Residências ilimitadas",
+        "Tudo do plano Família",
+        "Concierge ativo",
+        "Suporte prioritário",
+        "Relatórios mensais",
+      ],
+      highlight: false,
+    },
   ];
-  return (
-    <section className="mx-auto max-w-7xl px-6 py-20">
-      <div className="mb-8">
-        <VBadge>WEBAPP + MOBILE</VBadge>
-        <h2 className="mt-5 font-serif text-4xl font-semibold tracking-[-0.04em] md:text-5xl" style={{ color: V.ink }}>
-          A mesma linguagem visual dentro do produto.
-        </h2>
-        <p className="mt-4 max-w-2xl text-lg leading-8" style={{ color: V.muted }}>
-          A landing page, o dashboard e o app mobile usam os mesmos tokens, componentes, cartões e padrões de aprovação.
-        </p>
-      </div>
-      <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
-        <aside className="rounded-[2rem] p-6 text-white" style={{ background: V.primary }}>
-          <div className="flex items-center gap-3 mb-10">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.2)" }}>
-              <Home className="h-5 w-5 text-white" strokeWidth={1.8} />
-            </div>
-            <span className="text-xl font-semibold text-white">vesta</span>
-          </div>
-          <nav className="space-y-1">
-            {navItems.map(([label, Icon], i) => (
-              <div key={label} className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium cursor-pointer transition-colors"
-                style={{ background: i === 0 ? "rgba(255,255,255,0.15)" : "transparent", color: i === 0 ? "white" : "rgba(255,255,255,0.65)" }}>
-                <Icon className="h-5 w-5" />
-                {label}
-              </div>
-            ))}
-          </nav>
-        </aside>
 
-        <main className="rounded-[2rem] p-7 shadow-sm" style={{ background: V.cream, border: `1px solid rgba(14,59,46,0.10)` }}>
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-sm" style={{ color: V.muted }}>Quarta-feira, 18 de maio</p>
-              <h3 className="font-serif text-4xl font-semibold tracking-[-0.03em]" style={{ color: V.ink }}>Bom dia, Camila</h3>
-            </div>
-            <VButton><Plus className="h-4 w-4" />Nova captura</VButton>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {[["Aprovações pendentes", "7"], ["Tarefas em andamento", "18"], ["Resolvidas esta semana", "24"]].map(([t, v]) => (
-              <div key={t} className="rounded-3xl p-5" style={{ background: V.ivory }}>
-                <p className="text-sm" style={{ color: V.muted }}>{t}</p>
-                <p className="mt-3 font-serif text-5xl font-semibold" style={{ color: V.ink }}>{v}</p>
+  return (
+    <section id="precos" className="mx-auto max-w-7xl px-6 py-20">
+      <h2 className="mx-auto mb-4 max-w-2xl text-center font-serif text-4xl font-semibold tracking-[-0.03em] md:text-5xl" style={{ color: V.ink }}>
+        Simples assim.
+      </h2>
+      <p className="mb-14 text-center text-lg" style={{ color: V.muted }}>
+        Comece grátis. Upgrade quando fizer sentido.
+      </p>
+      <div className="grid gap-6 md:grid-cols-3">
+        {plans.map((plan) => (
+          <div
+            key={plan.name}
+            className="flex flex-col rounded-[2rem] p-8"
+            style={{
+              background: plan.highlight ? V.primary : V.cream,
+              border: plan.highlight ? "none" : `1px solid rgba(14,59,46,0.10)`,
+              boxShadow: plan.highlight ? "0 24px 60px rgba(14,59,46,0.22)" : "0 2px 12px rgba(14,59,46,0.06)",
+            }}
+          >
+            {plan.highlight && (
+              <div className="mb-4">
+                <span className="rounded-full px-3 py-1 text-xs font-bold" style={{ background: "rgba(255,255,255,0.18)", color: "white" }}>
+                  MAIS POPULAR
+                </span>
               </div>
-            ))}
-          </div>
-          <div className="mt-6 grid gap-5 lg:grid-cols-2">
-            <div className="rounded-3xl p-5" style={{ background: V.ivory }}>
-              <h4 className="mb-4 font-bold" style={{ color: V.ink }}>Caixa de entrada</h4>
-              <div className="space-y-3">
-                {[["WhatsApp","Festa junina: confirmar barraca até sexta."],["E-mail","Autorização de passeio precisa de assinatura."],["Foto","Bilhete: levar 1kg de alimento até 20/06."]].map(([s, t]) => (
-                  <div key={t} className="flex items-start justify-between rounded-2xl p-4" style={{ background: V.cream }}>
-                    <div>
-                      <p className="text-xs font-semibold" style={{ color: V.sage }}>{s}</p>
-                      <p className="mt-1 text-sm font-medium" style={{ color: V.ink }}>{t}</p>
-                    </div>
-                    <ChevronRight className="h-5 w-5 shrink-0" style={{ color: V.sage }} />
-                  </div>
-                ))}
-              </div>
+            )}
+            <p className="text-sm font-semibold" style={{ color: plan.highlight ? "rgba(255,255,255,0.7)" : V.muted }}>{plan.name}</p>
+            <div className="mt-2 flex items-end gap-1">
+              <span className="font-serif text-5xl font-semibold" style={{ color: plan.highlight ? "white" : V.ink }}>{plan.price}</span>
+              <span className="mb-1 text-sm" style={{ color: plan.highlight ? "rgba(255,255,255,0.6)" : V.muted }}>{plan.period}</span>
             </div>
-            <div className="rounded-3xl p-5" style={{ background: V.ivory }}>
-              <h4 className="mb-4 font-bold" style={{ color: V.ink }}>Fila de aprovação</h4>
-              <div className="space-y-3">
-                {["Adicionar vacina da Sofia ao calendário","Delegar compra do presente para Rafael","Contratar eletricista para tomada da cozinha"].map((t) => (
-                  <div key={t} className="rounded-2xl p-4" style={{ background: V.cream }}>
-                    <p className="text-sm font-medium" style={{ color: V.ink }}>{t}</p>
-                    <div className="mt-3 flex gap-2">
-                      <button className="rounded-full px-3 py-1.5 text-xs font-semibold text-white" style={{ background: V.primary }}>Aprovar</button>
-                      <button className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ border: `1px solid rgba(14,59,46,0.15)`, color: V.primary }}>Editar</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <p className="mt-3 text-sm leading-6" style={{ color: plan.highlight ? "rgba(255,255,255,0.75)" : V.muted }}>
+              {plan.description}
+            </p>
+            <ul className="my-8 flex-1 space-y-3">
+              {plan.features.map((f) => (
+                <li key={f} className="flex items-start gap-3 text-sm" style={{ color: plan.highlight ? "rgba(255,255,255,0.9)" : V.ink }}>
+                  <Check className="mt-0.5 h-4 w-4 shrink-0" style={{ color: plan.highlight ? "rgba(255,255,255,0.8)" : V.sage }} />
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <VButton href="/app" variant={plan.highlight ? "light" : "ghost"}>
+              {plan.cta}
+            </VButton>
           </div>
-        </main>
+        ))}
       </div>
+      <p className="mt-10 text-center text-sm" style={{ color: V.muted }}>
+        Sem contrato. Cancele quando quiser. Dados sempre seus.
+      </p>
     </section>
   );
 }
 
 function BottomCTA() {
   return (
-    <section className="mx-auto max-w-7xl px-6 py-8">
+    <section id="sobre-nos" className="mx-auto max-w-7xl px-6 py-8">
       <div className="grid overflow-hidden rounded-[2rem] shadow-sm md:grid-cols-[1fr_1.35fr]" style={{ background: V.cream }}>
         <div className="p-10" style={{ borderRight: `1px solid rgba(14,59,46,0.10)` }}>
           <p className="font-serif text-6xl leading-none" style={{ color: V.sage }}>"</p>
@@ -526,6 +547,7 @@ export default function Landing() {
       <Integrations />
       <Features />
       <HowItWorks />
+      <Pricing />
       <BottomCTA />
       <Footer />
     </div>
