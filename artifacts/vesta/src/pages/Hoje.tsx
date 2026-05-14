@@ -119,8 +119,8 @@ export default function Hoje() {
                   <p className="text-sm font-medium text-foreground leading-snug">{ev.title}</p>
                   <div className="mt-1 flex items-center gap-2">
                     <CategoryBadge category={ev.category} />
-                    {ev.members?.length > 0 && (
-                      <span className="text-xs text-muted-foreground">{ev.members.join(", ")}</span>
+                    {(ev.members?.length ?? 0) > 0 && (
+                      <span className="text-xs text-muted-foreground">{ev.members?.join(", ")}</span>
                     )}
                   </div>
                 </div>

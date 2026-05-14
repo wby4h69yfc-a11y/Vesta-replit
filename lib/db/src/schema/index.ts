@@ -1,3 +1,4 @@
+export * from "./auth";
 export * from "./households";
 export * from "./members";
 export * from "./contacts";
@@ -8,3 +9,4 @@ export * from "./events";
 export * from "./rules";
 export * from "./patterns";
 export * from "./audit";
+export * from "./memory";

@@ -24,7 +24,7 @@ const STATUS_FILTERS = [
 export default function TarefasPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [statusFilter, setStatusFilter] = useState<string | undefined>("pending");
+  const [statusFilter, setStatusFilter] = useState<import("@workspace/api-client-react").ListTasksStatus | undefined>("pending");
   const [catFilter, setCatFilter] = useState<string | undefined>(undefined);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ title: "", due_at: "", category: "", workflow_tags: "" });
@@ -81,7 +81,7 @@ export default function TarefasPage() {
         {STATUS_FILTERS.map((f) => (
           <button
             key={f.label}
-            onClick={() => setStatusFilter(f.value)}
+            onClick={() => setStatusFilter(f.value as import("@workspace/api-client-react").ListTasksStatus | undefined)}
             className={cn(
               "shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors",
               statusFilter === f.value ? "bg-primary text-primary-foreground" : "bg-card border border-border text-muted-foreground",

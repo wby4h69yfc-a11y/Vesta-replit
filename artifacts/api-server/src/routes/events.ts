@@ -89,7 +89,7 @@ router.patch("/events/:id", async (req, res) => {
       .where(eq(calendarEventsTable.id, id))
       .returning();
 
-    res.json(updated);
+    return res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to update event");
     res.status(500).json({ error: "Internal server error" });

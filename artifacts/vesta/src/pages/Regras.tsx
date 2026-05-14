@@ -176,7 +176,7 @@ export default function RegrasPage() {
           <div className="flex gap-2">
             <button onClick={() => setShowCreate(false)} className="flex-1 py-2.5 rounded-xl border border-border text-sm text-muted-foreground">Cancelar</button>
             <button
-              onClick={() => createRule.mutate({ data: { name: form.name, category: form.category, trigger_desc: form.trigger_desc, action_desc: form.action_desc, approval_level: form.approval_level } })}
+              onClick={() => createRule.mutate({ data: { name: form.name, category: form.category, trigger_desc: form.trigger_desc, action_desc: form.action_desc, approval_level: form.approval_level as import("@workspace/api-client-react").RuleInputApprovalLevel } })}
               disabled={!form.name || !form.trigger_desc || !form.action_desc || createRule.isPending}
               className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
               data-testid="button-submit-rule"
@@ -251,7 +251,7 @@ export default function RegrasPage() {
               </div>
 
               <div className="ml-6">
-                <span className="text-[10px] text-muted-foreground">{ORIGIN_LABELS[rule.origin] ?? rule.origin}</span>
+                <span className="text-[10px] text-muted-foreground">{rule.origin ? (ORIGIN_LABELS[rule.origin as keyof typeof ORIGIN_LABELS] ?? rule.origin) : ""}</span>
               </div>
             </div>
           ))}

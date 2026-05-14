@@ -18,7 +18,7 @@ router.get("/household", async (req, res) => {
       return res.json(created);
     }
 
-    res.json(household);
+    return res.json(household);
   } catch (err) {
     req.log.error({ err }, "Failed to get household");
     res.status(500).json({ error: "Internal server error" });
@@ -42,7 +42,7 @@ router.patch("/household", async (req, res) => {
       .where(eq(householdsTable.id, household.id))
       .returning();
 
-    res.json(updated);
+    return res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to update household");
     res.status(500).json({ error: "Internal server error" });

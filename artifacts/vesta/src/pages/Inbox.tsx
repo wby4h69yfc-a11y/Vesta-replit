@@ -42,7 +42,7 @@ const FILTERS = [
 export default function InboxPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [filter, setFilter] = useState<string | undefined>("ready_for_review");
+  const [filter, setFilter] = useState<import("@workspace/api-client-react").ListInboxItemsStatus | undefined>("ready_for_review");
   const [showCompose, setShowCompose] = useState(false);
   const [newContent, setNewContent] = useState("");
   const [senderName, setSenderName] = useState("");
@@ -151,7 +151,7 @@ export default function InboxPage() {
         {FILTERS.map((f) => (
           <button
             key={f.label}
-            onClick={() => setFilter(f.value)}
+            onClick={() => setFilter(f.value as import("@workspace/api-client-react").ListInboxItemsStatus | undefined)}
             className={cn(
               "shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors",
               filter === f.value

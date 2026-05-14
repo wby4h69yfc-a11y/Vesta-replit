@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
+import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -13,6 +13,7 @@ import RegrasPage from "@/pages/Regras";
 import ConciergePage from "@/pages/Concierge";
 import CasaPage from "@/pages/Casa";
 import SettingsPage from "@/pages/Settings";
+import OnboardingPage from "@/pages/Onboarding";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -25,14 +26,19 @@ function AppShell() {
   return (
     <Layout>
       <Switch>
-        <Route path="/app"              component={AppDashboard} />
-        <Route path="/inbox"            component={InboxPage} />
-        <Route path="/calendar"         component={CalendarPage} />
-        <Route path="/tasks"            component={TasksPage} />
-        <Route path="/people"           component={PeoplePage} />
-        <Route path="/rules"            component={RegrasPage} />
-        <Route path="/concierge"        component={ConciergePage} />
+        {/* Primary 4-tab routes */}
+        <Route path="/app"       component={AppDashboard} />
+        <Route path="/inbox"     component={InboxPage} />
+        <Route path="/calendar"  component={CalendarPage} />
+        <Route path="/casa"      component={CasaPage} />
+
+        {/* Secondary routes (accessible from within pages) */}
+        <Route path="/tasks"     component={TasksPage} />
+        <Route path="/people"    component={PeoplePage} />
+        <Route path="/rules"     component={RegrasPage} />
+        <Route path="/concierge" component={ConciergePage} />
         <Route path="/settings/privacy" component={SettingsPage} />
+
         {/* Legacy redirects */}
         <Route path="/hoje">
           {() => { window.location.replace("/app"); return null; }}
@@ -46,9 +52,7 @@ function AppShell() {
         <Route path="/regras">
           {() => { window.location.replace("/rules"); return null; }}
         </Route>
-        <Route path="/casa">
-          {() => { window.location.replace("/settings/privacy"); return null; }}
-        </Route>
+
         <Route component={NotFound} />
       </Switch>
     </Layout>
@@ -58,8 +62,9 @@ function AppShell() {
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Landing} />
-      <Route component={AppShell} />
+      <Route path="/"             component={Landing} />
+      <Route path="/onboarding"   component={OnboardingPage} />
+      <Route                      component={AppShell} />
     </Switch>
   );
 }
