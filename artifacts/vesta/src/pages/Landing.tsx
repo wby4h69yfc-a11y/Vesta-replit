@@ -1,357 +1,534 @@
+import { useState } from "react";
 import { Link } from "wouter";
-import { House, CheckCircle2, ArrowRight, Play, Star, Shield, Users, Calendar, Zap, MapPin } from "lucide-react";
+import {
+  CalendarDays, Check, ChevronRight, Cloud, Home, Inbox,
+  ListChecks, Mail, Menu, MoreHorizontal, Play, Plus,
+  Search, Send, ShieldCheck, Sparkles, Users, WalletCards,
+  Wand2, MessageCircle, Camera, Car, ShoppingBag, X,
+} from "lucide-react";
 
-const FEATURES = [
-  {
-    icon: "💬",
-    title: "Capture de qualquer jeito",
-    desc: "Fale, digite, envie um print, foto ou encaminhe uma mensagem. A Vesta entende.",
-  },
-  {
-    icon: "✅",
-    title: "Organiza e prioriza",
-    desc: "A Vesta transforma o caos em planos claros, com prazos e prioridades.",
-  },
-  {
-    icon: "👥",
-    title: "Delega sem estresse",
-    desc: "Tarefas vão para as pessoas certas, com contexto e sem cobranças.",
-  },
-  {
-    icon: "📅",
-    title: "Escreve no lugar certo",
-    desc: "Compromissos e lembretes no calendário certo, sempre atualizados.",
-  },
-  {
-    icon: "⚡",
-    title: "Resolve por você",
-    desc: "Precisa de ajuda? A Vesta encontra, agenda e acompanha.",
-  },
-  {
-    icon: "🔒",
-    title: "Privacidade é inegociável",
-    desc: "Seus dados são seus. Seguros, privados e nunca compartilhados.",
-  },
-];
+/* ── Design tokens ── */
+const V = {
+  primary:  "#0E3B2E",
+  deep:     "#08251E",
+  sage:     "#6F856F",
+  ivory:    "#F7F4EA",
+  cream:    "#FFFDF6",
+  beige:    "#EEE6D6",
+  warm:     "#F1EBDD",
+  softSage: "#DDE8D8",
+  gold:     "#D9B95F",
+  ink:      "#12231C",
+  muted:    "#5F6B61",
+};
 
-const STEPS = [
-  {
-    num: "1",
-    title: "Você envia para a Vesta",
-    desc: "Pode ser por WhatsApp, e-mail, foto, voz ou texto.",
-  },
-  {
-    num: "2",
-    title: "A Vesta entende e organiza",
-    desc: "Ela identifica o que precisa ser feito e o contexto.",
-  },
-  {
-    num: "3",
-    title: "Você aprova e delega",
-    desc: "Confirme, ajuste e escolha quem vai fazer o quê.",
-  },
-  {
-    num: "4",
-    title: "A Vesta coloca em ação",
-    desc: "No calendário, nas listas e na vida real — com lembretes.",
-  },
-];
-
-const INTEGRATIONS = [
-  { label: "Google Calendar", color: "text-blue-600", bg: "bg-blue-50" },
-  { label: "Outlook", color: "text-blue-700", bg: "bg-blue-50" },
-  { label: "Apple Calendar", color: "text-gray-700", bg: "bg-gray-100" },
-  { label: "WhatsApp", color: "text-green-700", bg: "bg-green-50" },
-  { label: "iCloud", color: "text-sky-700", bg: "bg-sky-50" },
-];
-
-export default function Landing() {
+/* ── Shared Components ── */
+function VButton({
+  children,
+  variant = "primary",
+  className = "",
+  href,
+  onClick,
+}: {
+  children: React.ReactNode;
+  variant?: "primary" | "ghost" | "light";
+  className?: string;
+  href?: string;
+  onClick?: () => void;
+}) {
+  const base = "inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition-all";
+  const styles = {
+    primary: `bg-[${V.primary}] text-white hover:bg-[${V.deep}] shadow-[0_12px_30px_rgba(14,59,46,0.18)]`,
+    ghost:   `bg-transparent text-[${V.ink}] hover:bg-[${V.primary}]/5 border border-[${V.primary}]/10`,
+    light:   `bg-[${V.cream}] text-[${V.primary}] hover:bg-white border border-[${V.primary}]/10`,
+  };
+  const cls = `${base} ${className}`;
+  if (href) {
+    return (
+      <Link href={href} className={cls} style={{
+        background: variant === "primary" ? V.primary : variant === "light" ? V.cream : "transparent",
+        color: variant === "primary" ? "white" : V.ink,
+        border: variant !== "primary" ? `1px solid rgba(14,59,46,0.12)` : "none",
+      }}>
+        {children}
+      </Link>
+    );
+  }
   return (
-    <div className="min-h-screen font-sans" style={{ background: "#F5F0E6", color: "#1B3A2D" }}>
+    <button onClick={onClick} className={cls} style={{
+      background: variant === "primary" ? V.primary : variant === "light" ? V.cream : "transparent",
+      color: variant === "primary" ? "white" : V.ink,
+      border: variant !== "primary" ? `1px solid rgba(14,59,46,0.12)` : "none",
+      boxShadow: variant === "primary" ? "0 12px 30px rgba(14,59,46,0.18)" : "none",
+    }}>
+      {children}
+    </button>
+  );
+}
 
-      {/* ── NAV ── */}
-      <header className="sticky top-0 z-50 border-b" style={{ background: "rgba(245,240,230,0.95)", borderColor: "#D8D0BE", backdropFilter: "blur(8px)" }}>
-        <div className="max-w-6xl mx-auto px-5 py-3 flex items-center gap-6">
-          <div className="flex items-center gap-2 mr-auto">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "#1B3A2D" }}>
-              <House className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-bold text-xl tracking-tight" style={{ color: "#1B3A2D" }}>vesta</span>
+function VBadge({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] font-semibold tracking-[0.12em]"
+      style={{ background: "#EAF1E5", color: V.primary }}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: V.primary }} />
+      {children}
+    </div>
+  );
+}
+
+function IntakeCard({ icon, title, children, className = "" }: {
+  icon: React.ReactNode; title: string; children: React.ReactNode; className?: string;
+}) {
+  return (
+    <div className={`rounded-3xl p-5 backdrop-blur ${className}`}
+      style={{ background: "rgba(255,253,246,0.95)", border: `1px solid rgba(14,59,46,0.1)`, boxShadow: "0 20px 50px rgba(24,38,30,0.08)" }}>
+      <div className="mb-3 flex items-center gap-2">
+        {icon}
+        <p className="text-sm font-bold" style={{ color: V.ink }}>{title}</p>
+      </div>
+      <div className="text-sm leading-relaxed" style={{ color: "#3D4A40" }}>{children}</div>
+    </div>
+  );
+}
+
+function PhoneMockup() {
+  const tasks = [
+    { icon: <Inbox className="h-4 w-4" />,       title: "Entrega de trabalho", time: "10:00 · Home Office",  tag: "" },
+    { icon: <CalendarDays className="h-4 w-4" />, title: "Vacina da Sofia",     time: "14:30 · Clínica Vida", tag: "Saúde" },
+    { icon: <Sparkles className="h-4 w-4" />,     title: "Treino do Miguel",    time: "16:00 · Escola Arena", tag: "Esporte" },
+    { icon: <Users className="h-4 w-4" />,        title: "Jantar em família",   time: "19:30",                tag: "Casa" },
+    { icon: <WalletCards className="h-4 w-4" />,  title: "Pagar conta de luz",  time: "Vence amanhã",         tag: "Financeiro" },
+  ];
+
+  return (
+    <div className="relative mx-auto h-[590px] w-[302px] rounded-[46px] border-[8px] border-[#111] shadow-[0_30px_80px_rgba(0,0,0,0.28)]"
+      style={{ background: V.ivory }}>
+      <div className="absolute left-1/2 top-2 h-7 w-28 -translate-x-1/2 rounded-full bg-black" />
+      <div className="flex h-full flex-col overflow-hidden rounded-[36px] px-5 pb-4 pt-12" style={{ background: "#F8F5EC" }}>
+        <div className="mb-5 flex items-start justify-between">
+          <div>
+            <p className="text-lg font-bold" style={{ color: V.ink }}>Bom dia, Camila ☀️</p>
+            <p className="text-xs" style={{ color: V.muted }}>Sua casa, organizada com você.</p>
           </div>
-          <nav className="hidden md:flex items-center gap-6">
-            {["Recursos", "Para famílias", "Preços", "Sobre nós"].map((l) => (
-              <a key={l} href="#" className="text-sm font-medium hover:opacity-70 transition-opacity" style={{ color: "#1B3A2D" }}>{l}</a>
-            ))}
-          </nav>
-          <div className="flex items-center gap-3 ml-4">
-            <Link href="/hoje" className="hidden md:block text-sm font-medium hover:opacity-70 transition-opacity" style={{ color: "#1B3A2D" }}>Entrar</Link>
-            <Link
-              href="/hoje"
-              className="px-4 py-2 rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-90"
-              style={{ background: "#1B3A2D" }}
-            >
-              Começar grátis
-            </Link>
-          </div>
+          <Search className="h-5 w-5" style={{ color: V.ink }} />
         </div>
-      </header>
-
-      {/* ── HERO ── */}
-      <section className="max-w-6xl mx-auto px-5 pt-16 pb-12 md:pt-20 md:pb-16">
-        <div className="grid md:grid-cols-2 gap-12 items-center">
-          <div className="space-y-6">
-            {/* Pill */}
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold tracking-wide" style={{ background: "#D8EDD5", color: "#1B3A2D" }}>
-              <div className="w-1.5 h-1.5 rounded-full bg-green-600" />
-              A CASA ANDANDO. VOCÊ PRESENTE.
-            </div>
-
-            {/* Headline */}
-            <div>
-              <h1 className="text-4xl md:text-5xl font-extrabold leading-tight tracking-tight" style={{ color: "#1B3A2D" }}>
-                Tire a rotina<br />da sua cabeça.
-              </h1>
-              <h1 className="text-4xl md:text-5xl font-extrabold leading-tight tracking-tight mt-1" style={{ color: "#2D7A4F" }}>
-                A casa em movimento.
-              </h1>
-            </div>
-
-            <p className="text-base leading-relaxed max-w-md" style={{ color: "#4A6259" }}>
-              A Vesta captura o que precisa ser feito, transforma em ações aprovadas, escreve no lugar certo, delega para as pessoas certas e ajuda a resolver quando você quiser.
-            </p>
-
-            {/* CTAs */}
-            <div className="flex flex-wrap items-center gap-3">
-              <Link
-                href="/hoje"
-                className="px-6 py-3 rounded-full text-sm font-bold text-white transition-opacity hover:opacity-90"
-                style={{ background: "#1B3A2D" }}
-              >
-                Começar grátis
-              </Link>
-              <a href="#como-funciona" className="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold border-2 transition-colors hover:bg-white/50"
-                style={{ borderColor: "#1B3A2D", color: "#1B3A2D" }}>
-                <Play className="w-3.5 h-3.5 fill-current" />
-                Ver como funciona
-              </a>
-            </div>
-
-            {/* Social proof */}
-            <div className="flex items-center gap-3 pt-1">
-              <div className="flex -space-x-2">
-                {["#C4A882", "#A8C4A0", "#C4B4A0", "#A0B4C4"].map((c, i) => (
-                  <div key={i} className="w-8 h-8 rounded-full border-2 border-white" style={{ background: c }} />
-                ))}
-              </div>
-              <div>
-                <div className="flex gap-0.5">
-                  {[1,2,3,4,5].map(i => <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />)}
-                </div>
-                <p className="text-xs mt-0.5" style={{ color: "#4A6259" }}>Mais de 2,000 famílias já usam a Vesta</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Phone mockup */}
-          <div className="relative hidden md:flex justify-center items-start">
-            {/* WhatsApp card 1 */}
-            <div className="absolute left-0 top-8 z-10 bg-white rounded-2xl shadow-lg p-3 w-52 border" style={{ borderColor: "#E8E0D0" }}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
-                  <span className="text-white text-[8px] font-bold">G</span>
-                </div>
-                <p className="text-xs font-semibold" style={{ color: "#1B3A2D" }}>Grupo da escola</p>
-              </div>
-              <p className="text-[11px] leading-snug" style={{ color: "#4A6259" }}>Festa junina dia 24/05! Quem pode ajudar com as barracas? 🎪</p>
-              <div className="mt-2 flex justify-end">
-                <ArrowRight className="w-3 h-3 text-green-600" />
-              </div>
-            </div>
-
-            {/* Phone frame */}
-            <div className="relative z-20 mx-auto w-56">
-              <div className="rounded-3xl border-4 overflow-hidden shadow-2xl" style={{ borderColor: "#1B3A2D", background: "#F5F0E6" }}>
-                {/* Status bar */}
-                <div className="px-4 py-2 flex justify-between items-center" style={{ background: "#1B3A2D" }}>
-                  <span className="text-white text-[9px]">9:41</span>
-                  <span className="text-white text-[9px]">●●●</span>
-                </div>
-                {/* App content */}
-                <div className="p-3 space-y-1" style={{ background: "#F5F0E6" }}>
-                  <p className="text-[10px] font-bold" style={{ color: "#1B3A2D" }}>Bom dia, Camila! 👋</p>
-                  <p className="text-[8px]" style={{ color: "#4A6259" }}>Sua casa, organizada com você.</p>
-                  <div className="mt-2 space-y-1">
-                    {[
-                      { label: "Entrega de trabalho", time: "10:00 · Home Office", tag: null },
-                      { label: "Yoga da Sofia", time: "14:30 · Clínica Vida", tag: "Saúde" },
-                      { label: "Treino do Miguel", time: "16:00 · Escola Arena", tag: "Escola" },
-                      { label: "Jantar em família", time: "19:30", tag: "Casa" },
-                    ].map((item) => (
-                      <div key={item.label} className="flex items-center justify-between bg-white rounded-lg px-2 py-1.5">
-                        <div>
-                          <p className="text-[8px] font-semibold" style={{ color: "#1B3A2D" }}>{item.label}</p>
-                          <p className="text-[7px]" style={{ color: "#4A6259" }}>{item.time}</p>
-                        </div>
-                        {item.tag && (
-                          <span className="text-[7px] px-1.5 py-0.5 rounded-full font-medium" style={{ background: "#D8EDD5", color: "#1B3A2D" }}>{item.tag}</span>
-                        )}
-                      </div>
-                    ))}
+        <p className="mb-3 text-sm font-bold" style={{ color: V.ink }}>Hoje · 18 de maio</p>
+        <div className="space-y-2">
+          {tasks.map((t) => (
+            <div key={t.title} className="rounded-2xl p-3 shadow-sm"
+              style={{ background: V.cream, border: `1px solid rgba(14,59,46,0.08)` }}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: "#EAF1E5", color: V.primary }}>
+                    {t.icon}
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold" style={{ color: V.ink }}>{t.title}</p>
+                    <p className="text-[10px]" style={{ color: V.muted }}>{t.time}</p>
                   </div>
                 </div>
-                {/* Bottom nav */}
-                <div className="flex border-t" style={{ borderColor: "#D8D0BE", background: "white" }}>
-                  {["Hoje", "Para proc.", "Agenda", "Tarefas", "Casa"].map((t, i) => (
-                    <div key={t} className="flex-1 flex flex-col items-center py-1.5">
-                      <div className="w-2.5 h-2.5 rounded-sm mb-0.5" style={{ background: i === 0 ? "#1B3A2D" : "#C4B8A8" }} />
-                      <span className="text-[6px]" style={{ color: i === 0 ? "#1B3A2D" : "#8A8070" }}>{t}</span>
-                    </div>
-                  ))}
-                </div>
+                {t.tag ? (
+                  <span className="rounded-full px-2 py-1 text-[9px] font-semibold" style={{ background: V.softSage, color: V.primary }}>{t.tag}</span>
+                ) : (
+                  <div className="h-4 w-4 rounded-full border" style={{ borderColor: `rgba(14,59,46,0.3)` }} />
+                )}
               </div>
-            </div>
-
-            {/* WhatsApp card 2 */}
-            <div className="absolute right-0 top-32 z-10 bg-white rounded-2xl shadow-lg p-3 w-52 border" style={{ borderColor: "#E8E0D0" }}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
-                  <span className="text-white text-[8px]">@</span>
-                </div>
-                <p className="text-xs font-semibold" style={{ color: "#1B3A2D" }}>E-mail da escola</p>
-              </div>
-              <p className="text-[11px] leading-snug" style={{ color: "#4A6259" }}>Autorização para passeio pedagógico em anexo.</p>
-              <div className="mt-2 flex justify-end">
-                <ArrowRight className="w-3 h-3 text-blue-600" />
-              </div>
-            </div>
-
-            {/* WhatsApp card 3 */}
-            <div className="absolute right-4 bottom-8 z-10 bg-white rounded-2xl shadow-lg p-3 w-48 border" style={{ borderColor: "#E8E0D0" }}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center">
-                  <span className="text-white text-[8px]">📷</span>
-                </div>
-                <p className="text-xs font-semibold" style={{ color: "#1B3A2D" }}>Foto do bilhete</p>
-              </div>
-              <p className="text-[11px] leading-snug" style={{ color: "#4A6259" }}>Trazer 1kg de alimento não perecível até 20/05.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── INTEGRATIONS ── */}
-      <section className="border-y py-5" style={{ borderColor: "#D8D0BE", background: "rgba(255,255,255,0.4)" }}>
-        <div className="max-w-6xl mx-auto px-5">
-          <div className="flex flex-wrap items-center gap-3 md:gap-6">
-            <p className="text-sm font-medium mr-2" style={{ color: "#4A6259" }}>Funciona com o que<br className="hidden sm:block" /> sua família já usa</p>
-            <div className="w-px h-8 hidden md:block" style={{ background: "#D8D0BE" }} />
-            {INTEGRATIONS.map((intg) => (
-              <div key={intg.label} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${intg.bg} ${intg.color}`}>
-                {intg.label}
-              </div>
-            ))}
-            <div className="px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">e mais</div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── FEATURES ── */}
-      <section className="max-w-6xl mx-auto px-5 py-16 md:py-20">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-extrabold" style={{ color: "#1B3A2D" }}>Tudo o que sua família precisa.</h2>
-          <h2 className="text-3xl md:text-4xl font-extrabold" style={{ color: "#1B3A2D" }}>Em um só lugar.</h2>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 md:gap-8">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="space-y-3">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl" style={{ background: "#D8EDD5" }}>
-                {f.icon}
-              </div>
-              <h3 className="font-bold text-base leading-snug" style={{ color: "#1B3A2D" }}>{f.title}</h3>
-              <p className="text-sm leading-relaxed" style={{ color: "#4A6259" }}>{f.desc}</p>
             </div>
           ))}
         </div>
-      </section>
+        <div className="mt-auto grid grid-cols-5 items-center rounded-3xl px-2 py-2 shadow-sm" style={{ background: V.cream, color: V.primary }}>
+          {[
+            { icon: <Home className="h-4 w-4" />, label: "Início", active: true },
+            { icon: <CalendarDays className="h-4 w-4" />, label: "Planej." },
+            { center: true },
+            { icon: <Users className="h-4 w-4" />, label: "Pessoas" },
+            { icon: <MoreHorizontal className="h-4 w-4" />, label: "Mais" },
+          ].map((tab, i) =>
+            tab.center ? (
+              <button key={i} className="mx-auto flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg"
+                style={{ background: V.primary }}>
+                <Plus className="h-6 w-6" />
+              </button>
+            ) : (
+              <div key={i} className="flex flex-col items-center gap-1 text-[9px]"
+                style={{ color: tab.active ? V.primary : V.sage }}>
+                {tab.icon}
+                <span>{tab.label}</span>
+              </div>
+            )
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-      {/* ── HOW IT WORKS ── */}
-      <section id="como-funciona" className="py-16 md:py-20" style={{ background: "rgba(255,255,255,0.5)" }}>
-        <div className="max-w-6xl mx-auto px-5">
-          <h2 className="text-3xl md:text-4xl font-extrabold text-center mb-12" style={{ color: "#1B3A2D" }}>Como funciona</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {STEPS.map((step, i) => (
-              <div key={step.num} className="relative">
-                {i < STEPS.length - 1 && (
-                  <div className="hidden md:block absolute top-6 left-full w-full h-px z-0" style={{ background: "#D8D0BE" }} />
-                )}
-                <div className="relative z-10 space-y-4">
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md" style={{ background: "#1B3A2D" }}>
-                    {step.num}
-                  </div>
-                  <div className="space-y-1.5 bg-white rounded-2xl p-4 shadow-sm border" style={{ borderColor: "#E8E0D0" }}>
-                    <p className="font-bold text-sm leading-snug" style={{ color: "#1B3A2D" }}>{step.title}</p>
-                    <p className="text-xs leading-relaxed" style={{ color: "#4A6259" }}>{step.desc}</p>
-                  </div>
-                </div>
+/* ── Sections ── */
+function Nav({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; setMobileOpen: (v: boolean) => void }) {
+  return (
+    <header className="sticky top-0 z-50" style={{ background: "rgba(247,244,234,0.92)", backdropFilter: "blur(12px)", borderBottom: `1px solid rgba(14,59,46,0.08)` }}>
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ border: `1px solid rgba(14,59,46,0.2)` }}>
+            <Home className="h-6 w-6" style={{ color: V.primary }} strokeWidth={1.8} />
+          </div>
+          <span className="text-2xl font-semibold tracking-tight" style={{ color: V.ink }}>vesta</span>
+        </div>
+
+        <nav className="hidden items-center gap-8 text-sm font-medium md:flex" style={{ color: V.ink }}>
+          {["Recursos", "Para famílias", "Preços", "Sobre nós"].map((l) => (
+            <a key={l} href={`#${l.toLowerCase().replace(/\s+/g, "-")}`} className="hover:opacity-60 transition-opacity">{l}</a>
+          ))}
+        </nav>
+
+        <div className="hidden items-center gap-4 md:flex">
+          <Link href="/app" className="text-sm font-semibold hover:opacity-60 transition-opacity" style={{ color: V.ink }}>Entrar</Link>
+          <VButton href="/app">Começar grátis</VButton>
+        </div>
+
+        <button className="md:hidden" onClick={() => setMobileOpen(!mobileOpen)}>
+          {mobileOpen ? <X className="h-6 w-6" style={{ color: V.primary }} /> : <Menu className="h-6 w-6" style={{ color: V.primary }} />}
+        </button>
+      </div>
+
+      {mobileOpen && (
+        <div className="border-t px-6 pb-6 md:hidden" style={{ borderColor: `rgba(14,59,46,0.08)` }}>
+          <div className="space-y-3 pt-4">
+            {["Recursos", "Para famílias", "Preços", "Sobre nós"].map((l) => (
+              <a key={l} href="#" className="block text-sm font-medium" style={{ color: V.ink }}>{l}</a>
+            ))}
+          </div>
+          <VButton href="/app" className="mt-5 w-full">Começar grátis</VButton>
+        </div>
+      )}
+    </header>
+  );
+}
+
+function Hero() {
+  return (
+    <section className="mx-auto grid max-w-7xl items-center gap-12 px-6 pb-10 pt-10 lg:grid-cols-[1fr_1.25fr]">
+      <div>
+        <VBadge>A CASA ANDANDO. VOCÊ PRESENTE.</VBadge>
+
+        <h1 className="mt-7 max-w-xl font-serif text-5xl font-semibold leading-[0.95] tracking-[-0.04em] md:text-7xl" style={{ color: V.ink }}>
+          Tire a rotina<br />da sua cabeça.
+        </h1>
+        <p className="mt-4 font-serif text-3xl leading-tight tracking-[-0.03em] md:text-5xl" style={{ color: V.sage }}>
+          A casa em movimento.
+        </p>
+        <p className="mt-7 max-w-xl text-lg leading-8" style={{ color: "#4D5A50" }}>
+          A Vesta captura o que precisa ser feito, transforma em ações aprovadas, escreve no lugar certo, delega para as pessoas certas e ajuda a resolver quando você quiser.
+        </p>
+
+        <div className="mt-9 flex flex-wrap items-center gap-5">
+          <VButton href="/app">Começar grátis</VButton>
+          <a href="#como-funciona" className="inline-flex items-center gap-3 text-sm font-semibold" style={{ color: V.ink }}>
+            <span className="flex h-11 w-11 items-center justify-center rounded-full" style={{ border: `1px solid rgba(14,59,46,0.3)` }}>
+              <Play className="h-4 w-4" style={{ fill: V.primary, color: V.primary }} />
+            </span>
+            Ver como funciona
+          </a>
+        </div>
+
+        <div className="mt-10 flex items-center gap-5">
+          <div className="flex -space-x-3">
+            {["#CDAA7D", "#6F856F", "#D8B9A0", "#2E473B"].map((c) => (
+              <div key={c} className="h-11 w-11 rounded-full border-2" style={{ backgroundColor: c, borderColor: V.ivory }} />
+            ))}
+          </div>
+          <div>
+            <div className="flex gap-1 text-lg" style={{ color: V.gold }}>{"★★★★★"}</div>
+            <p className="text-sm" style={{ color: V.muted }}>Mais de 2.000 famílias já usam a Vesta</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Product visualization */}
+      <div className="relative min-h-[660px]">
+        <div className="absolute left-2 top-12 hidden w-44 lg:block">
+          <IntakeCard icon={<MessageCircle className="h-5 w-5 text-green-600" />} title="Grupo da escola">
+            Festa junina dia 24/05. Quem pode ajudar com as barracas? 🎉
+          </IntakeCard>
+        </div>
+        <div className="absolute left-10 top-64 hidden w-48 lg:block">
+          <IntakeCard icon={<Mail className="h-5 w-5 text-blue-500" />} title="E-mail da escola">
+            Autorização para passeio pedagógico em anexo.
+          </IntakeCard>
+        </div>
+        <div className="absolute bottom-24 left-0 hidden w-44 lg:block">
+          <IntakeCard icon={<Camera className="h-5 w-5" style={{ color: "#B58445" }} />} title="Foto do bilhete">
+            Trazer 1kg de alimento não perecível até 20/06.
+          </IntakeCard>
+        </div>
+
+        {/* Arrow connectors */}
+        <div className="absolute left-[280px] top-[185px] hidden h-px w-20 rotate-12 bg-[#0E3B2E]/40 lg:block" />
+        <div className="absolute left-[300px] top-[365px] hidden h-px w-20 rotate-[28deg] bg-[#0E3B2E]/40 lg:block" />
+
+        <div className="relative z-10 mx-auto pt-4 lg:ml-[230px]">
+          <PhoneMockup />
+        </div>
+
+        {/* Lifestyle card */}
+        <div className="absolute right-0 top-8 hidden h-[560px] w-[260px] overflow-hidden rounded-[34px] shadow-[0_24px_70px_rgba(24,38,30,0.14)] xl:block"
+          style={{ background: V.beige }}>
+          <div className="h-full w-full" style={{ background: "radial-gradient(circle at 50% 20%, #d8c4a6, transparent 35%), linear-gradient(160deg, #efe3cf, #c9ad87)" }} />
+          <div className="absolute bottom-0 left-0 right-0 rounded-t-[28px] p-6 text-white" style={{ background: V.primary }}>
+            <p className="font-serif text-2xl leading-tight">Menos cobrança. <br />Mais combinados.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Integrations() {
+  const items = [
+    { label: "Google Calendar", icon: <CalendarDays className="h-5 w-5 text-blue-500" /> },
+    { label: "Outlook",         icon: <Mail className="h-5 w-5 text-blue-600" /> },
+    { label: "Apple Calendar",  icon: <CalendarDays className="h-5 w-5 text-red-500" /> },
+    { label: "WhatsApp",        icon: <MessageCircle className="h-5 w-5 text-green-600" /> },
+    { label: "iCloud",          icon: <Cloud className="h-5 w-5 text-sky-400" /> },
+    { label: "e mais",          icon: <Plus className="h-4 w-4" style={{ color: V.primary }} /> },
+  ];
+  return (
+    <section className="mx-auto max-w-7xl px-6 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-6 rounded-3xl px-8 py-6 shadow-sm"
+        style={{ background: "rgba(255,253,246,0.7)", border: `1px solid rgba(14,59,46,0.10)` }}>
+        <p className="max-w-[180px] text-sm font-bold" style={{ color: V.ink }}>
+          Funciona com o que sua família já usa
+        </p>
+        <div className="flex flex-1 flex-wrap items-center justify-between gap-5">
+          {items.map((i) => (
+            <div key={i.label} className="flex items-center gap-2.5 text-sm" style={{ color: V.ink }}>
+              {i.icon}
+              <span>{i.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Features() {
+  const items = [
+    { icon: <Inbox className="h-10 w-10" />,      title: "Capture de qualquer jeito", text: "Fale, digite, envie um print, foto ou encaminhe uma mensagem. A Vesta entende." },
+    { icon: <ListChecks className="h-10 w-10" />, title: "Organiza e prioriza",        text: "A Vesta transforma o caos em planos claros, com prazos e prioridades." },
+    { icon: <Users className="h-10 w-10" />,      title: "Delega sem estresse",        text: "Tarefas vão para as pessoas certas, com contexto e sem cobranças." },
+    { icon: <CalendarDays className="h-10 w-10" />, title: "Escreve no lugar certo",   text: "Compromissos e lembretes no calendário certo, sempre atualizados." },
+    { icon: <Car className="h-10 w-10" />,        title: "Resolve por você",           text: "Precisa de ajuda? A Vesta encontra, agenda e acompanha." },
+    { icon: <ShieldCheck className="h-10 w-10" />, title: "Privacidade é inegociável", text: "Seus dados são seus. Seguros, privados e nunca compartilhados." },
+  ];
+  return (
+    <section id="recursos" className="mx-auto max-w-7xl px-6 py-20">
+      <h2 className="mx-auto mb-14 max-w-3xl text-center font-serif text-4xl font-semibold tracking-[-0.03em] md:text-5xl" style={{ color: V.ink }}>
+        Tudo o que sua família precisa. Em um só lugar.
+      </h2>
+      <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((f) => (
+          <div key={f.title} className="text-center">
+            <div className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-[2rem]"
+              style={{ background: "#EAF1E5", color: V.primary }}>
+              {f.icon}
+            </div>
+            <h3 className="mb-3 text-base font-bold" style={{ color: V.ink }}>{f.title}</h3>
+            <p className="text-sm leading-7" style={{ color: "#4D5A50" }}>{f.text}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function HowItWorks() {
+  const steps = [
+    { title: "Você envia para a Vesta",     text: "Pode ser por WhatsApp, e-mail, foto, voz ou texto.",          icon: <Send className="h-10 w-10" /> },
+    { title: "A Vesta entende e organiza",  text: "Ela identifica o que precisa ser feito e o contexto.",         icon: <Wand2 className="h-10 w-10" /> },
+    { title: "Você aprova e delega",        text: "Confirme, ajuste e escolha quem vai fazer o quê.",             icon: <Check className="h-10 w-10" /> },
+    { title: "A Vesta coloca em ação",      text: "No calendário, nas listas e na vida real — com lembretes.",    icon: <CalendarDays className="h-10 w-10" /> },
+  ];
+  return (
+    <section id="como-funciona" className="mx-auto max-w-7xl px-6 pb-6">
+      <div className="rounded-[2rem] px-8 py-12" style={{ background: V.warm }}>
+        <h2 className="mb-12 text-center font-serif text-4xl font-semibold" style={{ color: V.ink }}>Como funciona</h2>
+        <div className="grid gap-8 sm:grid-cols-2 md:grid-cols-4">
+          {steps.map((s, i) => (
+            <div key={s.title}>
+              <div className="mb-5 flex h-24 items-center justify-center rounded-3xl shadow-sm"
+                style={{ background: V.cream, color: V.primary }}>
+                {s.icon}
+              </div>
+              <div className="mb-4 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
+                style={{ background: V.primary }}>
+                {i + 1}
+              </div>
+              <h3 className="mb-2 text-base font-bold" style={{ color: V.ink }}>{s.title}</h3>
+              <p className="text-sm leading-7" style={{ color: "#4D5A50" }}>{s.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DashboardPreview() {
+  const navItems: Array<[string, React.ComponentType<{ className?: string }>]> = [
+    ["Início",          Home],
+    ["Caixa de entrada",Inbox],
+    ["Planejamento",    CalendarDays],
+    ["Tarefas",         ListChecks],
+    ["Pessoas",         Users],
+    ["Regras",          ShieldCheck],
+    ["Concierge",       ShoppingBag],
+  ];
+  return (
+    <section className="mx-auto max-w-7xl px-6 py-20">
+      <div className="mb-8">
+        <VBadge>WEBAPP + MOBILE</VBadge>
+        <h2 className="mt-5 font-serif text-4xl font-semibold tracking-[-0.04em] md:text-5xl" style={{ color: V.ink }}>
+          A mesma linguagem visual dentro do produto.
+        </h2>
+        <p className="mt-4 max-w-2xl text-lg leading-8" style={{ color: V.muted }}>
+          A landing page, o dashboard e o app mobile usam os mesmos tokens, componentes, cartões e padrões de aprovação.
+        </p>
+      </div>
+      <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+        <aside className="rounded-[2rem] p-6 text-white" style={{ background: V.primary }}>
+          <div className="flex items-center gap-3 mb-10">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.2)" }}>
+              <Home className="h-5 w-5 text-white" strokeWidth={1.8} />
+            </div>
+            <span className="text-xl font-semibold text-white">vesta</span>
+          </div>
+          <nav className="space-y-1">
+            {navItems.map(([label, Icon], i) => (
+              <div key={label} className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium cursor-pointer transition-colors"
+                style={{ background: i === 0 ? "rgba(255,255,255,0.15)" : "transparent", color: i === 0 ? "white" : "rgba(255,255,255,0.65)" }}>
+                <Icon className="h-5 w-5" />
+                {label}
+              </div>
+            ))}
+          </nav>
+        </aside>
+
+        <main className="rounded-[2rem] p-7 shadow-sm" style={{ background: V.cream, border: `1px solid rgba(14,59,46,0.10)` }}>
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-sm" style={{ color: V.muted }}>Quarta-feira, 18 de maio</p>
+              <h3 className="font-serif text-4xl font-semibold tracking-[-0.03em]" style={{ color: V.ink }}>Bom dia, Camila</h3>
+            </div>
+            <VButton><Plus className="h-4 w-4" />Nova captura</VButton>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[["Aprovações pendentes", "7"], ["Tarefas em andamento", "18"], ["Resolvidas esta semana", "24"]].map(([t, v]) => (
+              <div key={t} className="rounded-3xl p-5" style={{ background: V.ivory }}>
+                <p className="text-sm" style={{ color: V.muted }}>{t}</p>
+                <p className="mt-3 font-serif text-5xl font-semibold" style={{ color: V.ink }}>{v}</p>
               </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* ── TESTIMONIAL + CTA ── */}
-      <section className="max-w-6xl mx-auto px-5 py-16 md:py-20">
-        <div className="grid md:grid-cols-2 gap-10 items-center">
-          {/* Quote */}
-          <div className="rounded-3xl p-8 space-y-4" style={{ background: "#1B3A2D" }}>
-            <div className="text-4xl text-green-400">"</div>
-            <p className="text-lg font-medium leading-relaxed text-white">
-              A Vesta virou o coração da nossa casa. Nada fica esquecido, e a rotina finalmente não depende só de mim.
-            </p>
-            <div>
-              <p className="text-sm font-semibold text-green-300">Juliana</p>
-              <p className="text-xs text-green-400/70">mãe do Theo e da Bia</p>
+          <div className="mt-6 grid gap-5 lg:grid-cols-2">
+            <div className="rounded-3xl p-5" style={{ background: V.ivory }}>
+              <h4 className="mb-4 font-bold" style={{ color: V.ink }}>Caixa de entrada</h4>
+              <div className="space-y-3">
+                {[["WhatsApp","Festa junina: confirmar barraca até sexta."],["E-mail","Autorização de passeio precisa de assinatura."],["Foto","Bilhete: levar 1kg de alimento até 20/06."]].map(([s, t]) => (
+                  <div key={t} className="flex items-start justify-between rounded-2xl p-4" style={{ background: V.cream }}>
+                    <div>
+                      <p className="text-xs font-semibold" style={{ color: V.sage }}>{s}</p>
+                      <p className="mt-1 text-sm font-medium" style={{ color: V.ink }}>{t}</p>
+                    </div>
+                    <ChevronRight className="h-5 w-5 shrink-0" style={{ color: V.sage }} />
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="flex gap-0.5 pt-1">
-              {[1,2,3,4,5].map(i => <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />)}
+            <div className="rounded-3xl p-5" style={{ background: V.ivory }}>
+              <h4 className="mb-4 font-bold" style={{ color: V.ink }}>Fila de aprovação</h4>
+              <div className="space-y-3">
+                {["Adicionar vacina da Sofia ao calendário","Delegar compra do presente para Rafael","Contratar eletricista para tomada da cozinha"].map((t) => (
+                  <div key={t} className="rounded-2xl p-4" style={{ background: V.cream }}>
+                    <p className="text-sm font-medium" style={{ color: V.ink }}>{t}</p>
+                    <div className="mt-3 flex gap-2">
+                      <button className="rounded-full px-3 py-1.5 text-xs font-semibold text-white" style={{ background: V.primary }}>Aprovar</button>
+                      <button className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ border: `1px solid rgba(14,59,46,0.15)`, color: V.primary }}>Editar</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
+        </main>
+      </div>
+    </section>
+  );
+}
 
-          {/* CTA */}
-          <div className="space-y-5 text-center md:text-left">
-            <p className="text-sm font-semibold uppercase tracking-wide" style={{ color: "#2D7A4F" }}>Menos cobrança. Mais combinados.</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold leading-tight" style={{ color: "#1B3A2D" }}>
-              Pronto para sentir<br />sua casa mais leve?
+function BottomCTA() {
+  return (
+    <section className="mx-auto max-w-7xl px-6 py-8">
+      <div className="grid overflow-hidden rounded-[2rem] shadow-sm md:grid-cols-[1fr_1.35fr]" style={{ background: V.cream }}>
+        <div className="p-10" style={{ borderRight: `1px solid rgba(14,59,46,0.10)` }}>
+          <p className="font-serif text-6xl leading-none" style={{ color: V.sage }}>"</p>
+          <blockquote className="max-w-md text-xl leading-8" style={{ color: V.ink }}>
+            A Vesta virou o coração da nossa casa. Nada fica esquecido, e a rotina finalmente não depende só de mim.
+          </blockquote>
+          <p className="mt-6 text-sm" style={{ color: V.muted }}>Juliana, mãe do Theo e da Bia</p>
+        </div>
+        <div className="relative flex min-h-[270px] items-center overflow-hidden p-10">
+          <div className="relative z-10 max-w-md">
+            <h2 className="font-serif text-4xl font-semibold leading-tight tracking-[-0.03em]" style={{ color: V.ink }}>
+              Pronto para sentir sua casa mais leve?
             </h2>
-            <p className="text-sm" style={{ color: "#4A6259" }}>Comece grátis. Sem compromisso.</p>
-            <Link
-              href="/hoje"
-              className="inline-block px-8 py-3.5 rounded-full text-base font-bold text-white transition-opacity hover:opacity-90"
-              style={{ background: "#1B3A2D" }}
-            >
-              Começar agora
-            </Link>
+            <p className="mt-3" style={{ color: V.muted }}>Comece grátis. Sem compromisso.</p>
+            <VButton href="/app" className="mt-7">Começar agora</VButton>
           </div>
+          <div className="absolute right-10 top-10 hidden rotate-6 rounded-xl p-5 text-sm leading-6 shadow-md md:block"
+            style={{ background: V.beige, color: V.ink }}>
+            Planos existem.<br />O que faz a casa<br />andar são os<br />combinados. ♡
+          </div>
+          <div className="absolute bottom-0 right-0 h-56 w-56 rounded-full" style={{ background: V.softSage }} />
         </div>
-      </section>
+      </div>
+    </section>
+  );
+}
 
-      {/* ── FOOTER ── */}
-      <footer className="border-t py-8" style={{ borderColor: "#D8D0BE" }}>
-        <div className="max-w-6xl mx-auto px-5 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "#1B3A2D" }}>
-              <House className="w-3.5 h-3.5 text-white" />
-            </div>
-            <span className="font-bold" style={{ color: "#1B3A2D" }}>vesta</span>
+function Footer() {
+  return (
+    <footer className="border-t py-10" style={{ borderColor: `rgba(14,59,46,0.10)` }}>
+      <div className="mx-auto max-w-7xl px-6 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ border: `1px solid rgba(14,59,46,0.2)` }}>
+            <Home className="h-5 w-5" style={{ color: V.primary }} strokeWidth={1.8} />
           </div>
-          <p className="text-xs" style={{ color: "#8A8070" }}>© 2026 Vesta. Feito com carinho para famílias brasileiras.</p>
-          <div className="flex gap-5">
-            {["Privacidade", "Termos"].map((l) => (
-              <a key={l} href="#" className="text-xs hover:underline" style={{ color: "#8A8070" }}>{l}</a>
-            ))}
-          </div>
+          <span className="text-lg font-semibold" style={{ color: V.ink }}>vesta</span>
         </div>
-      </footer>
+        <p className="text-xs" style={{ color: V.muted }}>© 2026 Vesta. Feito com carinho para famílias brasileiras.</p>
+        <div className="flex gap-5">
+          {["Privacidade", "Termos"].map((l) => (
+            <a key={l} href="#" className="text-xs hover:underline" style={{ color: V.muted }}>{l}</a>
+          ))}
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+export default function Landing() {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  return (
+    <div className="min-h-screen font-sans" style={{ background: V.ivory, color: V.ink }}>
+      <Nav mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+      <Hero />
+      <Integrations />
+      <Features />
+      <HowItWorks />
+      <DashboardPreview />
+      <BottomCTA />
+      <Footer />
     </div>
   );
 }

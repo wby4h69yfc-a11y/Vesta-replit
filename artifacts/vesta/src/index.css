@@ -6,84 +6,103 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --color-background:          hsl(var(--background));
+  --color-foreground:          hsl(var(--foreground));
+  --color-card:                hsl(var(--card));
+  --color-card-foreground:     hsl(var(--card-foreground));
+  --color-popover:             hsl(var(--popover));
+  --color-popover-foreground:  hsl(var(--popover-foreground));
+  --color-primary:             hsl(var(--primary));
+  --color-primary-foreground:  hsl(var(--primary-foreground));
+  --color-secondary:           hsl(var(--secondary));
+  --color-secondary-foreground:hsl(var(--secondary-foreground));
+  --color-muted:               hsl(var(--muted));
+  --color-muted-foreground:    hsl(var(--muted-foreground));
+  --color-accent:              hsl(var(--accent));
+  --color-accent-foreground:   hsl(var(--accent-foreground));
+  --color-destructive:         hsl(var(--destructive));
+  --color-border:              hsl(var(--border));
+  --color-input:               hsl(var(--input));
+  --color-ring:                hsl(var(--ring));
+  --radius-sm:  calc(var(--radius) - 4px);
+  --radius-md:  calc(var(--radius) - 2px);
+  --radius-lg:  var(--radius);
+  --radius-xl:  calc(var(--radius) + 4px);
+
+  /* Vesta brand tokens — use as bg-vesta-green, text-vesta-ink, etc. */
+  --color-vesta-green:    #0E3B2E;
+  --color-vesta-deep:     #08251E;
+  --color-vesta-sage:     #6F856F;
+  --color-vesta-soft-sage:#DDE8D8;
+  --color-vesta-ivory:    #F7F4EA;
+  --color-vesta-cream:    #FFFDF6;
+  --color-vesta-beige:    #EEE6D6;
+  --color-vesta-warm:     #F1EBDD;
+  --color-vesta-gold:     #D9B95F;
+  --color-vesta-ink:      #12231C;
+  --color-vesta-muted:    #5F6B61;
+
+  /* Typography */
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;
 }
 
 :root {
-  --radius: 0.75rem;
+  --radius: 1rem;
 
-  /* Warm cream background — same as landing page */
-  --background: 38 35% 94%;
-  --foreground: 155 28% 12%;
+  /* Background: Vesta ivory #F7F4EA */
+  --background: 46 45% 94%;
+  --foreground: 156 32% 10%;   /* #12231C ink */
 
-  --card: 0 0% 100%;
-  --card-foreground: 155 28% 12%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 155 28% 12%;
+  /* Card: warm cream #FFFDF6 */
+  --card: 46 100% 98%;
+  --card-foreground: 156 32% 10%;
+  --popover: 46 100% 98%;
+  --popover-foreground: 156 32% 10%;
 
-  /* Primary: Vesta forest green #1B3A2D */
-  --primary: 155 36% 17%;
+  /* Primary: #0E3B2E forest green */
+  --primary: 163 62% 14%;
   --primary-foreground: 0 0% 100%;
 
-  /* Secondary: light sage */
-  --secondary: 140 22% 90%;
-  --secondary-foreground: 155 25% 20%;
+  /* Secondary: soft sage #DDE8D8 */
+  --secondary: 101 26% 88%;
+  --secondary-foreground: 163 62% 14%;
 
-  /* Muted: warm sage-grey */
-  --muted: 140 14% 88%;
-  --muted-foreground: 155 10% 44%;
+  /* Muted: beige #EEE6D6 */
+  --muted: 40 41% 89%;
+  --muted-foreground: 120 9% 48%;  /* #6F856F sage */
 
-  /* Accent: pale sage green */
-  --accent: 140 28% 85%;
-  --accent-foreground: 155 28% 18%;
+  /* Accent: soft sage */
+  --accent: 101 26% 88%;
+  --accent-foreground: 163 62% 14%;
 
   --destructive: 0 70% 50%;
-  --border: 140 14% 84%;
-  --input: 140 14% 87%;
-  --ring: 155 36% 17%;
+
+  /* Border: rgba(14,59,46,0.12) on ivory */
+  --border: 120 12% 84%;
+  --input:  40 28% 87%;
+  --ring:   163 62% 14%;
 }
 
 .dark {
-  --background: 155 18% 8%;
-  --foreground: 140 20% 90%;
-  --card: 155 16% 11%;
-  --card-foreground: 140 20% 90%;
-  --popover: 155 16% 11%;
-  --popover-foreground: 140 20% 90%;
-  --primary: 155 36% 38%;
+  --background: 163 30% 6%;
+  --foreground: 46 30% 90%;
+  --card: 163 25% 9%;
+  --card-foreground: 46 30% 90%;
+  --popover: 163 25% 9%;
+  --popover-foreground: 46 30% 90%;
+  --primary: 163 50% 34%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 155 14% 16%;
-  --secondary-foreground: 140 18% 80%;
-  --muted: 155 12% 14%;
-  --muted-foreground: 140 10% 52%;
-  --accent: 155 16% 18%;
-  --accent-foreground: 140 18% 82%;
+  --secondary: 163 20% 14%;
+  --secondary-foreground: 101 20% 78%;
+  --muted: 163 18% 12%;
+  --muted-foreground: 120 8% 52%;
+  --accent: 163 20% 14%;
+  --accent-foreground: 101 20% 78%;
   --destructive: 0 62% 44%;
-  --border: 155 14% 18%;
-  --input: 155 14% 16%;
-  --ring: 155 36% 38%;
+  --border: 163 18% 16%;
+  --input: 163 18% 14%;
+  --ring: 163 50% 34%;
 }
 
 * {
@@ -100,10 +119,10 @@ body {
 }
 
 @keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
 .animate-fade-in-up {
-  animation: fade-in-up 0.22s ease both;
+  animation: fade-in-up 0.24s ease both;
 }

@@ -1,0 +1,152 @@
+Build a polished, production-quality responsive React + Tailwind app for “Vesta”, a family logistics operating system.
+
+The visual direction should match this brand language:
+
+- Calm, premium, warm Brazilian family-tech aesthetic
+- Not corporate SaaS, not childish, not generic productivity
+- Soft ivory background, dark forest green primary, muted sage accents, warm beige surfaces
+- Serif display typography for emotional headlines
+- Clean sans-serif typography for interface and body copy
+- Rounded cards, soft shadows, subtle borders, spacious layouts
+- Design should feel like a premium household assistant: trustworthy, human, organized, discreet
+
+Brand positioning:
+Vesta captures household chaos from WhatsApp, email, photos, voice, and text; turns it into clear actions; routes tasks to the right person; writes events to calendars and lists; and helps families delegate or outsource what they do not want to handle.
+
+Primary market:
+Brazilian families with children and complex household routines.
+
+Language:
+Brazilian Portuguese. Use natural, non-translated Portuguese. Avoid stiff SaaS wording.
+
+Core tagline:
+“Tire a rotina da sua cabeça.”
+
+Secondary line:
+“A casa em movimento.”
+
+Supporting copy:
+“A Vesta captura o que precisa ser feito, transforma em ações aprovadas, escreve no lugar certo, delega para as pessoas certas e ajuda a resolver quando você quiser.”
+
+Design system:
+Use reusable tokens:
+- Primary green: #0E3B2E
+- Deep green: #08251E
+- Sage: #6F856F
+- Soft sage: #DDE8D8
+- Ivory background: #F7F4EA
+- Warm cream card: #FFFDF6
+- Beige card: #EEE6D6
+- Muted gold: #D9B95F
+- Text primary: #12231C
+- Text secondary: #5F6B61
+- Border: rgba(14, 59, 46, 0.12)
+
+Typography:
+- Headlines should use a refined serif stack: Georgia, "Times New Roman", serif
+- Body and UI should use Inter, ui-sans-serif, system-ui, sans-serif
+- Large headlines should have tight tracking and generous line-height
+
+Landing page structure:
+1. Navigation
+   - Logo: simple house icon + “vesta”
+   - Links: Recursos, Para famílias, Preços, Sobre nós
+   - Right actions: Entrar, Começar grátis
+
+2. Hero section
+   - Left side: eyebrow badge “+ A CASA ANDANDO. VOCÊ PRESENTE.”
+   - Main headline: “Tire a rotina da sua cabeça.”
+   - Subheadline: “A casa em movimento.”
+   - Body copy from above
+   - CTA: “Começar grátis”
+   - Secondary CTA with play icon: “Ver como funciona”
+   - Social proof with avatars, 5 stars, and “Mais de 2.000 famílias já usam a Vesta”
+
+3. Center/right product visualization
+   - Large iPhone-style mockup showing Vesta’s daily dashboard
+   - Floating intake cards around the phone:
+     a. WhatsApp school group message
+     b. School email
+     c. Ticket/photo task
+   - Arrows from intake cards into the phone
+   - Lifestyle image placeholder/card on the far right
+   - Overlay card: “Menos cobrança. Mais combinados.”
+
+4. Integrations bar
+   “Funciona com o que sua família já usa”
+   - Google Calendar
+   - Outlook
+   - Apple Calendar
+   - WhatsApp
+   - iCloud
+   - e mais
+
+5. Feature grid
+   Heading: “Tudo o que sua família precisa. Em um só lugar.”
+   Six feature cards:
+   - Capture de qualquer jeito
+   - Organiza e prioriza
+   - Delega sem estresse
+   - Escreve no lugar certo
+   - Resolve por você
+   - Privacidade é inegociável
+
+6. How it works section
+   Four steps:
+   - Você envia para a Vesta
+   - A Vesta entende e organiza
+   - Você aprova e delega
+   - A Vesta coloca em ação
+
+7. Bottom testimonial / CTA section
+   Quote:
+   “A Vesta virou o coração da nossa casa. Nada fica esquecido, e a rotina finalmente não depende só de mim.”
+   Attribution:
+   “Juliana, mãe do Theo e da Bia”
+   CTA:
+   “Pronto para sentir sua casa mais leve?”
+   Button:
+   “Começar agora”
+
+Web app dashboard:
+Create a /app route or dashboard component that visually extends the landing page style.
+It should include:
+- Sidebar with Vesta logo and nav items: Início, Caixa de entrada, Planejamento, Tarefas, Pessoas, Regras, Concierge
+- Top greeting: “Bom dia, Camila”
+- Today’s agenda cards
+- Inbox intake cards from WhatsApp, email, photo, voice
+- Approval queue with approve/edit/delegate actions
+- Household members
+- Privacy/status indicators
+Use the same colors, type, cards, icon style, and spacing.
+
+Mobile iOS app:
+Create a responsive mobile preview component matching the phone mockup:
+- Native-feeling iOS layout
+- Greeting
+- Search icon
+- Today’s tasks
+- Categories: Saúde, Esporte, Casa, Financeiro
+- Bottom tab bar: Início, Planejamento, central add button, Pessoas, Mais
+- Cards should look soft, tactile, and premium
+
+Implementation:
+Use React + TypeScript + Tailwind.
+Use lucide-react icons.
+Use reusable components:
+- Button
+- Badge
+- Card
+- PhoneMockup
+- IntakeCard
+- FeatureCard
+- StepCard
+- IntegrationPill
+- DashboardCard
+- AppShell
+
+Do not use stock-looking generic SaaS gradients.
+Use subtle shadows and borders.
+Use placeholder blocks for images if actual images are unavailable.
+The site must be fully responsive.
+On mobile, the hero should stack cleanly and phone mockup should remain visible.
