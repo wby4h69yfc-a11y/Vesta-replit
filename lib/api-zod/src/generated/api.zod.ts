@@ -22,6 +22,7 @@ export const GetCurrentAuthUserResponse = zod.object({
     zod.object({
       id: zod.string(),
       email: zod.string().email().nullable(),
+      phone: zod.string().nullish(),
       firstName: zod.string().nullable(),
       lastName: zod.string().nullable(),
       profileImageUrl: zod.string().nullable(),
@@ -1063,6 +1064,42 @@ export const DismissPatternResponse = zod.object({
   ]),
   evidence: zod.string().nullish(),
   created_at: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Send WhatsApp OTP to phone number
+ */
+export const SendOtpBody = zod.object({
+  phone: zod
+    .string()
+    .describe("Phone number (E.164 or local Brazilian format)"),
+});
+
+export const SendOtpResponse = zod.object({
+  sent: zod.boolean(),
+  message: zod.string().nullish(),
+});
+
+/**
+ * @summary Verify WhatsApp OTP and create authenticated session
+ */
+export const VerifyOtpBody = zod.object({
+  phone: zod.string(),
+  code: zod.string(),
+});
+
+export const VerifyOtpResponse = zod.object({
+  success: zod.boolean(),
+  user: zod
+    .object({
+      id: zod.string(),
+      email: zod.string().email().nullable(),
+      phone: zod.string().nullish(),
+      firstName: zod.string().nullable(),
+      lastName: zod.string().nullable(),
+      profileImageUrl: zod.string().nullable(),
+    })
+    .nullish(),
 });
 
 /**

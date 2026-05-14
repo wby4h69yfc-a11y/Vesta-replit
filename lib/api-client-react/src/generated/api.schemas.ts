@@ -10,6 +10,8 @@ export interface AuthUser {
   /** @nullable */
   email: string | null;
   /** @nullable */
+  phone?: string | null;
+  /** @nullable */
   firstName: string | null;
   /** @nullable */
   lastName: string | null;
@@ -628,6 +630,27 @@ export interface OnboardingCompleteInput {
 
 export interface OnboardingCompleteSuccess {
   success: boolean;
+}
+
+export interface SendOtpBody {
+  /** Phone number (E.164 or local Brazilian format) */
+  phone: string;
+}
+
+export interface SendOtpResponse {
+  sent: boolean;
+  /** @nullable */
+  message?: string | null;
+}
+
+export interface VerifyOtpBody {
+  phone: string;
+  code: string;
+}
+
+export interface VerifyOtpResponse {
+  success: boolean;
+  user?: AuthUser | null;
 }
 
 /**
