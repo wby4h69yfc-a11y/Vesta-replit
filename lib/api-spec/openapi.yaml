@@ -3,20 +3,38 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Vesta Family Logistics OS API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: inbox
+    description: Inbox item operations
+  - name: actions
+    description: Suggested action operations
+  - name: tasks
+    description: Task operations
+  - name: events
+    description: Calendar event operations
+  - name: contacts
+    description: Household contacts
+  - name: rules
+    description: Smart rules management
+  - name: household
+    description: Household settings and members
+  - name: dashboard
+    description: Dashboard aggregates and summaries
+  - name: patterns
+    description: Pattern observations and suggestions
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +42,1282 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── Dashboard ──────────────────────────────────────────────────
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Today's summary — events, pending inbox count, upcoming items
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/today-events:
+    get:
+      operationId: getTodayEvents
+      tags: [dashboard]
+      summary: Calendar events for today
+      responses:
+        "200":
+          description: Today's events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CalendarEvent"
+
+  /dashboard/upcoming-tasks:
+    get:
+      operationId: getUpcomingTasks
+      tags: [dashboard]
+      summary: Tasks due in the next 7 days
+      responses:
+        "200":
+          description: Upcoming tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+
+  /dashboard/activity-feed:
+    get:
+      operationId: getActivityFeed
+      tags: [dashboard]
+      summary: Recent approved / dismissed actions feed
+      responses:
+        "200":
+          description: Activity feed items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  /dashboard/category-breakdown:
+    get:
+      operationId: getCategoryBreakdown
+      tags: [dashboard]
+      summary: Count of inbox items grouped by category this month
+      responses:
+        "200":
+          description: Category breakdown
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoryCount"
+
+  # ── Inbox ───────────────────────────────────────────────────────
+  /inbox:
+    get:
+      operationId: listInboxItems
+      tags: [inbox]
+      summary: List inbox items
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [received, classifying, ready_for_review, approved, dismissed, failed, manual_review]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: List of inbox items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InboxItem"
+    post:
+      operationId: createInboxItem
+      tags: [inbox]
+      summary: Create a new inbox item (manual in-app input)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InboxItemInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxItem"
+
+  /inbox/{id}:
+    get:
+      operationId: getInboxItem
+      tags: [inbox]
+      summary: Get a single inbox item with its suggested actions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Inbox item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxItemDetail"
+        "404":
+          description: Not found
+
+  /inbox/{id}/classify:
+    post:
+      operationId: classifyInboxItem
+      tags: [inbox]
+      summary: Trigger AI classification of an inbox item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Classification triggered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxItem"
+
+  # ── Suggested Actions ───────────────────────────────────────────
+  /actions:
+    get:
+      operationId: listActions
+      tags: [actions]
+      summary: List pending suggested actions
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, dismissed, auto_handled]
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of actions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SuggestedAction"
+
+  /actions/{id}/approve:
+    post:
+      operationId: approveAction
+      tags: [actions]
+      summary: Approve a suggested action (writes calendar event + tasks)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActionApproval"
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuggestedAction"
+
+  /actions/{id}/dismiss:
+    post:
+      operationId: dismissAction
+      tags: [actions]
+      summary: Dismiss a suggested action
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuggestedAction"
+
+  /actions/{id}/edit:
+    patch:
+      operationId: editAction
+      tags: [actions]
+      summary: Edit and approve a suggested action
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActionEdit"
+      responses:
+        "200":
+          description: Updated and approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuggestedAction"
+
+  # ── Tasks ────────────────────────────────────────────────────────
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List household tasks
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, in_progress, done, cancelled]
+        - name: owner_id
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a task manually
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /tasks/{id}:
+    get:
+      operationId: getTask
+      tags: [tasks]
+      summary: Get a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      summary: Update a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      summary: Delete a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /tasks/{id}/complete:
+    post:
+      operationId: completeTask
+      tags: [tasks]
+      summary: Mark a task as done
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  # ── Calendar Events ──────────────────────────────────────────────
+  /events:
+    get:
+      operationId: listEvents
+      tags: [events]
+      summary: List calendar events
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CalendarEvent"
+    post:
+      operationId: createEvent
+      tags: [events]
+      summary: Create a calendar event manually
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalendarEventInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarEvent"
+
+  /events/{id}:
+    get:
+      operationId: getEvent
+      tags: [events]
+      summary: Get a calendar event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarEvent"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateEvent
+      tags: [events]
+      summary: Update a calendar event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalendarEventUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarEvent"
+    delete:
+      operationId: deleteEvent
+      tags: [events]
+      summary: Delete a calendar event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Contacts ─────────────────────────────────────────────────────
+  /contacts:
+    get:
+      operationId: listContacts
+      tags: [contacts]
+      summary: List household contacts
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of contacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contact"
+    post:
+      operationId: createContact
+      tags: [contacts]
+      summary: Create a contact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+
+  /contacts/{id}:
+    patch:
+      operationId: updateContact
+      tags: [contacts]
+      summary: Update a contact
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+    delete:
+      operationId: deleteContact
+      tags: [contacts]
+      summary: Delete a contact
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Rules ────────────────────────────────────────────────────────
+  /rules:
+    get:
+      operationId: listRules
+      tags: [rules]
+      summary: List smart rules
+      responses:
+        "200":
+          description: List of rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Rule"
+    post:
+      operationId: createRule
+      tags: [rules]
+      summary: Create a smart rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuleInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+
+  /rules/{id}:
+    patch:
+      operationId: updateRule
+      tags: [rules]
+      summary: Update a rule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuleUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+    delete:
+      operationId: deleteRule
+      tags: [rules]
+      summary: Delete a rule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /rules/{id}/toggle:
+    post:
+      operationId: toggleRule
+      tags: [rules]
+      summary: Pause or resume a rule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+
+  # ── Household ────────────────────────────────────────────────────
+  /household:
+    get:
+      operationId: getHousehold
+      tags: [household]
+      summary: Get the household profile
+      responses:
+        "200":
+          description: Household
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Household"
+    patch:
+      operationId: updateHousehold
+      tags: [household]
+      summary: Update household settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HouseholdUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Household"
+
+  /household/members:
+    get:
+      operationId: listMembers
+      tags: [household]
+      summary: List household members
+      responses:
+        "200":
+          description: Members list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Member"
+
+  # ── Patterns ─────────────────────────────────────────────────────
+  /patterns:
+    get:
+      operationId: listPatterns
+      tags: [patterns]
+      summary: List pattern observations and suggestions
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [accumulating, threshold_met, suggested, rule_created, dismissed]
+      responses:
+        "200":
+          description: Pattern observations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PatternObservation"
+
+  /patterns/{id}/accept:
+    post:
+      operationId: acceptPattern
+      tags: [patterns]
+      summary: Accept a pattern suggestion (creates a rule)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Accepted — rule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatternObservation"
+
+  /patterns/{id}/dismiss:
+    post:
+      operationId: dismissPattern
+      tags: [patterns]
+      summary: Dismiss a pattern suggestion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatternObservation"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    # ── Household / Members ──────────────────────────────────────
+    Household:
+      type: object
+      required: [id, name, plan]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        location:
+          type: ["string", "null"]
+        plan:
+          type: string
+          enum: [free, premium]
+        concierge_eligible:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    HouseholdUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        location:
+          type: string
+        plan:
+          type: string
+          enum: [free, premium]
+
+    Member:
+      type: object
+      required: [id, name, role]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, member, restricted]
+        phone:
+          type: ["string", "null"]
+        avatar_url:
+          type: ["string", "null"]
+
+    # ── Contacts ─────────────────────────────────────────────────
+    Contact:
+      type: object
+      required: [id, name, category]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: ["string", "null"]
+        category:
+          type: string
+          enum: [escola, saude, casa, diarista, portaria, sindico, social, servicos, familia, outros]
+        aliases:
+          type: array
+          items:
+            type: string
+        notes:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+
+    ContactInput:
+      type: object
+      required: [name, category]
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        category:
+          type: string
+          enum: [escola, saude, casa, diarista, portaria, sindico, social, servicos, familia, outros]
+        aliases:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+
+    ContactUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        category:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+
+    # ── Inbox ────────────────────────────────────────────────────
+    InboxItem:
+      type: object
+      required: [id, source, raw_content, status, created_at]
+      properties:
+        id:
+          type: integer
+        source:
+          type: string
+          enum: [whatsapp, email, manual, photo]
+        raw_content:
+          type: string
+        media_url:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [received, classifying, ready_for_review, approved, dismissed, failed, manual_review]
+        sender_name:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+        actions_count:
+          type: integer
+
+    InboxItemDetail:
+      type: object
+      required: [id, source, raw_content, status, created_at, actions]
+      properties:
+        id:
+          type: integer
+        source:
+          type: string
+        raw_content:
+          type: string
+        media_url:
+          type: ["string", "null"]
+        status:
+          type: string
+        sender_name:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SuggestedAction"
+
+    InboxItemInput:
+      type: object
+      required: [raw_content, source]
+      properties:
+        raw_content:
+          type: string
+        source:
+          type: string
+          enum: [manual, whatsapp, email, photo]
+        sender_name:
+          type: string
+
+    # ── Suggested Actions ────────────────────────────────────────
+    SuggestedAction:
+      type: object
+      required: [id, inbox_item_id, category, type, title, approval_level, status, confidence]
+      properties:
+        id:
+          type: integer
+        inbox_item_id:
+          type: integer
+        category:
+          type: string
+          enum: [escola, saude, casa, social, logistica, refeicoes, servicos, outros]
+        type:
+          type: string
+          enum: [event, task, reminder, fyi]
+        title:
+          type: string
+        datetime:
+          type: ["string", "null"]
+        suggested_owner:
+          type: ["string", "null"]
+        approval_level:
+          type: string
+          enum: [soft, one_tap, explicit]
+        confidence:
+          type: number
+        status:
+          type: string
+          enum: [pending, approved, dismissed, auto_handled]
+        notes:
+          type: ["string", "null"]
+        cascade_check_needed:
+          type: boolean
+        workflow_tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ActionApproval:
+      type: object
+      properties:
+        notes:
+          type: string
+
+    ActionEdit:
+      type: object
+      properties:
+        title:
+          type: string
+        category:
+          type: string
+        type:
+          type: string
+        datetime:
+          type: string
+        suggested_owner:
+          type: string
+        notes:
+          type: string
+
+    # ── Tasks ─────────────────────────────────────────────────────
+    Task:
+      type: object
+      required: [id, title, status, created_at]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        owner_id:
+          type: ["integer", "null"]
+        owner_name:
+          type: ["string", "null"]
+        due_at:
+          type: ["string", "null"]
+          format: date-time
+        status:
+          type: string
+          enum: [pending, in_progress, done, cancelled]
+        category:
+          type: ["string", "null"]
+        linked_event_id:
+          type: ["integer", "null"]
+        workflow_tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: ["string", "null"]
+
+    TaskInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        owner_id:
+          type: integer
+        due_at:
+          type: string
+          format: date-time
+        category:
+          type: string
+        workflow_tags:
+          type: array
+          items:
+            type: string
+
+    TaskUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        owner_id:
+          type: ["integer", "null"]
+        due_at:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, in_progress, done, cancelled]
+        category:
+          type: string
+
+    # ── Calendar Events ──────────────────────────────────────────
+    CalendarEvent:
+      type: object
+      required: [id, title, start_at, category, created_at]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: ["string", "null"]
+          format: date-time
+        all_day:
+          type: boolean
+        category:
+          type: string
+          enum: [escola, saude, casa, social, logistica, refeicoes, servicos, outros]
+        members:
+          type: array
+          items:
+            type: string
+        source:
+          type: string
+          enum: [manual, auto, pattern]
+        sync_status:
+          type: string
+          enum: [synced, pending, failed, local]
+        notes:
+          type: ["string", "null"]
+        workflow_tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CalendarEventInput:
+      type: object
+      required: [title, start_at, category]
+      properties:
+        title:
+          type: string
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        all_day:
+          type: boolean
+        category:
+          type: string
+          enum: [escola, saude, casa, social, logistica, refeicoes, servicos, outros]
+        members:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+
+    CalendarEventUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        all_day:
+          type: boolean
+        category:
+          type: string
+        notes:
+          type: string
+
+    # ── Rules ─────────────────────────────────────────────────────
+    Rule:
+      type: object
+      required: [id, name, category, trigger_desc, action_desc, approval_level, confidence, active]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        category:
+          type: string
+          enum: [escola, saude, casa, social, logistica, refeicoes, servicos, outros]
+        trigger_desc:
+          type: string
+        action_desc:
+          type: string
+        approval_level:
+          type: string
+          enum: [soft, one_tap, explicit]
+        confidence:
+          type: number
+        active:
+          type: boolean
+        origin:
+          type: string
+          enum: [system_template, user_created, pattern_suggested]
+        times_triggered:
+          type: integer
+        times_approved:
+          type: integer
+        times_dismissed:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    RuleInput:
+      type: object
+      required: [name, category, trigger_desc, action_desc, approval_level]
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        trigger_desc:
+          type: string
+        action_desc:
+          type: string
+        approval_level:
+          type: string
+          enum: [soft, one_tap, explicit]
+
+    RuleUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        trigger_desc:
+          type: string
+        action_desc:
+          type: string
+        approval_level:
+          type: string
+          enum: [soft, one_tap, explicit]
+        active:
+          type: boolean
+
+    # ── Patterns ──────────────────────────────────────────────────
+    PatternObservation:
+      type: object
+      required: [id, type, description, occurrences, confidence, status]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [sender, sequence, temporal, ownership, absence, seasonal]
+        description:
+          type: string
+        occurrences:
+          type: integer
+        confidence:
+          type: number
+        status:
+          type: string
+          enum: [accumulating, threshold_met, suggested, rule_created, dismissed]
+        evidence:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Dashboard ─────────────────────────────────────────────────
+    DashboardSummary:
+      type: object
+      required: [pending_inbox_count, todays_events_count, tasks_due_today, tasks_overdue, active_rules_count]
+      properties:
+        pending_inbox_count:
+          type: integer
+        todays_events_count:
+          type: integer
+        tasks_due_today:
+          type: integer
+        tasks_overdue:
+          type: integer
+        active_rules_count:
+          type: integer
+        pattern_suggestions_pending:
+          type: integer
+
+    ActivityItem:
+      type: object
+      required: [id, description, actor, timestamp, action_type]
+      properties:
+        id:
+          type: integer
+        description:
+          type: string
+        actor:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        action_type:
+          type: string
+          enum: [approved, dismissed, rule_triggered, pattern_suggested, task_completed]
+        category:
+          type: ["string", "null"]
+
+    CategoryCount:
+      type: object
+      required: [category, count]
+      properties:
+        category:
+          type: string
+        count:
+          type: integer
+        label:
+          type: string

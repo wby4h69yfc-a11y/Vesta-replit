@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Vesta"
+version = "1.0.0"
+id = "artifacts/vesta"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24155
+
+[services.development]
+run = "pnpm --filter @workspace/vesta run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/vesta", "run", "build" ]
+publicDir = "artifacts/vesta/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24155"
+BASE_PATH = "/"

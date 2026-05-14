@@ -1,0 +1,16 @@
+import { pgTable, text, serial, timestamp, boolean } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+
+export const householdsTable = pgTable("households", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  location: text("location"),
+  plan: text("plan").notNull().default("free"),
+  concierge_eligible: boolean("concierge_eligible").notNull().default(false),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertHouseholdSchema = createInsertSchema(householdsTable).omit({ id: true, created_at: true });
+export type InsertHousehold = z.infer<typeof insertHouseholdSchema>;
+export type Household = typeof householdsTable.$inferSelect;
