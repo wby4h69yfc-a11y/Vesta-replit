@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
-import { Users, Phone, Plus, Home, Trash2, MessageCircle, Copy, CheckCheck, ExternalLink, Upload, Inbox, Zap, X, Check } from "lucide-react";
+import { Link } from "wouter";
+import { Users, Phone, Plus, Home, Trash2, MessageCircle, Copy, CheckCheck, ExternalLink, Upload, Inbox, Zap, X, Check, ArrowRight } from "lucide-react";
 import {
   useGetHousehold,
   useListMembers,
@@ -274,6 +275,25 @@ export default function CasaPage() {
           </div>
         </section>
       )}
+
+      {/* Smart Rules shortcut */}
+      <section>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Automação</h2>
+        <Link href="/regras">
+          <div className="bg-card border border-border rounded-2xl p-4 flex items-center gap-3 hover:bg-muted/40 transition-colors cursor-pointer group">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "#D8EDD5" }}>
+              <Zap className="w-5 h-5" style={{ color: "#1B3A2D" }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground">Regras inteligentes</p>
+              <p className="text-xs text-muted-foreground leading-snug">
+                Defina padrões para aprovar, delegar e classificar mensagens automaticamente.
+              </p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </div>
+        </Link>
+      </section>
 
       {/* WhatsApp section */}
       <section>

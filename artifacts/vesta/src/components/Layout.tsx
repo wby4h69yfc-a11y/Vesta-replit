@@ -1,10 +1,10 @@
 import { Link, useLocation } from "wouter";
-import { Home, Inbox, Calendar, CheckSquare, Settings, Sparkles } from "lucide-react";
+import { Home, Inbox, Calendar, CheckSquare, Settings } from "lucide-react";
 import { useListInboxItems } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { path: "/",        label: "Hoje",          icon: Home },
+  { path: "/hoje",    label: "Hoje",          icon: Home },
   { path: "/inbox",   label: "Para processar", icon: Inbox },
   { path: "/agenda",  label: "Agenda",         icon: Calendar },
   { path: "/tarefas", label: "Tarefas",        icon: CheckSquare },
@@ -19,9 +19,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-background max-w-lg mx-auto relative">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border px-4 pt-safe">
-        <div className="flex items-center gap-2 py-3">
-          <Sparkles className="w-5 h-5 text-primary" />
-          <span className="font-semibold text-lg tracking-tight text-foreground">Vesta</span>
+        <div className="flex items-center justify-between py-3">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: "#1B3A2D" }}>
+              <Home className="w-3.5 h-3.5 text-white" />
+            </div>
+            <span className="font-bold text-lg tracking-tight" style={{ color: "#1B3A2D" }}>vesta</span>
+          </div>
+          <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            ← Site
+          </Link>
         </div>
       </header>
 
@@ -32,7 +39,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-lg z-50 bg-card/95 backdrop-blur border-t border-border">
         <div className="flex items-stretch pb-safe">
           {NAV.map(({ path, label, icon: Icon }) => {
-            const isActive = path === "/" ? location === "/" : location.startsWith(path);
+            const isActive = location.startsWith(path);
             const showBadge = path === "/inbox" && pendingCount > 0;
             return (
               <Link
