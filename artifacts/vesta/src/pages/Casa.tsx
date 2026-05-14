@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Users, Phone, Plus, Home, Trash2, MessageCircle, Copy, CheckCheck, ExternalLink } from "lucide-react";
+import { useState, useRef } from "react";
+import { Users, Phone, Plus, Home, Trash2, MessageCircle, Copy, CheckCheck, ExternalLink, Upload, Inbox, Zap, X, Check } from "lucide-react";
 import {
   useGetHousehold,
   useListMembers,
@@ -10,7 +10,6 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import CategoryBadge from "@/components/CategoryBadge";
-import { CATEGORIES } from "@/lib/categories";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -33,15 +32,44 @@ type WebhookInfo = {
   status: string;
 };
 
+type ImportCandidate = {
+  name: string;
+  phone: string | null;
+};
+
+const SAMPLE_WA_MESSAGES = [
+  "Boa tarde! Aqui é a secretária da Escola Estadual. A reunião de pais está marcada para quinta-feira, dia 22, às 19h. Confirme presença.",
+  "Dona Ana, a Maria não vai conseguir ir sexta-feira. Pode compensar na segunda?",
+  "Ana, a consulta da Larissa com a Dra. Beatriz está confirmada para amanhã às 10h. Lembre a carteirinha do plano.",
+  "Oi! Festa de aniversário do Lucas vai ser sábado dia 24, das 15h às 19h. Rua das Palmeiras 45. Confirme presença do Guilherme!",
+  "Bom dia! O técnico do ar condicionado pode ir na quinta-feira às 14h. Confirma?",
+];
+
 export default function CasaPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+
   const [catFilter, setCatFilter] = useState<string | undefined>(undefined);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", category: "escola", notes: "" });
+
+  // Webhook state
   const [webhookInfo, setWebhookInfo] = useState<WebhookInfo | null>(null);
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [testSending, setTestSending] = useState(false);
+
+  // Import state
+  const [showImport, setShowImport] = useState(false);
+  const [importTab, setImportTab] = useState<"inbox" | "export">("inbox");
+  const [inboxSenders, setInboxSenders] = useState<ImportCandidate[]>([]);
+  const [inboxLoading, setInboxLoading] = useState(false);
+  const [exportSenders, setExportSenders] = useState<ImportCandidate[]>([]);
+  const [fileParseLoading, setFileParseLoading] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [catForImport, setCatForImport] = useState("outros");
+  const [importSaving, setImportSaving] = useState(false);
 
   const { data: household } = useGetHousehold();
   const { data: members } = useListMembers();
@@ -87,6 +115,124 @@ export default function CasaPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  async function testWebhook() {
+    setTestSending(true);
+    try {
+      const msg = SAMPLE_WA_MESSAGES[Math.floor(Math.random() * SAMPLE_WA_MESSAGES.length)];
+      const body = new URLSearchParams({
+        From: "whatsapp:+5511988880001",
+        Body: msg,
+        ProfileName: "Contato Teste",
+        NumMedia: "0",
+        MessageSid: `SMtest${Date.now()}`,
+      });
+      await fetch("/api/webhook/whatsapp", { method: "POST", body });
+      toast({ description: "Mensagem de teste enviada! Verifique o Para Processar." });
+    } catch {
+      toast({ description: "Falha ao enviar teste.", variant: "destructive" });
+    } finally {
+      setTestSending(false);
+    }
+  }
+
+  async function openImport() {
+    setShowImport(true);
+    setSelected(new Set());
+    setExportSenders([]);
+    setImportTab("inbox");
+    setInboxLoading(true);
+    try {
+      const res = await fetch("/api/contacts/whatsapp-senders");
+      const data: ImportCandidate[] = await res.json();
+      setInboxSenders(data);
+    } catch {
+      toast({ description: "Erro ao carregar remetentes.", variant: "destructive" });
+    } finally {
+      setInboxLoading(false);
+    }
+  }
+
+  function toggleSelect(name: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  function toggleAll(candidates: ImportCandidate[]) {
+    const allNames = candidates.map((c) => c.name);
+    const allSelected = allNames.every((n) => selected.has(n));
+    if (allSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        allNames.forEach((n) => next.delete(n));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        allNames.forEach((n) => next.add(n));
+        return next;
+      });
+    }
+  }
+
+  async function handleFileUpload(file: File) {
+    setFileParseLoading(true);
+    try {
+      const text = await file.text();
+      const res = await fetch("/api/contacts/parse-whatsapp-export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error("parse failed");
+      const data: ImportCandidate[] = await res.json();
+      setExportSenders(data);
+      setImportTab("export");
+      if (data.length === 0) {
+        toast({ description: "Nenhum remetente novo encontrado no arquivo." });
+      }
+    } catch {
+      toast({ description: "Erro ao processar o arquivo.", variant: "destructive" });
+    } finally {
+      setFileParseLoading(false);
+    }
+  }
+
+  async function importSelected() {
+    const candidates = importTab === "inbox" ? inboxSenders : exportSenders;
+    const toImport = candidates.filter((c) => selected.has(c.name));
+    if (toImport.length === 0) return;
+    setImportSaving(true);
+    try {
+      const res = await fetch("/api/contacts/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contacts: toImport.map((c) => ({
+            name: c.name,
+            phone: c.phone ?? undefined,
+            category: catForImport,
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error("bulk failed");
+      qc.invalidateQueries({ queryKey: getListContactsQueryKey() });
+      toast({ description: `${toImport.length} contato${toImport.length > 1 ? "s" : ""} importado${toImport.length > 1 ? "s" : ""}!` });
+      setShowImport(false);
+      setSelected(new Set());
+    } catch {
+      toast({ description: "Erro ao importar contatos.", variant: "destructive" });
+    } finally {
+      setImportSaving(false);
+    }
+  }
+
+  const activeCandidates = importTab === "inbox" ? inboxSenders : exportSenders;
+
   return (
     <div className="p-4 space-y-5 animate-fade-in-up">
       <h1 className="text-xl font-bold text-foreground">Casa</h1>
@@ -115,7 +261,7 @@ export default function CasaPage() {
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Membros</h2>
           <div className="flex gap-3 flex-wrap">
             {members?.map((m) => (
-              <div key={m.id} className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2" data-testid={`member-${m.id}`}>
+              <div key={m.id} className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
                 <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary">
                   {m.name.charAt(0).toUpperCase()}
                 </div>
@@ -129,10 +275,12 @@ export default function CasaPage() {
         </section>
       )}
 
-      {/* WhatsApp Webhook */}
+      {/* WhatsApp section */}
       <section>
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">WhatsApp</h2>
         <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+
+          {/* Header */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
               <MessageCircle className="w-5 h-5 text-green-600" />
@@ -145,6 +293,7 @@ export default function CasaPage() {
             </div>
           </div>
 
+          {/* Webhook URL */}
           {!webhookInfo ? (
             <button
               onClick={loadWebhookInfo}
@@ -194,6 +343,25 @@ export default function CasaPage() {
               </div>
             </div>
           )}
+
+          {/* Test webhook */}
+          <button
+            onClick={testWebhook}
+            disabled={testSending}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 disabled:opacity-50 transition-colors"
+          >
+            <Zap className="w-3.5 h-3.5" />
+            {testSending ? "Enviando…" : "Testar: simular mensagem recebida"}
+          </button>
+
+          {/* Import contacts */}
+          <button
+            onClick={openImport}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium border border-border text-foreground bg-muted hover:bg-muted/80 transition-colors"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Importar contatos do WhatsApp
+          </button>
         </div>
       </section>
 
@@ -320,6 +488,175 @@ export default function CasaPage() {
           </div>
         )}
       </section>
+
+      {/* Import contacts modal */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end" onClick={(e) => { if (e.target === e.currentTarget) setShowImport(false); }}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowImport(false)} />
+          <div className="relative bg-background rounded-t-3xl shadow-xl max-h-[85vh] flex flex-col z-10">
+
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full bg-border" />
+            </div>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+              <div>
+                <h3 className="text-base font-bold text-foreground">Importar contatos</h3>
+                <p className="text-xs text-muted-foreground">Selecione quem adicionar à sua lista</p>
+              </div>
+              <button onClick={() => setShowImport(false)} className="p-2 rounded-xl hover:bg-muted">
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex gap-1 px-5 pt-3">
+              <button
+                onClick={() => setImportTab("inbox")}
+                className={cn("flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium transition-colors",
+                  importTab === "inbox" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}
+              >
+                <Inbox className="w-3.5 h-3.5" />
+                Do histórico
+                {inboxSenders.length > 0 && (
+                  <span className={cn("ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold",
+                    importTab === "inbox" ? "bg-white/20 text-white" : "bg-primary/10 text-primary")}>
+                    {inboxSenders.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => fileRef.current?.click()}
+                className={cn("flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium transition-colors",
+                  importTab === "export" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {fileParseLoading ? "Lendo…" : "Conversa exportada"}
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".txt,.zip"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileUpload(file);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto px-5 py-3 space-y-3 min-h-0">
+
+              {/* Category selector */}
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-muted-foreground shrink-0">Categoria:</p>
+                <div className="flex gap-1.5 overflow-x-auto">
+                  {CONTACT_CATS.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => setCatForImport(c.id)}
+                      className={cn("shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium",
+                        catForImport === c.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground border border-border")}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Candidates list */}
+              {importTab === "inbox" && inboxLoading ? (
+                <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-12 rounded-xl bg-muted animate-pulse" />)}</div>
+              ) : activeCandidates.length === 0 ? (
+                <div className="py-10 text-center">
+                  {importTab === "inbox" ? (
+                    <>
+                      <Inbox className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Nenhum remetente novo no histórico</p>
+                      <p className="text-xs text-muted-foreground/60 mt-1">Todos os remetentes do WhatsApp já são contatos.</p>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Selecione um arquivo exportado</p>
+                      <p className="text-xs text-muted-foreground/60 mt-1 px-4">
+                        No WhatsApp, abra uma conversa → ⋮ → Mais → Exportar conversa → sem mídia → selecione o .txt
+                      </p>
+                      <button
+                        onClick={() => fileRef.current?.click()}
+                        className="mt-3 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-medium"
+                      >
+                        Escolher arquivo
+                      </button>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {/* Select all */}
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">{activeCandidates.length} remetente{activeCandidates.length !== 1 ? "s" : ""} encontrado{activeCandidates.length !== 1 ? "s" : ""}</p>
+                    <button
+                      onClick={() => toggleAll(activeCandidates)}
+                      className="text-xs text-primary font-medium"
+                    >
+                      {activeCandidates.every((c) => selected.has(c.name)) ? "Desmarcar todos" : "Selecionar todos"}
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {activeCandidates.map((c) => (
+                      <button
+                        key={c.name}
+                        onClick={() => toggleSelect(c.name)}
+                        className={cn(
+                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors text-left",
+                          selected.has(c.name)
+                            ? "border-primary bg-primary/5"
+                            : "border-border bg-card"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-colors",
+                          selected.has(c.name) ? "bg-primary border-primary" : "border-border"
+                        )}>
+                          {selected.has(c.name) && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm font-semibold text-muted-foreground">
+                          {c.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{c.name}</p>
+                          {c.phone && <p className="text-xs text-muted-foreground">{c.phone}</p>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            {selected.size > 0 && (
+              <div className="px-5 py-4 border-t border-border">
+                <button
+                  onClick={importSelected}
+                  disabled={importSaving}
+                  className="w-full py-3 rounded-2xl bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50"
+                >
+                  {importSaving
+                    ? "Importando…"
+                    : `Adicionar ${selected.size} contato${selected.size !== 1 ? "s" : ""}`}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
