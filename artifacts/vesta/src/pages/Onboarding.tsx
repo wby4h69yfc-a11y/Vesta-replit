@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { Home, ChevronRight, ChevronLeft, Check, Users, Baby, Heart, BookOpen, Stethoscope, MessageCircle, Calendar, Sparkles, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@workspace/replit-auth-web";
+import {
+  Home, ChevronRight, ChevronLeft, Check, Users, Baby, Heart,
+  BookOpen, Stethoscope, MessageCircle, Calendar, Sparkles, X, Loader2,
+} from "lucide-react";
 
 const V = {
   primary: "#0E3B2E",
@@ -70,9 +75,9 @@ function Step0Welcome({ onNext }: StepProps) {
   );
 }
 
-function Step1AboutYou({ onNext, onBack }: StepProps) {
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("");
+function Step1AboutYou({ onNext, onBack, data }: StepProps) {
+  const [name, setName] = useState((data.name as string) || "");
+  const [role, setRole] = useState((data.role as string) || "");
   const roles = [
     { value: "mae", label: "Mãe" },
     { value: "pai", label: "Pai" },
@@ -136,18 +141,31 @@ function Step2Composition({ onNext, onBack }: StepProps) {
   const [children, setChildren] = useState(1);
   const [others, setOthers] = useState(0);
 
-  const Counter = ({ label, icon: Icon, value, onChange }: { label: string; icon: React.ElementType; value: number; onChange: (v: number) => void }) => (
+  const Counter = ({
+    label,
+    icon: Icon,
+    value,
+    onChange,
+  }: { label: string; icon: React.ElementType; value: number; onChange: (v: number) => void }) => (
     <div className="flex items-center justify-between p-4 rounded-2xl" style={{ background: V.cream }}>
       <div className="flex items-center gap-3">
         <Icon className="h-5 w-5" style={{ color: V.primary }} />
         <span className="text-sm font-medium" style={{ color: V.ink }}>{label}</span>
       </div>
       <div className="flex items-center gap-3">
-        <button onClick={() => onChange(Math.max(0, value - 1))} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: V.beige }}>
+        <button
+          onClick={() => onChange(Math.max(0, value - 1))}
+          className="w-8 h-8 rounded-full flex items-center justify-center"
+          style={{ background: V.beige }}
+        >
           <span className="text-base font-bold" style={{ color: V.ink }}>−</span>
         </button>
         <span className="w-6 text-center font-semibold" style={{ color: V.ink }}>{value}</span>
-        <button onClick={() => onChange(value + 1)} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: V.primary }}>
+        <button
+          onClick={() => onChange(value + 1)}
+          className="w-8 h-8 rounded-full flex items-center justify-center"
+          style={{ background: V.primary }}
+        >
           <span className="text-base font-bold text-white">+</span>
         </button>
       </div>
@@ -354,7 +372,11 @@ function Step5WhatsApp({ onNext, onBack }: StepProps) {
         <button onClick={onBack} className="px-6 py-3.5 rounded-full text-sm font-medium" style={{ background: V.beige, color: V.ink }}>
           <ChevronLeft className="h-4 w-4 inline" /> Voltar
         </button>
-        <button onClick={() => onNext({ phone, whatsapp_verified: sent })} className="flex-1 py-3.5 rounded-full text-sm font-semibold text-white" style={{ background: V.primary }}>
+        <button
+          onClick={() => onNext({ phone, whatsapp_verified: sent })}
+          className="flex-1 py-3.5 rounded-full text-sm font-semibold text-white"
+          style={{ background: V.primary }}
+        >
           {sent ? "Confirmado ✓" : "Pular por agora"} <ChevronRight className="h-4 w-4 inline" />
         </button>
       </div>
@@ -396,7 +418,11 @@ function Step6Calendar({ onNext, onBack }: StepProps) {
         <button onClick={onBack} className="px-6 py-3.5 rounded-full text-sm font-medium" style={{ background: V.beige, color: V.ink }}>
           <ChevronLeft className="h-4 w-4 inline" /> Voltar
         </button>
-        <button onClick={() => onNext({ calendar_connected: connected })} className="flex-1 py-3.5 rounded-full text-sm font-semibold text-white" style={{ background: V.primary }}>
+        <button
+          onClick={() => onNext({ calendar_connected: connected })}
+          className="flex-1 py-3.5 rounded-full text-sm font-semibold text-white"
+          style={{ background: V.primary }}
+        >
           {connected ? "Continuar" : "Pular"} <ChevronRight className="h-4 w-4 inline" />
         </button>
       </div>
@@ -404,14 +430,46 @@ function Step6Calendar({ onNext, onBack }: StepProps) {
   );
 }
 
-function Step7Ready({ onNext }: StepProps) {
+function Step7Ready({ onNext, data }: StepProps) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleFinish() {
+    setSaving(true);
+    setError(null);
+    try {
+      const body = {
+        display_name: (data.name as string) || null,
+        household_name: data.name ? `Casa de ${data.name}` : "Minha Casa",
+        composition: (data.composition as { adults: number; children: number; others: number }) || null,
+        pain_points: (data.painPoints as string[]) ?? [],
+        whatsapp_phone: (data.phone as string) || null,
+        whatsapp_verified: (data.whatsapp_verified as boolean) ?? false,
+        calendar_connected: (data.calendar_connected as boolean) ?? false,
+      };
+      const res = await fetch("/api/onboarding/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      onNext();
+    } catch {
+      setError("Algo deu errado. Tente novamente.");
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="flex flex-col items-center text-center gap-6 pt-4">
       <div className="w-24 h-24 rounded-full flex items-center justify-center" style={{ background: "#EAF1E5" }}>
         <Sparkles className="h-12 w-12" style={{ color: V.primary }} />
       </div>
       <div>
-        <h2 className="font-serif text-3xl font-semibold mb-3" style={{ color: V.ink }}>Tudo pronto!</h2>
+        <h2 className="font-serif text-3xl font-semibold mb-3" style={{ color: V.ink }}>
+          {data.name ? `Pronto, ${data.name as string}!` : "Tudo pronto!"}
+        </h2>
         <p className="text-base" style={{ color: V.muted }}>
           Encaminhe sua primeira mensagem no WhatsApp para começar. O Piloto cuida do resto.
         </p>
@@ -422,12 +480,23 @@ function Step7Ready({ onNext }: StepProps) {
           Abra o WhatsApp → encontre uma mensagem da escola ou saúde → toque em "Encaminhar" → mande para o Piloto
         </p>
       </div>
+      {error && (
+        <p className="text-sm" style={{ color: "#B91C1C" }}>{error}</p>
+      )}
       <button
-        onClick={() => onNext()}
-        className="w-full py-4 rounded-full text-base font-semibold text-white mt-2"
+        onClick={handleFinish}
+        disabled={saving}
+        className="w-full py-4 rounded-full text-base font-semibold text-white mt-2 flex items-center justify-center gap-2 disabled:opacity-70"
         style={{ background: V.primary }}
       >
-        Abrir meu painel →
+        {saving ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Salvando...
+          </>
+        ) : (
+          "Abrir meu painel →"
+        )}
       </button>
     </div>
   );
@@ -446,13 +515,19 @@ const STEPS = [
 
 export default function OnboardingPage() {
   const [, navigate] = useLocation();
-  const [step, setStep] = useState(0);
-  const [formData, setFormData] = useState<Record<string, unknown>>({});
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
 
-  function handleNext(data?: Record<string, unknown>) {
+  const [step, setStep] = useState(0);
+  const [formData, setFormData] = useState<Record<string, unknown>>({
+    name: user?.firstName ?? "",
+  });
+
+  async function handleNext(data?: Record<string, unknown>) {
     const merged = { ...formData, ...data };
     setFormData(merged);
     if (step >= STEPS.length - 1) {
+      await queryClient.invalidateQueries({ queryKey: ["onboarding-state"] });
       navigate("/app");
     } else {
       setStep((s) => s + 1);

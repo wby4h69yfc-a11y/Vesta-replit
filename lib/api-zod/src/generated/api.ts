@@ -1064,3 +1064,53 @@ export const DismissPatternResponse = zod.object({
   evidence: zod.string().nullish(),
   created_at: zod.coerce.date().optional(),
 });
+
+/**
+ * @summary Get or create onboarding state for current user
+ */
+export const GetOnboardingStateResponse = zod.object({
+  state: zod
+    .object({
+      id: zod.number(),
+      user_id: zod.string(),
+      household_id: zod.number(),
+      completed: zod.boolean(),
+      current_step: zod.number(),
+      whatsapp_verified: zod.boolean(),
+      calendar_connected: zod.boolean(),
+      pain_points: zod.array(zod.string()),
+      composition: zod
+        .object({
+          adults: zod.number(),
+          children: zod.number(),
+          others: zod.number(),
+        })
+        .nullish(),
+      created_at: zod.coerce.date().optional(),
+      updated_at: zod.coerce.date().optional(),
+    })
+    .nullable(),
+});
+
+/**
+ * @summary Mark onboarding complete and save collected data
+ */
+export const CompleteOnboardingBody = zod.object({
+  household_name: zod.string().optional(),
+  display_name: zod.string().optional(),
+  composition: zod
+    .object({
+      adults: zod.number(),
+      children: zod.number(),
+      others: zod.number(),
+    })
+    .nullish(),
+  pain_points: zod.array(zod.string()).optional(),
+  whatsapp_phone: zod.string().nullish(),
+  whatsapp_verified: zod.boolean().optional(),
+  calendar_connected: zod.boolean().optional(),
+});
+
+export const CompleteOnboardingResponse = zod.object({
+  success: zod.boolean(),
+});

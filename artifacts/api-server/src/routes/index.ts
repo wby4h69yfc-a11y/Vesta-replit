@@ -11,6 +11,7 @@ import rulesRouter from "./rules";
 import householdRouter from "./household";
 import patternsRouter from "./patterns";
 import webhookRouter from "./webhook";
+import onboardingRouter from "./onboarding";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(rulesRouter);
 router.use(householdRouter);
 router.use(patternsRouter);
 router.use(webhookRouter);
+router.use(onboardingRouter);
 
 export default router;

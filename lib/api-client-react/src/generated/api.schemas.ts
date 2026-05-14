@@ -591,6 +591,45 @@ export interface CategoryCount {
   label?: string;
 }
 
+export interface OnboardingComposition {
+  adults: number;
+  children: number;
+  others: number;
+}
+
+export interface OnboardingState {
+  id: number;
+  user_id: string;
+  household_id: number;
+  completed: boolean;
+  current_step: number;
+  whatsapp_verified: boolean;
+  calendar_connected: boolean;
+  pain_points: string[];
+  composition?: OnboardingComposition | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface OnboardingStateEnvelope {
+  state: OnboardingState | null;
+}
+
+export interface OnboardingCompleteInput {
+  household_name?: string;
+  display_name?: string;
+  composition?: OnboardingComposition | null;
+  pain_points?: string[];
+  /** @nullable */
+  whatsapp_phone?: string | null;
+  whatsapp_verified?: boolean;
+  calendar_connected?: boolean;
+}
+
+export interface OnboardingCompleteSuccess {
+  success: boolean;
+}
+
 /**
  * Opaque session token — `Bearer <sid>`.
  */
