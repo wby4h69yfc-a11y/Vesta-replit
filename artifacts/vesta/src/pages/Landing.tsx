@@ -270,8 +270,8 @@ function Hero() {
           <PhoneMockup />
         </div>
 
-        {/* Lifestyle card */}
-        <div className="absolute right-0 top-8 hidden h-[560px] w-[260px] overflow-hidden rounded-[34px] shadow-[0_24px_70px_rgba(24,38,30,0.14)] xl:block"
+        {/* Lifestyle card — only at 2xl+ where there is enough column width */}
+        <div className="absolute right-0 top-8 hidden h-[560px] w-[240px] overflow-hidden rounded-[34px] shadow-[0_24px_70px_rgba(24,38,30,0.14)] 2xl:block"
           style={{ background: V.beige }}>
           <div className="h-full w-full" style={{ background: "radial-gradient(circle at 50% 20%, #d8c4a6, transparent 35%), linear-gradient(160deg, #efe3cf, #c9ad87)" }} />
           <div className="absolute bottom-0 left-0 right-0 rounded-t-[28px] p-6 text-white" style={{ background: V.primary }}>
@@ -526,7 +526,6 @@ export default function Landing() {
       <Integrations />
       <Features />
       <HowItWorks />
-      <DashboardPreview />
       <BottomCTA />
       <Footer />
     </div>
