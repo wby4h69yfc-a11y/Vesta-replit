@@ -48,7 +48,7 @@ router.post("/patterns/:id/accept", async (req, res) => {
       .where(eq(patternObservationsTable.id, id))
       .returning();
 
-    res.json(updated);
+    return res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to accept pattern");
     res.status(500).json({ error: "Internal server error" });

@@ -263,7 +263,7 @@ export default function AgendaPage() {
             <div className="flex gap-2 pt-1">
               <button onClick={() => setShowCreate(false)} className="flex-1 py-2.5 rounded-xl border border-border text-sm text-muted-foreground">Cancelar</button>
               <button
-                onClick={() => createEvent.mutate({ data: { title: form.title, start_at: form.start_at, category: form.category, end_at: form.end_at || undefined, notes: form.notes || undefined } })}
+                onClick={() => createEvent.mutate({ data: { title: form.title, start_at: form.start_at, category: form.category as import("@workspace/api-client-react").CalendarEventInputCategory, end_at: form.end_at || undefined, notes: form.notes || undefined } })}
                 disabled={!form.title || !form.start_at || createEvent.isPending}
                 className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
                 data-testid="button-submit-event"

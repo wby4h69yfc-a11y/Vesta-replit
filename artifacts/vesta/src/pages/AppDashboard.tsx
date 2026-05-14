@@ -117,8 +117,8 @@ export default function AppDashboard() {
                   <p className="text-sm font-semibold leading-snug" style={{ color: V.ink }}>{ev.title}</p>
                   <div className="mt-1.5 flex items-center gap-2">
                     <CategoryBadge category={ev.category} />
-                    {ev.members?.length > 0 && (
-                      <span className="text-xs" style={{ color: V.muted }}>{ev.members.join(", ")}</span>
+                    {(ev.members?.length ?? 0) > 0 && (
+                      <span className="text-xs" style={{ color: V.muted }}>{ev.members?.join(", ")}</span>
                     )}
                   </div>
                 </div>

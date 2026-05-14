@@ -37,7 +37,7 @@ router.post("/rules", async (req, res) => {
       })
       .returning();
 
-    res.status(201).json(rule);
+    return res.status(201).json(rule);
   } catch (err) {
     req.log.error({ err }, "Failed to create rule");
     res.status(500).json({ error: "Internal server error" });
@@ -64,7 +64,7 @@ router.patch("/rules/:id", async (req, res) => {
       .where(eq(rulesTable.id, id))
       .returning();
 
-    res.json(updated);
+    return res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to update rule");
     res.status(500).json({ error: "Internal server error" });
@@ -94,7 +94,7 @@ router.post("/rules/:id/toggle", async (req, res) => {
       .where(eq(rulesTable.id, id))
       .returning();
 
-    res.json(updated);
+    return res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to toggle rule");
     res.status(500).json({ error: "Internal server error" });

@@ -55,7 +55,7 @@ router.post("/tasks", async (req, res) => {
       })
       .returning();
 
-    res.status(201).json({ ...task, owner_name: null });
+    return res.status(201).json({ ...task, owner_name: null });
   } catch (err) {
     req.log.error({ err }, "Failed to create task");
     res.status(500).json({ error: "Internal server error" });
@@ -69,7 +69,7 @@ router.get("/tasks/:id", async (req, res) => {
 
     if (!task) return res.status(404).json({ error: "Not found" });
 
-    res.json({ ...task, owner_name: null });
+    return res.json({ ...task, owner_name: null });
   } catch (err) {
     req.log.error({ err }, "Failed to get task");
     res.status(500).json({ error: "Internal server error" });
@@ -96,7 +96,7 @@ router.patch("/tasks/:id", async (req, res) => {
       .where(eq(tasksTable.id, id))
       .returning();
 
-    res.json({ ...updated, owner_name: null });
+    return res.json({ ...updated, owner_name: null });
   } catch (err) {
     req.log.error({ err }, "Failed to update task");
     res.status(500).json({ error: "Internal server error" });
@@ -134,7 +134,7 @@ router.post("/tasks/:id/complete", async (req, res) => {
       description: `Tarefa concluída: ${task.title}`,
     });
 
-    res.json({ ...updated, owner_name: null });
+    return res.json({ ...updated, owner_name: null });
   } catch (err) {
     req.log.error({ err }, "Failed to complete task");
     res.status(500).json({ error: "Internal server error" });

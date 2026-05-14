@@ -50,7 +50,7 @@ router.post("/inbox", async (req, res) => {
       .values({ raw_content, source, sender_name, status: "received" })
       .returning();
 
-    res.status(201).json({ ...item, actions_count: 0 });
+    return res.status(201).json({ ...item, actions_count: 0 });
   } catch (err) {
     req.log.error({ err }, "Failed to create inbox item");
     res.status(500).json({ error: "Internal server error" });
@@ -75,7 +75,7 @@ router.get("/inbox/:id", async (req, res) => {
       .where(eq(suggestedActionsTable.inbox_item_id, id))
       .orderBy(suggestedActionsTable.created_at);
 
-    res.json({ ...item, actions });
+    return res.json({ ...item, actions });
   } catch (err) {
     req.log.error({ err }, "Failed to get inbox item");
     res.status(500).json({ error: "Internal server error" });
@@ -106,7 +106,7 @@ router.post("/inbox/:id/classify", async (req, res) => {
       .from(suggestedActionsTable)
       .where(eq(suggestedActionsTable.inbox_item_id, id));
 
-    res.json({ ...updated, actions_count: ac });
+    return res.json({ ...updated, actions_count: ac });
   } catch (err) {
     req.log.error({ err }, "Failed to classify inbox item");
     res.status(500).json({ error: "Internal server error" });
