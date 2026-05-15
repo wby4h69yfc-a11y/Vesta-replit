@@ -22,10 +22,19 @@ async function validateTwilioSignature(req: Request): Promise<boolean> {
   const authToken = process.env.TWILIO_AUTH_TOKEN;
 
   if (!authToken) {
+    // In production a missing auth token is a misconfiguration — fail closed.
+    if (process.env.NODE_ENV === "production") {
+      req.log.error(
+        "TWILIO_AUTH_TOKEN not set in production — rejecting webhook request",
+      );
+      return false;
+    }
+    // In development, permit unauthenticated requests so curl-based local
+    // testing works, but log a prominent warning.
     req.log.warn(
-      "TWILIO_AUTH_TOKEN not set — skipping webhook signature check (dev only)",
+      "TWILIO_AUTH_TOKEN not set — skipping signature check (dev only, will fail in production)",
     );
-    return true; // permit in dev; blocked in prod by the env-var guard above
+    return true;
   }
 
   const signature = (req.headers["x-twilio-signature"] ?? "") as string;
