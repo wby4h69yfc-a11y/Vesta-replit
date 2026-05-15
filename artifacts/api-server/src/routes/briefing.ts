@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { calendarEventsTable, tasksTable } from "@workspace/db";
 import { eq, and, gte, lte } from "drizzle-orm";
-import { sendWhatsApp } from "../lib/whatsapp";
+import { sendWhatsApp, resolveHouseholdAdminPhone } from "../lib/whatsapp";
 
 const router = Router();
 
@@ -42,12 +42,18 @@ router.post("/briefing/send", async (req: Request, res: Response) => {
       .from(tasksTable)
       .where(eq(tasksTable.status, "pending"));
 
-    // Determine admin phone from the authenticated user
-    const adminPhone: string | null = req.user?.phone ?? null;
+    // Resolve the primary admin phone for the household.
+    // Use household 1 (current single-tenant default); falls back to req.user.phone
+    // if the admin member record has no phone registered yet.
+    const householdId = 1;
+    let adminPhone: string | null = await resolveHouseholdAdminPhone(householdId);
+    if (!adminPhone) {
+      adminPhone = req.user.phone ?? null;
+    }
 
     if (!adminPhone) {
       res.status(400).json({
-        error: "Nenhum número de WhatsApp cadastrado na sua conta. Faça login com seu número de telefone.",
+        error: "Nenhum número de WhatsApp encontrado para o administrador da casa.",
       });
       return;
     }
