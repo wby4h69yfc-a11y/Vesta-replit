@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
   Users, ShieldCheck, ChevronRight, Plus, Trash2,
   Home, Baby, Heart, Lock, Bell, Key, HelpCircle, LogOut,
-  Sparkles, CheckCircle, Clock, AlertCircle, X
+  Sparkles, CheckCircle, Clock, AlertCircle, X,
+  CalendarDays, Mail, RefreshCw, Unlink, ExternalLink,
 } from "lucide-react";
 import { useGetHousehold } from "@workspace/api-client-react";
 
@@ -119,6 +120,9 @@ function InicioTab() {
         </div>
       </section>
 
+      {/* Google integrations */}
+      <GoogleIntegrationsSection />
+
       {/* Account settings */}
       <section>
         <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: V.muted }}>Conta</h2>
@@ -150,6 +154,174 @@ function InicioTab() {
         <LogOut className="h-4 w-4" /> Sair da conta
       </button>
     </div>
+  );
+}
+
+/* ── Google integrations section ─────────────────────── */
+function GoogleIntegrationsSection() {
+  const [connected, setConnected] = useState<boolean | null>(null);
+  const [syncing, setSyncing] = useState<"calendar" | "gmail" | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  useEffect(() => {
+    // Check for ?google= query param after OAuth redirect
+    const params = new URLSearchParams(window.location.search);
+    const googleParam = params.get("google");
+    if (googleParam === "connected") {
+      setToast("Google conectado com sucesso!");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (googleParam === "denied") {
+      setToast("Conexão cancelada.");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+
+    // Fetch connection status
+    fetch("/api/google/status", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d: { connected: boolean }) => setConnected(d.connected))
+      .catch(() => setConnected(false));
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  async function sync(type: "calendar" | "gmail") {
+    setSyncing(type);
+    try {
+      const r = await fetch(`/api/google/${type === "calendar" ? "calendar" : "gmail"}/sync`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const d = await r.json() as { synced?: number; imported?: number; total?: number; error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Erro");
+      const count = d.synced ?? d.imported ?? 0;
+      setToast(
+        type === "calendar"
+          ? `${count} evento(s) sincronizado(s)!`
+          : `${count} e-mail(s) importado(s)!`
+      );
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : "Erro ao sincronizar");
+    } finally {
+      setSyncing(null);
+    }
+  }
+
+  async function disconnect() {
+    setDisconnecting(true);
+    try {
+      await fetch("/api/google/disconnect", { method: "DELETE", credentials: "include" });
+      setConnected(false);
+      setToast("Google desconectado.");
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: V.muted }}>
+        Integrações Google
+      </h2>
+
+      {/* Toast */}
+      {toast && (
+        <div className="mb-3 px-4 py-3 rounded-2xl text-sm font-medium flex items-center gap-2"
+          style={{ background: "#D1FAE5", color: "#065F46" }}>
+          <CheckCircle className="h-4 w-4 shrink-0" />
+          {toast}
+        </div>
+      )}
+
+      <div className="rounded-3xl overflow-hidden" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
+        {/* Connection status row */}
+        <div className="flex items-center gap-4 px-5 py-4">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: connected ? "#D1FAE5" : V.beige }}>
+            {/* Google "G" icon */}
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium" style={{ color: V.ink }}>
+              Google
+            </p>
+            <p className="text-xs" style={{ color: V.muted }}>
+              {connected === null
+                ? "Verificando…"
+                : connected
+                  ? "Agenda e Gmail conectados"
+                  : "Não conectado"}
+            </p>
+          </div>
+          {connected === false && (
+            <a href="/api/google/connect"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold text-white shrink-0"
+              style={{ background: V.primary }}>
+              <ExternalLink className="h-3.5 w-3.5" />
+              Conectar
+            </a>
+          )}
+          {connected && (
+            <button onClick={disconnect} disabled={disconnecting}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium shrink-0 disabled:opacity-50"
+              style={{ background: "#FEE2E2", color: "#DC2626" }}>
+              <Unlink className="h-3.5 w-3.5" />
+              {disconnecting ? "…" : "Desconectar"}
+            </button>
+          )}
+        </div>
+
+        {/* Sync actions — only shown when connected */}
+        {connected && (
+          <>
+            <div className="flex items-center gap-4 px-5 py-4"
+              style={{ borderTop: "1px solid rgba(14,59,46,0.06)" }}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: "#EAF1E5" }}>
+                <CalendarDays className="h-4 w-4" style={{ color: V.primary }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium" style={{ color: V.ink }}>Google Agenda</p>
+                <p className="text-xs" style={{ color: V.muted }}>Importar próximos 30 dias</p>
+              </div>
+              <button onClick={() => void sync("calendar")} disabled={syncing !== null}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold shrink-0 disabled:opacity-50"
+                style={{ background: "#EAF1E5", color: V.primary }}>
+                <RefreshCw className={`h-3.5 w-3.5 ${syncing === "calendar" ? "animate-spin" : ""}`} />
+                {syncing === "calendar" ? "Sincronizando…" : "Sincronizar"}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-4 px-5 py-4"
+              style={{ borderTop: "1px solid rgba(14,59,46,0.06)" }}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: "#EAF1E5" }}>
+                <Mail className="h-4 w-4" style={{ color: V.primary }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium" style={{ color: V.ink }}>Gmail</p>
+                <p className="text-xs" style={{ color: V.muted }}>Importar não lidos para a caixa</p>
+              </div>
+              <button onClick={() => void sync("gmail")} disabled={syncing !== null}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold shrink-0 disabled:opacity-50"
+                style={{ background: "#EAF1E5", color: V.primary }}>
+                <RefreshCw className={`h-3.5 w-3.5 ${syncing === "gmail" ? "animate-spin" : ""}`} />
+                {syncing === "gmail" ? "Importando…" : "Importar"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 

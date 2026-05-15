@@ -1,0 +1,357 @@
+import { Router, type IRouter, type Request, type Response } from "express";
+import { google, type calendar_v3, type gmail_v1 } from "googleapis";
+import {
+  db,
+  googleTokensTable,
+  calendarEventsTable,
+  inboxItemsTable,
+} from "@workspace/db";
+import { eq } from "drizzle-orm";
+import {
+  getSessionId,
+  getSession,
+  updateSession,
+  type SessionData,
+} from "../lib/auth";
+
+const router: IRouter = Router();
+
+const SCOPES = [
+  "https://www.googleapis.com/auth/calendar",
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "openid",
+  "email",
+];
+
+function getOAuth2Client() {
+  const domains = process.env.REPLIT_DOMAINS?.split(",")[0];
+  const dev = process.env.REPLIT_DEV_DOMAIN;
+  const host = domains ?? dev;
+  const redirectUri = host
+    ? `https://${host}/api/google/callback`
+    : "http://localhost:8080/api/google/callback";
+
+  return new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID!,
+    process.env.GOOGLE_CLIENT_SECRET!,
+    redirectUri,
+  );
+}
+
+export async function getAuthedOAuth2(userId: string) {
+  const [token] = await db
+    .select()
+    .from(googleTokensTable)
+    .where(eq(googleTokensTable.user_id, userId))
+    .limit(1);
+
+  if (!token) return null;
+
+  const oauth2 = getOAuth2Client();
+  oauth2.setCredentials({
+    access_token: token.access_token,
+    refresh_token: token.refresh_token ?? undefined,
+    expiry_date: token.expiry?.getTime(),
+  });
+
+  oauth2.on("tokens", async (newTokens) => {
+    await db
+      .update(googleTokensTable)
+      .set({
+        access_token: newTokens.access_token ?? token.access_token,
+        refresh_token: newTokens.refresh_token ?? token.refresh_token,
+        expiry: newTokens.expiry_date
+          ? new Date(newTokens.expiry_date)
+          : token.expiry,
+        updated_at: new Date(),
+      })
+      .where(eq(googleTokensTable.user_id, userId));
+  });
+
+  return oauth2;
+}
+
+// ── OAuth connect ─────────────────────────────────────────────────────────────
+
+router.get("/google/connect", (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const oauth2 = getOAuth2Client();
+  const url = oauth2.generateAuthUrl({
+    access_type: "offline",
+    prompt: "consent",
+    scope: SCOPES,
+    state: getSessionId(req) ?? "",
+  });
+
+  res.redirect(url);
+});
+
+router.get("/google/callback", async (req: Request, res: Response) => {
+  const { code, state, error } = req.query as Record<string, string>;
+
+  if (error) {
+    req.log.warn({ error }, "Google OAuth denied by user");
+    res.redirect("/app?google=denied");
+    return;
+  }
+
+  if (!code) {
+    res.redirect("/app?google=error");
+    return;
+  }
+
+  const sid = state;
+  if (!sid) {
+    res.redirect("/app?google=error");
+    return;
+  }
+
+  const session = await getSession(sid);
+  if (!session?.user?.id) {
+    res.redirect("/login");
+    return;
+  }
+
+  const oauth2 = getOAuth2Client();
+  let accessToken: string;
+  let refreshToken: string | null | undefined;
+  let expiryDate: number | null | undefined;
+  try {
+    const result = await oauth2.getToken(code);
+    const t = result.tokens;
+    if (!t.access_token) throw new Error("No access token returned");
+    accessToken = t.access_token;
+    refreshToken = t.refresh_token;
+    expiryDate = t.expiry_date;
+  } catch (err) {
+    req.log.error({ err }, "Google OAuth token exchange failed");
+    res.redirect("/app?google=error");
+    return;
+  }
+
+  if (!accessToken) {
+    res.redirect("/app?google=error");
+    return;
+  }
+
+  const userId = session.user.id;
+
+  await db
+    .insert(googleTokensTable)
+    .values({
+      user_id: userId,
+      access_token: accessToken,
+      refresh_token: refreshToken ?? null,
+      expiry: expiryDate ? new Date(expiryDate) : null,
+      scopes: SCOPES.join(" "),
+    })
+    .onConflictDoUpdate({
+      target: googleTokensTable.user_id,
+      set: {
+        access_token: accessToken,
+        refresh_token: refreshToken ?? null,
+        expiry: expiryDate ? new Date(expiryDate) : null,
+        updated_at: new Date(),
+      },
+    });
+
+  const updatedSession: SessionData = {
+    ...session,
+    user: { ...session.user, google_connected: true },
+  };
+  await updateSession(sid, updatedSession);
+
+  res.redirect("/app?google=connected");
+});
+
+// ── Status & disconnect ───────────────────────────────────────────────────────
+
+router.get("/google/status", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.json({ connected: false });
+    return;
+  }
+
+  const [token] = await db
+    .select({ id: googleTokensTable.id, scopes: googleTokensTable.scopes })
+    .from(googleTokensTable)
+    .where(eq(googleTokensTable.user_id, req.user.id))
+    .limit(1);
+
+  res.json({ connected: !!token, scopes: token?.scopes ?? null });
+});
+
+router.delete("/google/disconnect", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  await db
+    .delete(googleTokensTable)
+    .where(eq(googleTokensTable.user_id, req.user.id));
+
+  res.json({ success: true });
+});
+
+// ── Calendar sync ─────────────────────────────────────────────────────────────
+
+router.post("/google/calendar/sync", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const oauth2 = await getAuthedOAuth2(req.user.id);
+  if (!oauth2) {
+    res.status(400).json({ error: "Google not connected" });
+    return;
+  }
+
+  const cal = google.calendar({ version: "v3", auth: oauth2 });
+
+  const now = new Date();
+  const thirtyDaysOut = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  let gcalEvents: calendar_v3.Schema$Event[] = [];
+  try {
+    const resp = await cal.events.list({
+      calendarId: "primary",
+      timeMin: now.toISOString(),
+      timeMax: thirtyDaysOut.toISOString(),
+      singleEvents: true,
+      orderBy: "startTime",
+      maxResults: 100,
+    });
+    gcalEvents = resp.data.items ?? [];
+  } catch (err) {
+    req.log.error({ err }, "Google Calendar sync failed");
+    res.status(500).json({ error: "Calendar sync failed" });
+    return;
+  }
+
+  let synced = 0;
+  for (const ev of gcalEvents ?? []) {
+    if (!ev.id || !ev.summary) continue;
+
+    const startAt = ev.start?.dateTime
+      ? new Date(ev.start.dateTime)
+      : ev.start?.date
+        ? new Date(ev.start.date)
+        : null;
+    if (!startAt) continue;
+
+    const endAt = ev.end?.dateTime
+      ? new Date(ev.end.dateTime)
+      : ev.end?.date
+        ? new Date(ev.end.date)
+        : null;
+
+    const isAllDay = !ev.start?.dateTime;
+
+    await db
+      .insert(calendarEventsTable)
+      .values({
+        household_id: 1,
+        title: ev.summary,
+        start_at: startAt,
+        end_at: endAt ?? undefined,
+        all_day: isAllDay,
+        source: "google",
+        sync_status: "synced",
+        gcal_event_id: ev.id,
+        notes: ev.description ?? null,
+      })
+      .onConflictDoUpdate({
+        target: calendarEventsTable.gcal_event_id,
+        set: {
+          title: ev.summary,
+          start_at: startAt,
+          end_at: endAt ?? undefined,
+          all_day: isAllDay,
+          sync_status: "synced",
+          notes: ev.description ?? null,
+          updated_at: new Date(),
+        },
+      });
+    synced++;
+  }
+
+  res.json({ synced, total: gcalEvents?.length ?? 0 });
+});
+
+// ── Gmail sync ────────────────────────────────────────────────────────────────
+
+router.post("/google/gmail/sync", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const oauth2 = await getAuthedOAuth2(req.user.id);
+  if (!oauth2) {
+    res.status(400).json({ error: "Google not connected" });
+    return;
+  }
+
+  const gmail = google.gmail({ version: "v1", auth: oauth2 });
+
+  let messageList: gmail_v1.Schema$Message[] = [];
+  try {
+    const resp = await gmail.users.messages.list({
+      userId: "me",
+      maxResults: 20,
+      q: "is:unread in:inbox",
+    });
+    messageList = resp.data.messages ?? [];
+  } catch (err) {
+    req.log.error({ err }, "Gmail sync list failed");
+    res.status(500).json({ error: "Gmail sync failed" });
+    return;
+  }
+
+  let imported = 0;
+  for (const msg of messageList ?? []) {
+    if (!msg.id) continue;
+
+    let full: gmail_v1.Schema$Message;
+    try {
+      const r = await gmail.users.messages.get({
+        userId: "me",
+        id: msg.id,
+        format: "metadata",
+        metadataHeaders: ["Subject", "From", "Date"],
+      });
+      full = r.data;
+    } catch {
+      continue;
+    }
+
+    const headers = full.payload?.headers ?? [];
+    const subject =
+      headers.find((h: gmail_v1.Schema$MessagePartHeader) => h.name === "Subject")?.value ?? "(sem assunto)";
+    const from = headers.find((h: gmail_v1.Schema$MessagePartHeader) => h.name === "From")?.value ?? "";
+    const snippet = full.snippet ?? "";
+
+    await db
+      .insert(inboxItemsTable)
+      .values({
+        household_id: 1,
+        source: "email",
+        raw_content: `De: ${from}\nAssunto: ${subject}\n\n${snippet}`,
+        status: "received",
+        sender_name: from,
+      })
+      .onConflictDoNothing();
+
+    imported++;
+  }
+
+  res.json({ imported, total: messageList?.length ?? 0 });
+});
+
+export default router;

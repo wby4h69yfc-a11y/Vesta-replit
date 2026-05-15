@@ -13,6 +13,7 @@ import patternsRouter from "./patterns";
 import webhookRouter from "./webhook";
 import onboardingRouter from "./onboarding";
 import authOtpRouter from "./auth-otp";
+import googleRouter from "./google";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(patternsRouter);
 router.use(webhookRouter);
 router.use(onboardingRouter);
 router.use(authOtpRouter);
+router.use(googleRouter);
 
 export default router;
