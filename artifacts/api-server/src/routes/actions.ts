@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { suggestedActionsTable, inboxItemsTable, calendarEventsTable, tasksTable, auditLogTable } from "@workspace/db";
+import { suggestedActionsTable, inboxItemsTable, calendarEventsTable, tasksTable, auditLogTable, contactsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { sendWhatsApp } from "../lib/whatsapp";
 
 const router = Router();
 
@@ -78,6 +79,30 @@ router.post("/actions/:id/approve", async (req, res) => {
       category: action.category,
       description: `Aprovado: ${action.title}`,
     });
+
+    // Send confirmation WhatsApp to original sender if their phone is known
+    if (action.inbox_item_id) {
+      const [inboxItem] = await db
+        .select()
+        .from(inboxItemsTable)
+        .where(eq(inboxItemsTable.id, action.inbox_item_id));
+
+      if (inboxItem?.sender_name) {
+        const contacts = await db
+          .select()
+          .from(contactsTable)
+          .where(eq(contactsTable.name, inboxItem.sender_name));
+
+        const contact = contacts[0];
+        if (contact?.phone) {
+          const summary = action.title.substring(0, 80);
+          void sendWhatsApp(
+            contact.phone,
+            `✓ Confirmado! ${summary}`,
+          );
+        }
+      }
+    }
 
     res.json(updated);
   } catch (err) {

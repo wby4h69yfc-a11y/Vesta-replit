@@ -22,6 +22,7 @@ import type {
   ActivityItem,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
+  BriefingSendResponse,
   CalendarEvent,
   CalendarEventInput,
   CalendarEventUpdate,
@@ -4283,4 +4284,85 @@ export const useCompleteOnboarding = <
   TContext
 > => {
   return useMutation(getCompleteOnboardingMutationOptions(options));
+};
+
+/**
+ * @summary Send the daily household briefing via WhatsApp to the admin
+ */
+export const getSendDailyBriefingUrl = () => {
+  return `/api/briefing/send`;
+};
+
+export const sendDailyBriefing = async (
+  options?: RequestInit,
+): Promise<BriefingSendResponse> => {
+  return customFetch<BriefingSendResponse>(getSendDailyBriefingUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getSendDailyBriefingMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof sendDailyBriefing>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof sendDailyBriefing>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["sendDailyBriefing"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof sendDailyBriefing>>,
+    void
+  > = () => {
+    return sendDailyBriefing(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SendDailyBriefingMutationResult = NonNullable<
+  Awaited<ReturnType<typeof sendDailyBriefing>>
+>;
+
+export type SendDailyBriefingMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Send the daily household briefing via WhatsApp to the admin
+ */
+export const useSendDailyBriefing = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof sendDailyBriefing>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof sendDailyBriefing>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getSendDailyBriefingMutationOptions(options));
 };

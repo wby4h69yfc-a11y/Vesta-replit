@@ -1151,3 +1151,20 @@ export const CompleteOnboardingBody = zod.object({
 export const CompleteOnboardingResponse = zod.object({
   success: zod.boolean(),
 });
+
+/**
+ * @summary Send the daily household briefing via WhatsApp to the admin
+ */
+export const SendDailyBriefingHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const SendDailyBriefingResponse = zod.object({
+  sent: zod.boolean(),
+  sid: zod.string().optional(),
+  eventsCount: zod.number().optional(),
+  tasksCount: zod.number().optional(),
+});

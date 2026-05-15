@@ -1,6 +1,7 @@
 import { db } from "@workspace/db";
-import { inboxItemsTable, suggestedActionsTable, contactsTable } from "@workspace/db";
+import { inboxItemsTable, suggestedActionsTable, contactsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { sendWhatsApp } from "./whatsapp";
 
 export type ClassificationResult = {
   category: string;
@@ -187,4 +188,18 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
     .update(inboxItemsTable)
     .set({ status: "ready_for_review" })
     .where(eq(inboxItemsTable.id, inboxItemId));
+
+  // Notify household admin when the action requires explicit approval
+  if (result.approval_level === "explicit") {
+    // Find admin phone — first user with a phone number
+    const users = await db.select().from(usersTable).limit(10);
+    const admin = users.find((u) => u.phone);
+    if (admin?.phone) {
+      const senderLabel = senderDisplayName ?? "alguém";
+      void sendWhatsApp(
+        admin.phone,
+        `📬 Nova mensagem de *${senderLabel}* para revisar no Vesta.`,
+      );
+    }
+  }
 }

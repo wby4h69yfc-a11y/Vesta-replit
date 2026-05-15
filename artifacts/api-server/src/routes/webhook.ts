@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { inboxItemsTable, contactsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { classifyAndSaveAction } from "../lib/classifier";
+import { sendWhatsApp, isTwilioConfigured } from "../lib/whatsapp";
 
 const router = Router();
 
@@ -98,6 +99,18 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
 
     req.log.info({ inboxItemId: item.id, sender: resolvedSenderName }, "WhatsApp message ingested");
 
+    // Fire acknowledgement back to sender (fire-and-forget — response already sent)
+    if (phoneRaw) {
+      void sendWhatsApp(
+        phoneRaw,
+        "✓ Mensagem recebida! Vou analisar e avisar você em breve.",
+      ).then((result) => {
+        if (!result.ok) {
+          req.log.warn({ error: result.error, phone: phoneRaw }, "ACK send failed");
+        }
+      });
+    }
+
     // Run classifier asynchronously so response was already sent
     await classifyAndSaveAction(item.id);
 
@@ -122,6 +135,7 @@ router.get("/webhook/whatsapp/info", async (req: Request, res: Response) => {
     method: "POST",
     description: "Configure este URL no console do Twilio como webhook de entrada para seu número WhatsApp Business.",
     status: primaryDomain ? "configured" : "needs_domain",
+    twilioConfigured: isTwilioConfigured(),
   });
 });
 
