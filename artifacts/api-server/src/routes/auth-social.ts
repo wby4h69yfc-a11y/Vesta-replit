@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { google } from "googleapis";
 import jwt from "jsonwebtoken";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, householdsTable } from "@workspace/db";
 import { eq, or } from "drizzle-orm";
 import {
   createSession,
@@ -44,6 +44,26 @@ function setNonceCookie(res: Response, nonce: string) {
 
 function clearNonceCookie(res: Response) {
   res.clearCookie(NONCE_COOKIE, { path: "/" });
+}
+
+/**
+ * Ensures the user has a household, creating one if needed.
+ * Returns the guaranteed non-null household_id.
+ */
+async function ensureHousehold(userId: string, existingHouseholdId: number | null | undefined): Promise<number> {
+  if (existingHouseholdId) return existingHouseholdId;
+
+  const [newHousehold] = await db
+    .insert(householdsTable)
+    .values({ name: "Minha Casa", plan: "free" })
+    .returning();
+
+  await db
+    .update(usersTable)
+    .set({ household_id: newHousehold.id })
+    .where(eq(usersTable.id, userId));
+
+  return newHousehold.id;
 }
 
 // ── Google Sign-In ────────────────────────────────────────────────────────────
@@ -121,7 +141,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
   let userFirst: string | null;
   let userLast: string | null;
   let userPic: string | null;
-  let userHouseholdId: number | null;
+  let rawHouseholdId: number | null | undefined;
 
   if (existing) {
     userId = existing.id;
@@ -129,7 +149,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     userFirst = existing.firstName ?? firstName ?? null;
     userLast = existing.lastName ?? lastName ?? null;
     userPic = existing.profileImageUrl ?? picture ?? null;
-    userHouseholdId = existing.household_id ?? null;
+    rawHouseholdId = existing.household_id;
     if (!existing.googleId) {
       await db
         .update(usersTable)
@@ -152,8 +172,11 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     userFirst = created.firstName ?? null;
     userLast = created.lastName ?? null;
     userPic = created.profileImageUrl ?? null;
-    userHouseholdId = created.household_id ?? null;
+    rawHouseholdId = created.household_id;
   }
+
+  // Ensure every user has a dedicated household at login time
+  const householdId = await ensureHousehold(userId, rawHouseholdId);
 
   const sid = await createSession({
     user: {
@@ -163,7 +186,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       firstName: userFirst,
       lastName: userLast,
       profileImageUrl: userPic,
-      household_id: userHouseholdId,
+      household_id: householdId,
       google_connected: false,
     },
     access_token: accessToken,
@@ -311,14 +334,14 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
   let userEmail: string | null;
   let userFirst: string | null;
   let userLast: string | null;
-  let userHouseholdId: number | null;
+  let rawHouseholdId: number | null | undefined;
 
   if (existing) {
     userId = existing.id;
     userEmail = existing.email ?? appleEmail ?? null;
     userFirst = existing.firstName ?? firstName ?? null;
     userLast = existing.lastName ?? lastName ?? null;
-    userHouseholdId = existing.household_id ?? null;
+    rawHouseholdId = existing.household_id;
     if (!existing.appleId) {
       await db
         .update(usersTable)
@@ -339,8 +362,11 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
     userEmail = created.email ?? null;
     userFirst = created.firstName ?? null;
     userLast = created.lastName ?? null;
-    userHouseholdId = created.household_id ?? null;
+    rawHouseholdId = created.household_id;
   }
+
+  // Ensure every user has a dedicated household at login time
+  const householdId = await ensureHousehold(userId, rawHouseholdId);
 
   const sid = await createSession({
     user: {
@@ -350,7 +376,7 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
       firstName: userFirst,
       lastName: userLast,
       profileImageUrl: null,
-      household_id: userHouseholdId,
+      household_id: householdId,
       google_connected: false,
     },
     access_token: "",

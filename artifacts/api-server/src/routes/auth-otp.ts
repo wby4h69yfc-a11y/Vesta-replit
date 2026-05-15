@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and, gt, isNull } from "drizzle-orm";
-import { db, otpCodesTable, usersTable } from "@workspace/db";
+import { db, otpCodesTable, usersTable, householdsTable } from "@workspace/db";
 import {
   createSession,
   SESSION_COOKIE,
@@ -130,7 +130,7 @@ router.post("/auth/otp/verify", async (req: Request, res: Response) => {
     .where(eq(otpCodesTable.id, otp.id));
 
   // Upsert user by phone — creates a new account on first login
-  const [user] = await db
+  let [user] = await db
     .insert(usersTable)
     .values({ phone })
     .onConflictDoUpdate({
@@ -138,6 +138,23 @@ router.post("/auth/otp/verify", async (req: Request, res: Response) => {
       set: { updatedAt: new Date() },
     })
     .returning();
+
+  // Ensure every user has a dedicated household at login time.
+  // This guarantees household isolation from the very first session.
+  let householdId = user.household_id;
+  if (!householdId) {
+    const [newHousehold] = await db
+      .insert(householdsTable)
+      .values({ name: "Minha Casa", plan: "free" })
+      .returning();
+    householdId = newHousehold.id;
+    const [updated] = await db
+      .update(usersTable)
+      .set({ household_id: householdId })
+      .where(eq(usersTable.id, user.id))
+      .returning();
+    user = updated;
+  }
 
   const sessionData: SessionData = {
     user: {
@@ -147,7 +164,7 @@ router.post("/auth/otp/verify", async (req: Request, res: Response) => {
       firstName: user.firstName ?? null,
       lastName: user.lastName ?? null,
       profileImageUrl: user.profileImageUrl ?? null,
-      household_id: user.household_id ?? null,
+      household_id: householdId,
     },
     access_token: "",
   };

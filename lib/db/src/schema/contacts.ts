@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 
 export const contactsTable = pgTable("contacts", {
   id: serial("id").primaryKey(),
-  household_id: integer("household_id").notNull().default(1),
+  household_id: integer("household_id").notNull(),
   name: text("name").notNull(),
   phone: text("phone"),
   whatsapp_id: text("whatsapp_id"),

@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 
 export const householdPlacesTable = pgTable("household_places", {
   id: serial("id").primaryKey(),
-  household_id: integer("household_id").notNull().default(1),
+  household_id: integer("household_id").notNull(),
   name: text("name").notNull(),
   category: text("category").notNull().default("other"),
   address: text("address"),
@@ -17,7 +17,7 @@ export const householdPlacesTable = pgTable("household_places", {
 
 export const householdRoutinesTable = pgTable("household_routines", {
   id: serial("id").primaryKey(),
-  household_id: integer("household_id").notNull().default(1),
+  household_id: integer("household_id").notNull(),
   name: text("name").notNull(),
   category: text("category").notNull().default("outros"),
   recurrence_pattern: jsonb("recurrence_pattern").notNull().$type<{
@@ -39,7 +39,7 @@ export const householdRoutinesTable = pgTable("household_routines", {
 
 export const householdPreferencesTable = pgTable("household_preferences", {
   id: serial("id").primaryKey(),
-  household_id: integer("household_id").notNull().default(1),
+  household_id: integer("household_id").notNull(),
   applies_to_member_id: integer("applies_to_member_id"),
   preference_type: text("preference_type").notNull(),
   preference_key: text("preference_key").notNull(),
@@ -54,7 +54,7 @@ export const householdPreferencesTable = pgTable("household_preferences", {
 
 export const memoryStagingTable = pgTable("memory_staging", {
   id: serial("id").primaryKey(),
-  household_id: integer("household_id").notNull().default(1),
+  household_id: integer("household_id").notNull(),
   target_table: text("target_table").notNull(),
   proposed_record: jsonb("proposed_record").notNull(),
   extracted_from_inbox_id: integer("extracted_from_inbox_id"),

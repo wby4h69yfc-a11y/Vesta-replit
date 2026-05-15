@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 
 export const calendarEventsTable = pgTable("calendar_events", {
   id: serial("id").primaryKey(),
-  household_id: integer("household_id").notNull().default(1),
+  household_id: integer("household_id").notNull(),
   title: text("title").notNull(),
   start_at: timestamp("start_at", { withTimezone: true }).notNull(),
   end_at: timestamp("end_at", { withTimezone: true }),
