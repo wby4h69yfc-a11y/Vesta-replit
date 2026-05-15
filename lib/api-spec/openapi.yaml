@@ -30,6 +30,8 @@ tags:
     description: Dashboard aggregates and summaries
   - name: patterns
     description: Pattern observations and suggestions
+  - name: briefing
+    description: Daily briefing operations
 
 paths:
   /auth/user:
@@ -1009,6 +1011,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  # ── Briefing ──────────────────────────────────────────────────────
+  /briefing/send:
+    post:
+      operationId: sendDailyBriefing
+      tags: [briefing]
+      summary: Send the daily household briefing via WhatsApp to the admin
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        "200":
+          description: Briefing sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BriefingSendResponse"
+        "400":
+          description: No admin phone configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: WhatsApp send failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -1733,3 +1764,16 @@ components:
           nullable: true
           allOf:
             - $ref: "#/components/schemas/AuthUser"
+
+    BriefingSendResponse:
+      type: object
+      required: [sent]
+      properties:
+        sent:
+          type: boolean
+        sid:
+          type: string
+        eventsCount:
+          type: integer
+        tasksCount:
+          type: integer

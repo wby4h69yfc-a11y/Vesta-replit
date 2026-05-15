@@ -5,6 +5,7 @@ import {
   Home, Baby, Heart, Lock, Bell, Key, HelpCircle, LogOut,
   Sparkles, CheckCircle, Clock, AlertCircle, X,
   CalendarDays, Mail, RefreshCw, Unlink, ExternalLink,
+  MessageCircle, Copy, Check,
 } from "lucide-react";
 import { useGetHousehold } from "@workspace/api-client-react";
 
@@ -44,6 +45,66 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
   );
 }
 
+/* ── WhatsApp Setup Banner ───────────────────────────── */
+type WebhookInfo = {
+  webhook_url: string | null;
+  method: string;
+  status: string;
+  twilioConfigured: boolean;
+};
+
+function WhatsAppSetupBanner() {
+  const [info, setInfo] = useState<WebhookInfo | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/webhook/whatsapp/info", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d: WebhookInfo) => setInfo(d))
+      .catch(() => null);
+  }, []);
+
+  if (!info || info.twilioConfigured) return null;
+
+  async function copyUrl() {
+    if (!info?.webhook_url) return;
+    await navigator.clipboard.writeText(info.webhook_url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="p-4 rounded-2xl mb-6" style={{ background: "#FEF3C7", border: "1px solid rgba(245,158,11,0.2)" }}>
+      <div className="flex items-start gap-3">
+        <MessageCircle className="h-5 w-5 shrink-0 mt-0.5" style={{ color: "#D97706" }} />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold mb-1" style={{ color: "#92400E" }}>
+            WhatsApp não configurado
+          </p>
+          <p className="text-xs mb-3" style={{ color: "#92400E" }}>
+            Configure o Twilio para receber e enviar mensagens. Cole este URL como webhook no console do Twilio (Messaging → Active Numbers → When a message comes in):
+          </p>
+          {info.webhook_url && (
+            <div className="flex items-center gap-2 p-2.5 rounded-xl" style={{ background: "rgba(245,158,11,0.1)" }}>
+              <code className="flex-1 text-xs break-all" style={{ color: "#78350F" }}>
+                {info.webhook_url}
+              </code>
+              <button onClick={() => void copyUrl()}
+                className="shrink-0 p-1.5 rounded-lg transition-colors"
+                style={{ background: copied ? "#D1FAE5" : "rgba(245,158,11,0.2)" }}
+                title="Copiar URL">
+                {copied
+                  ? <Check className="h-3.5 w-3.5" style={{ color: "#065F46" }} />
+                  : <Copy className="h-3.5 w-3.5" style={{ color: "#92400E" }} />}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Início tab ──────────────────────────────────────── */
 function InicioTab() {
   const { data: household } = useGetHousehold();
@@ -61,6 +122,9 @@ function InicioTab() {
 
   return (
     <div className="space-y-6 py-6">
+      {/* WhatsApp setup banner */}
+      <WhatsAppSetupBanner />
+
       {/* Household card */}
       {household && (
         <div className="p-5 rounded-3xl flex items-center gap-4"

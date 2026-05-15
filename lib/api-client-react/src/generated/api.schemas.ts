@@ -653,6 +653,13 @@ export interface VerifyOtpResponse {
   user?: AuthUser | null;
 }
 
+export interface BriefingSendResponse {
+  sent: boolean;
+  sid?: string;
+  eventsCount?: number;
+  tasksCount?: number;
+}
+
 /**
  * Opaque session token — `Bearer <sid>`.
  */

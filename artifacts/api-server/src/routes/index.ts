@@ -15,6 +15,7 @@ import onboardingRouter from "./onboarding";
 import authOtpRouter from "./auth-otp";
 import googleRouter from "./google";
 import authSocialRouter from "./auth-social";
+import briefingRouter from "./briefing";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(onboardingRouter);
 router.use(authOtpRouter);
 router.use(googleRouter);
 router.use(authSocialRouter);
+router.use(briefingRouter);
 
 export default router;
