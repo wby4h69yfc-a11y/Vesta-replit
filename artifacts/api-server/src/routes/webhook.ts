@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { inboxItemsTable, contactsTable, membersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { classifyAndSaveAction } from "../lib/classifier";
 import { sendWhatsApp, isTwilioConfigured } from "../lib/whatsapp";
 
@@ -122,6 +122,24 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         "WhatsApp webhook: empty body and no media — skipping",
       );
       return;
+    }
+
+    // Deduplicate: Twilio may retry on timeout; skip if we already ingested
+    // this MessageSid to prevent duplicate inbox items.
+    if (MessageSid) {
+      const [existing] = await db
+        .select({ id: inboxItemsTable.id })
+        .from(inboxItemsTable)
+        .where(and(eq(inboxItemsTable.twilio_message_sid, MessageSid)))
+        .limit(1);
+
+      if (existing) {
+        req.log.info(
+          { MessageSid },
+          "Webhook: duplicate MessageSid — already ingested, skipping",
+        );
+        return;
+      }
     }
 
     // Strip the "whatsapp:" prefix from From number
