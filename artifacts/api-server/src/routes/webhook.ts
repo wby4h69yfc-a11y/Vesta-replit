@@ -8,6 +8,48 @@ import { sendWhatsApp, isTwilioConfigured } from "../lib/whatsapp";
 const router = Router();
 
 /**
+ * Validates the X-Twilio-Signature HMAC header to confirm the POST came from
+ * Twilio, not an impersonator.
+ *
+ * Twilio computes HMAC-SHA1 over (URL + sorted key=value pairs) using the
+ * account's auth token. We recompute the same digest and compare.
+ *
+ * In development with no TWILIO_AUTH_TOKEN set we log a warning and permit
+ * the request so local curl-based testing works. In production the env var
+ * MUST be set — any request without a valid signature will be rejected.
+ */
+async function validateTwilioSignature(req: Request): Promise<boolean> {
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+  if (!authToken) {
+    req.log.warn(
+      "TWILIO_AUTH_TOKEN not set — skipping webhook signature check (dev only)",
+    );
+    return true; // permit in dev; blocked in prod by the env-var guard above
+  }
+
+  const signature = (req.headers["x-twilio-signature"] ?? "") as string;
+  if (!signature) {
+    req.log.warn("Webhook: missing X-Twilio-Signature header");
+    return false;
+  }
+
+  // Reconstruct the full public URL Twilio signed.
+  // In production REPLIT_DOMAINS is set; fall back to forwarded host in other envs.
+  const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
+  const proto = req.headers["x-forwarded-proto"] ?? "https";
+  const host = req.headers["x-forwarded-host"] ?? req.headers["host"] ?? "localhost";
+  const webhookUrl = domain
+    ? `https://${domain}/api/webhook/whatsapp`
+    : `${proto}://${host}/api/webhook/whatsapp`;
+
+  // Twilio SDK's validateRequest performs the HMAC-SHA1 comparison.
+  const { validateRequest } = await import("twilio");
+  const params = (req.body ?? {}) as Record<string, string>;
+  return validateRequest(authToken, signature, webhookUrl, params);
+}
+
+/**
  * Twilio WhatsApp inbound webhook.
  *
  * Configure in Twilio Console → Messaging → Active Numbers → Webhook:
@@ -21,19 +63,32 @@ const router = Router();
  *   NumMedia    — count of media attachments
  *   MessageSid  — unique Twilio message ID
  *
- * The webhook always returns a 200 with empty TwiML so Twilio doesn't retry.
- * Classification happens async after the response is sent.
+ * Security: requests are validated against the X-Twilio-Signature HMAC before
+ * any database read or write is performed. Spoofed requests receive 403 and
+ * are logged but do not reach the ingestion path.
  *
  * Household routing: the sender's phone number is matched against known
  * contacts and members to identify which household should receive the
  * message. Unknown senders are discarded to prevent cross-tenant pollution.
  */
 router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
-  // Always ACK Twilio immediately — never let it time out
+  // ── 1. Authenticate the request before touching the DB ─────────────────────
+  const isValid = await validateTwilioSignature(req);
+  if (!isValid) {
+    req.log.warn(
+      { ip: req.ip },
+      "Webhook: invalid Twilio signature — request rejected",
+    );
+    res.status(403).send("Forbidden");
+    return;
+  }
+
+  // ── 2. ACK Twilio immediately so it never retries due to a timeout ─────────
   const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`;
   res.set("Content-Type", "text/xml");
   res.status(200).send(twiml);
 
+  // ── 3. Process the message asynchronously (response already sent) ───────────
   try {
     const {
       From,
@@ -53,7 +108,10 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
 
     // Require at least some content
     if (!Body && !MediaUrl0) {
-      req.log.info({ MessageSid }, "WhatsApp webhook: empty body and no media — skipping");
+      req.log.info(
+        { MessageSid },
+        "WhatsApp webhook: empty body and no media — skipping",
+      );
       return;
     }
 
@@ -65,18 +123,23 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       return;
     }
 
-    // Normalize: last 8 digits for loose matching across country code formats
+    // Normalise: last 8 digits for loose matching across country-code formats
     const normalized = (p: string) => p.replace(/\D/g, "").slice(-8);
     const phoneNorm = normalized(phoneRaw);
 
-    // ── Resolve household from sender phone ────────────────────────────────
+    // ── Resolve household from sender phone ──────────────────────────────────
     // Priority: contacts table (explicit contact), then members table (household adults)
     let householdId: number | null = null;
     let resolvedSenderName: string | null = ProfileName ?? null;
 
-    // 1. Search contacts
+    // 1. Search contacts across all households
     const allContacts = await db
-      .select({ id: contactsTable.id, name: contactsTable.name, phone: contactsTable.phone, household_id: contactsTable.household_id })
+      .select({
+        id: contactsTable.id,
+        name: contactsTable.name,
+        phone: contactsTable.phone,
+        household_id: contactsTable.household_id,
+      })
       .from(contactsTable);
 
     const matchedContact = allContacts.find(
@@ -86,11 +149,18 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     if (matchedContact) {
       householdId = matchedContact.household_id;
       resolvedSenderName = matchedContact.name;
-      req.log.info({ contact: matchedContact.name, householdId }, "Webhook: matched sender to contact");
+      req.log.info(
+        { contact: matchedContact.name, householdId },
+        "Webhook: matched sender to contact",
+      );
     } else {
       // 2. Search members as fallback
       const allMembers = await db
-        .select({ name: membersTable.name, phone: membersTable.phone, household_id: membersTable.household_id })
+        .select({
+          name: membersTable.name,
+          phone: membersTable.phone,
+          household_id: membersTable.household_id,
+        })
         .from(membersTable);
 
       const matchedMember = allMembers.find(
@@ -100,14 +170,21 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       if (matchedMember) {
         householdId = matchedMember.household_id;
         resolvedSenderName = matchedMember.name;
-        req.log.info({ member: matchedMember.name, householdId }, "Webhook: matched sender to member");
+        req.log.info(
+          { member: matchedMember.name, householdId },
+          "Webhook: matched sender to member",
+        );
       }
     }
 
-    // Discard messages from unrecognised senders to prevent cross-tenant pollution.
-    // The household admin must first add the sender's number as a contact.
+    // Discard messages from unrecognised senders to prevent cross-tenant
+    // pollution. The household admin must first add the sender's number as a
+    // contact before messages are ingested.
     if (!householdId) {
-      req.log.warn({ phone: phoneRaw, ProfileName }, "Webhook: unknown sender — discarding to prevent cross-tenant pollution");
+      req.log.warn(
+        { phone: phoneRaw, ProfileName },
+        "Webhook: unknown sender — discarding to prevent cross-tenant pollution",
+      );
       return;
     }
 
@@ -130,7 +207,10 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       })
       .returning();
 
-    req.log.info({ inboxItemId: item.id, sender: resolvedSenderName, householdId }, "WhatsApp message ingested");
+    req.log.info(
+      { inboxItemId: item.id, sender: resolvedSenderName, householdId },
+      "WhatsApp message ingested",
+    );
 
     // Fire acknowledgement back to sender (fire-and-forget — response already sent)
     void sendWhatsApp(
@@ -138,7 +218,10 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       "✓ Mensagem recebida! Vou analisar e avisar você em breve.",
     ).then((result) => {
       if (!result.ok) {
-        req.log.warn({ error: result.error, phone: phoneRaw }, "ACK send failed");
+        req.log.warn(
+          { error: result.error, phone: phoneRaw },
+          "ACK send failed",
+        );
       }
     });
 
@@ -155,19 +238,25 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
 /**
  * GET /api/webhook/whatsapp — returns webhook info for the settings UI.
  */
-router.get("/webhook/whatsapp/info", async (req: Request, res: Response) => {
-  const domains = (process.env.REPLIT_DOMAINS ?? "").split(",").filter(Boolean);
-  const primaryDomain = domains[0] ?? null;
+router.get(
+  "/webhook/whatsapp/info",
+  async (req: Request, res: Response) => {
+    const domains = (process.env.REPLIT_DOMAINS ?? "")
+      .split(",")
+      .filter(Boolean);
+    const primaryDomain = domains[0] ?? null;
 
-  res.json({
-    webhook_url: primaryDomain
-      ? `https://${primaryDomain}/api/webhook/whatsapp`
-      : null,
-    method: "POST",
-    description: "Configure este URL no console do Twilio como webhook de entrada para seu número WhatsApp Business.",
-    status: primaryDomain ? "configured" : "needs_domain",
-    twilioConfigured: isTwilioConfigured(),
-  });
-});
+    res.json({
+      webhook_url: primaryDomain
+        ? `https://${primaryDomain}/api/webhook/whatsapp`
+        : null,
+      method: "POST",
+      description:
+        "Configure este URL no console do Twilio como webhook de entrada para seu número WhatsApp Business.",
+      status: primaryDomain ? "configured" : "needs_domain",
+      twilioConfigured: isTwilioConfigured(),
+    });
+  },
+);
 
 export default router;
