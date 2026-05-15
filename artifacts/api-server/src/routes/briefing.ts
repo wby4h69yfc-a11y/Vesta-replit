@@ -25,27 +25,32 @@ router.post("/briefing/send", async (req: Request, res: Response) => {
     const todayEnd = new Date(now);
     todayEnd.setHours(23, 59, 59, 999);
 
-    // Fetch today's events
+    // Use single-tenant household id; when multi-household is added this should be
+    // resolved from req.user → household membership.
+    const householdId = 1;
+
+    // Fetch today's events scoped to this household
     const events = await db
       .select()
       .from(calendarEventsTable)
       .where(
         and(
+          eq(calendarEventsTable.household_id, householdId),
           gte(calendarEventsTable.start_at, todayStart),
           lte(calendarEventsTable.start_at, todayEnd),
         ),
       );
 
-    // Fetch pending tasks
+    // Fetch pending tasks scoped to this household
     const tasks = await db
       .select()
       .from(tasksTable)
-      .where(eq(tasksTable.status, "pending"));
-
-    // Resolve the primary admin phone for the household.
-    // Use household 1 (current single-tenant default); falls back to req.user.phone
-    // if the admin member record has no phone registered yet.
-    const householdId = 1;
+      .where(
+        and(
+          eq(tasksTable.household_id, householdId),
+          eq(tasksTable.status, "pending"),
+        ),
+      );
     let adminPhone: string | null = await resolveHouseholdAdminPhone(householdId);
     if (!adminPhone) {
       adminPhone = req.user.phone ?? null;
