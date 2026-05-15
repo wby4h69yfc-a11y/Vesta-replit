@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { inboxItemsTable, contactsTable } from "@workspace/db";
+import { inboxItemsTable, contactsTable, membersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { classifyAndSaveAction } from "../lib/classifier";
 import { sendWhatsApp, isTwilioConfigured } from "../lib/whatsapp";
@@ -23,6 +23,10 @@ const router = Router();
  *
  * The webhook always returns a 200 with empty TwiML so Twilio doesn't retry.
  * Classification happens async after the response is sent.
+ *
+ * Household routing: the sender's phone number is matched against known
+ * contacts and members to identify which household should receive the
+ * message. Unknown senders are discarded to prevent cross-tenant pollution.
  */
 router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
   // Always ACK Twilio immediately — never let it time out
@@ -56,26 +60,55 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     // Strip the "whatsapp:" prefix from From number
     const phoneRaw = From?.replace(/^whatsapp:/i, "").trim() ?? null;
 
-    // Look up sender in contacts by phone number or profile name
+    if (!phoneRaw) {
+      req.log.warn({ MessageSid }, "WhatsApp webhook: no sender phone — discarding");
+      return;
+    }
+
+    // Normalize: last 8 digits for loose matching across country code formats
+    const normalized = (p: string) => p.replace(/\D/g, "").slice(-8);
+    const phoneNorm = normalized(phoneRaw);
+
+    // ── Resolve household from sender phone ────────────────────────────────
+    // Priority: contacts table (explicit contact), then members table (household adults)
+    let householdId: number | null = null;
     let resolvedSenderName: string | null = ProfileName ?? null;
 
-    if (phoneRaw) {
-      // Normalize: strip country code formatting for loose matching
-      const contacts = await db
-        .select()
-        .from(contactsTable)
-        .where(eq(contactsTable.household_id, 1));
+    // 1. Search contacts
+    const allContacts = await db
+      .select({ id: contactsTable.id, name: contactsTable.name, phone: contactsTable.phone, household_id: contactsTable.household_id })
+      .from(contactsTable);
 
-      const normalized = (p: string) => p.replace(/\D/g, "").slice(-8);
-      const phoneNorm = normalized(phoneRaw);
+    const matchedContact = allContacts.find(
+      (c) => c.phone && normalized(c.phone) === phoneNorm,
+    );
 
-      const match = contacts.find(
-        (c) => c.phone && normalized(c.phone) === phoneNorm,
+    if (matchedContact) {
+      householdId = matchedContact.household_id;
+      resolvedSenderName = matchedContact.name;
+      req.log.info({ contact: matchedContact.name, householdId }, "Webhook: matched sender to contact");
+    } else {
+      // 2. Search members as fallback
+      const allMembers = await db
+        .select({ name: membersTable.name, phone: membersTable.phone, household_id: membersTable.household_id })
+        .from(membersTable);
+
+      const matchedMember = allMembers.find(
+        (m) => m.phone && normalized(m.phone) === phoneNorm,
       );
-      if (match) {
-        resolvedSenderName = match.name;
-        req.log.info({ contact: match.name }, "Matched WhatsApp sender to contact");
+
+      if (matchedMember) {
+        householdId = matchedMember.household_id;
+        resolvedSenderName = matchedMember.name;
+        req.log.info({ member: matchedMember.name, householdId }, "Webhook: matched sender to member");
       }
+    }
+
+    // Discard messages from unrecognised senders to prevent cross-tenant pollution.
+    // The household admin must first add the sender's number as a contact.
+    if (!householdId) {
+      req.log.warn({ phone: phoneRaw, ProfileName }, "Webhook: unknown sender — discarding to prevent cross-tenant pollution");
+      return;
     }
 
     // Determine source and media
@@ -83,11 +116,11 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     const source = hasMedia ? "photo" : "whatsapp";
     const rawContent = Body?.trim() ?? "(mídia recebida)";
 
-    // Create inbox item
+    // Create inbox item scoped to the resolved household
     const [item] = await db
       .insert(inboxItemsTable)
       .values({
-        household_id: 1,
+        household_id: householdId,
         source,
         raw_content: rawContent,
         media_url: MediaUrl0 ?? null,
@@ -97,19 +130,17 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       })
       .returning();
 
-    req.log.info({ inboxItemId: item.id, sender: resolvedSenderName }, "WhatsApp message ingested");
+    req.log.info({ inboxItemId: item.id, sender: resolvedSenderName, householdId }, "WhatsApp message ingested");
 
     // Fire acknowledgement back to sender (fire-and-forget — response already sent)
-    if (phoneRaw) {
-      void sendWhatsApp(
-        phoneRaw,
-        "✓ Mensagem recebida! Vou analisar e avisar você em breve.",
-      ).then((result) => {
-        if (!result.ok) {
-          req.log.warn({ error: result.error, phone: phoneRaw }, "ACK send failed");
-        }
-      });
-    }
+    void sendWhatsApp(
+      phoneRaw,
+      "✓ Mensagem recebida! Vou analisar e avisar você em breve.",
+    ).then((result) => {
+      if (!result.ok) {
+        req.log.warn({ error: result.error, phone: phoneRaw }, "ACK send failed");
+      }
+    });
 
     // Run classifier asynchronously so response was already sent
     await classifyAndSaveAction(item.id);

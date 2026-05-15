@@ -5,7 +5,7 @@ import { z } from "zod/v4";
 export const suggestedActionsTable = pgTable("suggested_actions", {
   id: serial("id").primaryKey(),
   inbox_item_id: integer("inbox_item_id").notNull(),
-  household_id: integer("household_id").notNull().default(1),
+  household_id: integer("household_id").notNull(),
   category: text("category").notNull().default("outros"),
   type: text("type").notNull().default("task"),
   title: text("title").notNull(),

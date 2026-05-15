@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { requireAuth } from "../middlewares/authMiddleware";
+import { requireAuth, requireHousehold } from "../middlewares/authMiddleware";
 import healthRouter from "./health";
 import authRouter from "./auth";
 import authOtpRouter from "./auth-otp";
@@ -27,10 +27,12 @@ router.use(authOtpRouter);
 router.use(authSocialRouter);
 router.use(webhookRouter);
 
-// ── Protected routes (session required) ───────────────────────────────────────
-// requireAuth returns 401 for any request without a valid session.
+// ── Protected routes (session required + household assigned) ───────────────────
+// requireAuth: returns 401 for unauthenticated requests
+// requireHousehold: returns 409 for authenticated users without a household
 const protectedRouter: IRouter = Router();
 protectedRouter.use(requireAuth);
+protectedRouter.use(requireHousehold);
 protectedRouter.use(dashboardRouter);
 protectedRouter.use(inboxRouter);
 protectedRouter.use(actionsRouter);

@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 
 export const inboxItemsTable = pgTable("inbox_items", {
   id: serial("id").primaryKey(),
-  household_id: integer("household_id").notNull().default(1),
+  household_id: integer("household_id").notNull(),
   source: text("source").notNull().default("manual"),
   raw_content: text("raw_content").notNull(),
   media_url: text("media_url"),

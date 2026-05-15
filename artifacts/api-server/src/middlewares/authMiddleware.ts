@@ -42,6 +42,31 @@ export function requireAuth(
   next();
 }
 
+/**
+ * Middleware that rejects requests from authenticated users who have not yet
+ * been assigned a household. Returns 409 so the client can redirect to
+ * onboarding.
+ *
+ * Must run after requireAuth.
+ * Every login path now creates a household atomically, so this guard is a
+ * defence-in-depth safety net for edge cases (e.g. legacy sessions created
+ * before household isolation was introduced).
+ */
+export function requireHousehold(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  if (!req.user?.household_id) {
+    res.status(409).json({
+      error: "Configuração da conta incompleta — complete o cadastro primeiro",
+      code: "NO_HOUSEHOLD",
+    });
+    return;
+  }
+  next();
+}
+
 async function refreshIfExpired(
   sid: string,
   session: SessionData,

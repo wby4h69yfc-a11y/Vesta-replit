@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 
 export const tasksTable = pgTable("tasks", {
   id: serial("id").primaryKey(),
-  household_id: integer("household_id").notNull().default(1),
+  household_id: integer("household_id").notNull(),
   title: text("title").notNull(),
   owner_id: integer("owner_id"),
   due_at: timestamp("due_at", { withTimezone: true }),

@@ -6,7 +6,8 @@ import {
   ExchangeMobileAuthorizationCodeResponse,
   LogoutMobileSessionResponse,
 } from "@workspace/api-zod";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, householdsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import {
   clearSession,
   getOidcConfig,
@@ -80,6 +81,26 @@ async function upsertUser(claims: Record<string, unknown>) {
     })
     .returning();
   return user;
+}
+
+/**
+ * Ensures the user has a dedicated household, creating one if needed.
+ * Returns the guaranteed non-null household_id.
+ */
+async function ensureHousehold(userId: string, existingHouseholdId: number | null | undefined): Promise<number> {
+  if (existingHouseholdId) return existingHouseholdId;
+
+  const [newHousehold] = await db
+    .insert(householdsTable)
+    .values({ name: "Minha Casa", plan: "free" })
+    .returning();
+
+  await db
+    .update(usersTable)
+    .set({ household_id: newHousehold.id })
+    .where(eq(usersTable.id, userId));
+
+  return newHousehold.id;
 }
 
 router.get("/auth/user", (req: Request, res: Response) => {
@@ -168,6 +189,9 @@ router.get("/callback", async (req: Request, res: Response) => {
     claims as unknown as Record<string, unknown>,
   );
 
+  // Ensure every user has a dedicated household at login time
+  const householdId = await ensureHousehold(dbUser.id, dbUser.household_id);
+
   const now = Math.floor(Date.now() / 1000);
   const sessionData: SessionData = {
     user: {
@@ -176,7 +200,7 @@ router.get("/callback", async (req: Request, res: Response) => {
       firstName: dbUser.firstName,
       lastName: dbUser.lastName,
       profileImageUrl: dbUser.profileImageUrl,
-      household_id: dbUser.household_id ?? null,
+      household_id: householdId,
     },
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
@@ -239,6 +263,9 @@ router.post(
         claims as unknown as Record<string, unknown>,
       );
 
+      // Ensure every user has a dedicated household at login time
+      const householdId = await ensureHousehold(dbUser.id, dbUser.household_id);
+
       const now = Math.floor(Date.now() / 1000);
       const sessionData: SessionData = {
         user: {
@@ -247,7 +274,7 @@ router.post(
           firstName: dbUser.firstName,
           lastName: dbUser.lastName,
           profileImageUrl: dbUser.profileImageUrl,
-          household_id: dbUser.household_id ?? null,
+          household_id: householdId,
         },
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,

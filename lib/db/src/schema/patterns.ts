@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 
 export const patternObservationsTable = pgTable("pattern_observations", {
   id: serial("id").primaryKey(),
-  household_id: integer("household_id").notNull().default(1),
+  household_id: integer("household_id").notNull(),
   type: text("type").notNull(),
   description: text("description").notNull(),
   occurrences: integer("occurrences").notNull().default(1),

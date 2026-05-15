@@ -2,39 +2,57 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { eq } from "drizzle-orm";
 import { db, onboardingStateTable, membersTable, householdsTable, usersTable } from "@workspace/db";
 import { CompleteOnboardingBody } from "@workspace/api-zod";
-import { getSessionId, getSession, updateSession } from "../lib/auth";
+import { getHouseholdId } from "../lib/tenant";
 
 const router: IRouter = Router();
 
+/**
+ * GET /api/onboarding/state
+ *
+ * Returns (or creates) the onboarding state record for the current user.
+ * requireAuth + requireHousehold middleware guarantee req.user.household_id is set.
+ */
 router.get("/onboarding/state", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
-  const userId = req.user.id;
-  const householdId = req.user.household_id ?? 1;
+  try {
+    const userId = req.user.id;
+    const householdId = getHouseholdId(req);
 
-  let [state] = await db
-    .select()
-    .from(onboardingStateTable)
-    .where(eq(onboardingStateTable.user_id, userId));
+    let [state] = await db
+      .select()
+      .from(onboardingStateTable)
+      .where(eq(onboardingStateTable.user_id, userId));
 
-  if (!state) {
-    [state] = await db
-      .insert(onboardingStateTable)
-      .values({
-        user_id: userId,
-        household_id: householdId,
-        current_step: 0,
-        completed: false,
-      })
-      .returning();
+    if (!state) {
+      [state] = await db
+        .insert(onboardingStateTable)
+        .values({
+          user_id: userId,
+          household_id: householdId,
+          current_step: 0,
+          completed: false,
+        })
+        .returning();
+    }
+
+    res.json({ state });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get onboarding state");
+    res.status(500).json({ error: "Internal server error" });
   }
-
-  res.json({ state });
 });
 
+/**
+ * POST /api/onboarding/complete
+ *
+ * Marks onboarding as complete. Renames the household and creates the
+ * primary member record. The household was already created atomically
+ * at login time, so no household creation is needed here.
+ */
 router.post("/onboarding/complete", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
@@ -48,83 +66,81 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
     return;
   }
 
-  const {
-    display_name,
-    composition,
-    pain_points,
-    whatsapp_phone,
-    whatsapp_verified,
-    calendar_connected,
-  } = parsed.data;
+  try {
+    const {
+      display_name,
+      composition,
+      pain_points,
+      whatsapp_phone,
+      whatsapp_verified,
+      calendar_connected,
+    } = parsed.data;
 
-  // Resolve or create the user's household
-  let householdId: number = req.user.household_id ?? 0;
+    const householdId = getHouseholdId(req);
 
-  if (!householdId) {
-    // Create a dedicated household for this user
-    const householdName = display_name
-      ? `Casa de ${display_name}`
-      : "Minha Casa";
-    const [newHousehold] = await db
-      .insert(householdsTable)
-      .values({ name: householdName, plan: "free" })
-      .returning();
-    householdId = newHousehold.id;
-
-    // Link the user to their new household
-    await db
-      .update(usersTable)
-      .set({ household_id: householdId })
-      .where(eq(usersTable.id, userId));
-
-    // Propagate into the current session so future requests see the correct hid
-    const sid = getSessionId(req);
-    if (sid) {
-      const session = await getSession(sid);
-      if (session) {
-        await updateSession(sid, {
-          ...session,
-          user: { ...session.user, household_id: householdId },
-        });
-      }
+    // Rename the household now that we know the user's preferred name
+    if (display_name) {
+      await db
+        .update(householdsTable)
+        .set({ name: `Casa de ${display_name}` })
+        .where(eq(householdsTable.id, householdId));
     }
+
+    // Mark onboarding complete
+    const updated = await db
+      .update(onboardingStateTable)
+      .set({
+        completed: true,
+        current_step: 7,
+        household_id: householdId,
+        composition: composition ?? null,
+        pain_points: pain_points ?? [],
+        whatsapp_verified: whatsapp_verified ?? false,
+        calendar_connected: calendar_connected ?? false,
+        updated_at: new Date(),
+      })
+      .where(eq(onboardingStateTable.user_id, userId));
+
+    if (!updated.rowCount) {
+      // No row existed yet — insert it
+      await db.insert(onboardingStateTable).values({
+        user_id: userId,
+        household_id: householdId,
+        completed: true,
+        current_step: 7,
+        composition: composition ?? null,
+        pain_points: pain_points ?? [],
+        whatsapp_verified: whatsapp_verified ?? false,
+        calendar_connected: calendar_connected ?? false,
+      });
+    }
+
+    const memberName =
+      display_name ?? req.user.firstName ?? req.user.email ?? "Você";
+
+    // Create primary member if one doesn't exist yet for this household
+    const [existing] = await db
+      .select()
+      .from(membersTable)
+      .where(eq(membersTable.household_id, householdId))
+      .limit(1);
+
+    if (!existing) {
+      await db.insert(membersTable).values({
+        household_id: householdId,
+        name: memberName,
+        display_name: memberName,
+        role: "admin",
+        relationship_type: "adult",
+        phone: whatsapp_phone ?? null,
+      });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to complete onboarding");
+    res.status(500).json({ error: "Internal server error" });
   }
-
-  await db
-    .update(onboardingStateTable)
-    .set({
-      completed: true,
-      current_step: 7,
-      household_id: householdId,
-      composition: composition ?? null,
-      pain_points: pain_points ?? [],
-      whatsapp_verified: whatsapp_verified ?? false,
-      calendar_connected: calendar_connected ?? false,
-      updated_at: new Date(),
-    })
-    .where(eq(onboardingStateTable.user_id, userId));
-
-  const memberName =
-    display_name ?? req.user.firstName ?? req.user.email ?? "Você";
-
-  const [existing] = await db
-    .select()
-    .from(membersTable)
-    .where(eq(membersTable.household_id, householdId))
-    .limit(1);
-
-  if (!existing) {
-    await db.insert(membersTable).values({
-      household_id: householdId,
-      name: memberName,
-      display_name: memberName,
-      role: "admin",
-      relationship_type: "adult",
-      phone: whatsapp_phone ?? null,
-    });
-  }
-
-  res.json({ success: true });
 });
 
 export default router;
