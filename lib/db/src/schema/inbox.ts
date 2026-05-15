@@ -1,19 +1,30 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { sql } from "drizzle-orm";
 
-export const inboxItemsTable = pgTable("inbox_items", {
-  id: serial("id").primaryKey(),
-  household_id: integer("household_id").notNull(),
-  source: text("source").notNull().default("manual"),
-  raw_content: text("raw_content").notNull(),
-  media_url: text("media_url"),
-  status: text("status").notNull().default("received"),
-  sender_name: text("sender_name"),
-  twilio_message_sid: text("twilio_message_sid"),
-  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+export const inboxItemsTable = pgTable(
+  "inbox_items",
+  {
+    id: serial("id").primaryKey(),
+    household_id: integer("household_id").notNull(),
+    source: text("source").notNull().default("manual"),
+    raw_content: text("raw_content").notNull(),
+    media_url: text("media_url"),
+    status: text("status").notNull().default("received"),
+    sender_name: text("sender_name"),
+    twilio_message_sid: text("twilio_message_sid"),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    // Partial unique index: enforces one row per Twilio MessageSid while
+    // allowing NULL (non-Twilio messages) without conflict.
+    uniqueIndex("inbox_items_twilio_message_sid_unique")
+      .on(table.twilio_message_sid)
+      .where(sql`${table.twilio_message_sid} IS NOT NULL`),
+  ],
+);
 
 export const insertInboxItemSchema = createInsertSchema(inboxItemsTable).omit({ id: true, created_at: true, updated_at: true });
 export type InsertInboxItem = z.infer<typeof insertInboxItemSchema>;
