@@ -31,7 +31,7 @@ Production assumptions for this scan:
 
 - **Production entry points:** `artifacts/api-server/src/index.ts`, `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/*.ts`, `artifacts/vesta/src/App.tsx`.
 - **Highest-risk code areas:** `artifacts/api-server/src/routes/` (authz and public routes), `artifacts/api-server/src/routes/webhook.ts`, `artifacts/api-server/src/routes/auth*.ts`, `artifacts/api-server/src/routes/google.ts`, `artifacts/api-server/src/lib/classifier.ts`, `lib/db/src/schema/*`.
-- **Public vs authenticated surfaces:** routes are public by default because `authMiddleware` only attaches `req.user`; route handlers must explicitly call `req.isAuthenticated()`.
+- **Public vs authenticated surfaces:** business routes are currently mounted behind a protected router that applies `requireAuth` and `requireHousehold`; the main public surfaces that still need careful review are auth routes, OTP routes, social-login callbacks, Google integration callbacks, and the Twilio webhook.
 - **Dev-only surface usually ignored:** `artifacts/mockup-sandbox/**`.
 
 ## Threat Categories
@@ -44,6 +44,7 @@ Required guarantees:
 - Protected API routes MUST require a valid authenticated session or equivalent bearer token.
 - OTP login MUST rate-limit issuance and verification attempts strongly enough to prevent account takeover.
 - Public webhook and callback endpoints MUST validate provider signatures or token proofs before trusting inbound data.
+- OAuth `state` and similar callback correlation values MUST NOT be live bearer credentials or account selectors, and callback results MUST be bound to the initiating authenticated user.
 
 ### Tampering
 
@@ -53,6 +54,7 @@ Required guarantees:
 - Every state-changing household route MUST enforce authentication and household membership server-side.
 - Business objects MUST be written with the correct household/user scope rather than relying on implicit defaults.
 - External inbound data MUST be authenticated before it can create inbox items, tasks, events, or suggested actions.
+- Webhook sender identity MUST be matched using exact normalized identifiers rather than lossy partial-phone comparisons that can collide across households.
 
 ### Information Disclosure
 
@@ -71,6 +73,7 @@ Required guarantees:
 - Public authentication and webhook endpoints MUST enforce rate limits and request validation.
 - Expensive external sync and classification paths MUST only be triggerable by authorized users or verified providers.
 - Request bodies and loops over imported data MUST remain bounded enough to prevent trivial resource exhaustion.
+- Re-triggerable outbound messaging and sync endpoints MUST enforce idempotency and/or rate limits so one authenticated user cannot spam household admins or repeatedly import the same third-party data.
 
 ### Elevation of Privilege
 
