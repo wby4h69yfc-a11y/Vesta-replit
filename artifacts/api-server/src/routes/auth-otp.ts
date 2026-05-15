@@ -8,6 +8,7 @@ import {
   SESSION_TTL,
   type SessionData,
 } from "../lib/auth";
+import { sendWhatsApp, isTwilioConfigured } from "../lib/whatsapp";
 
 const router: IRouter = Router();
 
@@ -37,25 +38,17 @@ async function sendWhatsAppOtp(
   phone: string,
   code: string,
 ): Promise<void> {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const from =
-    process.env.TWILIO_WHATSAPP_FROM ?? "whatsapp:+14155238886";
-
   const body = `Seu código Vesta: *${code}*\n\nVálido por 10 minutos. Não compartilhe com ninguém.`;
 
-  if (!accountSid || !authToken) {
+  if (!isTwilioConfigured()) {
     req.log.info({ phone, code }, "[OTP DEV] WhatsApp OTP — Twilio not configured");
     return;
   }
 
-  const twilio = await import("twilio");
-  const client = twilio.default(accountSid, authToken);
-  await client.messages.create({
-    from,
-    to: `whatsapp:${phone}`,
-    body,
-  });
+  const result = await sendWhatsApp(phone, body);
+  if (!result.ok) {
+    throw new Error(result.error);
+  }
 }
 
 router.post("/auth/otp/send", async (req: Request, res: Response) => {
