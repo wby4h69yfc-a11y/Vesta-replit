@@ -12,6 +12,62 @@ import { sendWhatsApp, isTwilioConfigured } from "../lib/whatsapp";
 
 const router: IRouter = Router();
 
+// ── Constants ──────────────────────────────────────────────────────────────────
+
+/** Maximum failed verify attempts before the OTP is invalidated. */
+const MAX_VERIFY_ATTEMPTS = 5;
+
+/** Max OTP sends per phone per window. */
+const SEND_PHONE_MAX = 3;
+/** Max OTP sends per IP per window. */
+const SEND_IP_MAX = 10;
+/** Window length in ms for send rate limiting. */
+const SEND_WINDOW_MS = 10 * 60 * 1_000; // 10 minutes
+
+// ── In-memory rate limiter ────────────────────────────────────────────────────
+//
+// Tracks send attempts in a Map keyed by "phone:<number>" or "ip:<address>".
+// Entries are pruned on every check, so memory stays bounded under normal load.
+// For horizontally-scaled deployments a Redis-backed counter is preferable, but
+// this is sufficient for a single-process server and far better than nothing.
+
+interface RateBucket {
+  count: number;
+  resetAt: number;
+}
+
+const sendBuckets = new Map<string, RateBucket>();
+
+function checkSendRateLimit(key: string, max: number): boolean {
+  const now = Date.now();
+  const bucket = sendBuckets.get(key);
+
+  if (!bucket || now >= bucket.resetAt) {
+    sendBuckets.set(key, { count: 1, resetAt: now + SEND_WINDOW_MS });
+    return true; // allowed
+  }
+
+  if (bucket.count >= max) {
+    return false; // denied
+  }
+
+  bucket.count++;
+  return true; // allowed
+}
+
+/** Periodic cleanup — remove expired buckets to avoid unbounded growth. */
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [key, bucket] of sendBuckets) {
+      if (now >= bucket.resetAt) sendBuckets.delete(key);
+    }
+  },
+  SEND_WINDOW_MS,
+).unref();
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
 function generateOtp(): string {
   return crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");
 }
@@ -51,6 +107,19 @@ async function sendWhatsAppOtp(
   }
 }
 
+// ── Routes ────────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/auth/otp/send
+ *
+ * Issues a fresh six-digit OTP for the supplied phone number via WhatsApp.
+ *
+ * Rate limits (per 10-minute window):
+ *   - 3 sends per unique phone number
+ *   - 10 sends per originating IP address
+ *
+ * A new code always invalidates any previous unused code for the same number.
+ */
 router.post("/auth/otp/send", async (req: Request, res: Response) => {
   const { phone: rawPhone } = req.body as { phone?: unknown };
 
@@ -60,6 +129,19 @@ router.post("/auth/otp/send", async (req: Request, res: Response) => {
   }
 
   const phone = normalizePhone(rawPhone.trim());
+  const ip = req.ip ?? "unknown";
+
+  // ── Rate limiting ────────────────────────────────────────────────────────
+  const phoneAllowed = checkSendRateLimit(`phone:${phone}`, SEND_PHONE_MAX);
+  const ipAllowed = checkSendRateLimit(`ip:${ip}`, SEND_IP_MAX);
+
+  if (!phoneAllowed || !ipAllowed) {
+    req.log.warn({ phone, ip }, "OTP send rate limit exceeded");
+    res.status(429).json({
+      error: "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.",
+    });
+    return;
+  }
 
   // Delete any previous unused codes for this number
   await db
@@ -87,6 +169,17 @@ router.post("/auth/otp/send", async (req: Request, res: Response) => {
   res.json({ sent: true, message: `Código enviado para ${phone}` });
 });
 
+/**
+ * POST /api/auth/otp/verify
+ *
+ * Verifies a six-digit OTP for the supplied phone number.
+ *
+ * Security guarantees:
+ *   - Each wrong guess increments `failed_attempts` on the OTP row.
+ *   - After MAX_VERIFY_ATTEMPTS (5) failures the code is invalidated by
+ *     setting `used_at` immediately, forcing the user to request a new one.
+ *   - This caps the online search space to 5 attempts instead of 1 000 000.
+ */
 router.post("/auth/otp/verify", async (req: Request, res: Response) => {
   const { phone: rawPhone, code } = req.body as {
     phone?: unknown;
@@ -106,24 +199,66 @@ router.post("/auth/otp/verify", async (req: Request, res: Response) => {
   const phone = normalizePhone(rawPhone.trim());
   const now = new Date();
 
+  // Fetch the active (unused, unexpired) OTP for this phone number.
+  // We do NOT filter by code yet — we need the row to increment failed_attempts.
   const [otp] = await db
     .select()
     .from(otpCodesTable)
     .where(
       and(
         eq(otpCodesTable.phone, phone),
-        eq(otpCodesTable.code, code.trim()),
         gt(otpCodesTable.expires_at, now),
         isNull(otpCodesTable.used_at),
       ),
     )
     .limit(1);
 
+  // Generic error message — don't reveal whether the phone has an active code.
+  const invalidMsg = "Código inválido ou expirado";
+
   if (!otp) {
-    res.status(400).json({ error: "Código inválido ou expirado" });
+    res.status(400).json({ error: invalidMsg });
     return;
   }
 
+  // Check whether this OTP has already exceeded the attempt cap (belt-and-suspenders
+  // guard in case a concurrent request slipped through).
+  if (otp.failed_attempts >= MAX_VERIFY_ATTEMPTS) {
+    req.log.warn({ phone }, "OTP verify: attempt cap already reached");
+    res.status(400).json({ error: invalidMsg });
+    return;
+  }
+
+  // Constant-time comparison to prevent timing attacks.
+  const codeBuffer = Buffer.from(code.trim().padEnd(6));
+  const otpBuffer = Buffer.from(otp.code.padEnd(6));
+  const codeMatches =
+    codeBuffer.length === otpBuffer.length &&
+    crypto.timingSafeEqual(codeBuffer, otpBuffer);
+
+  if (!codeMatches) {
+    const newAttempts = otp.failed_attempts + 1;
+    const shouldInvalidate = newAttempts >= MAX_VERIFY_ATTEMPTS;
+
+    await db
+      .update(otpCodesTable)
+      .set({
+        failed_attempts: newAttempts,
+        // Invalidate by marking used_at so no further guesses are possible.
+        ...(shouldInvalidate ? { used_at: now } : {}),
+      })
+      .where(eq(otpCodesTable.id, otp.id));
+
+    req.log.warn(
+      { phone, attempts: newAttempts, invalidated: shouldInvalidate },
+      "OTP verify: wrong code",
+    );
+
+    res.status(400).json({ error: invalidMsg });
+    return;
+  }
+
+  // Correct code — mark as used.
   await db
     .update(otpCodesTable)
     .set({ used_at: now })

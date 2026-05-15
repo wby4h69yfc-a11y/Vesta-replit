@@ -33,6 +33,7 @@ export const otpCodesTable = pgTable("otp_codes", {
   code: varchar("code", { length: 6 }).notNull(),
   expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
   used_at: timestamp("used_at", { withTimezone: true }),
+  failed_attempts: integer("failed_attempts").notNull().default(0),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
