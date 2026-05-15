@@ -10,6 +10,7 @@ export interface AuthUser {
   firstName: string | null;
   lastName: string | null;
   profileImageUrl: string | null;
+  household_id?: number | null;
   google_connected?: boolean;
 }
 

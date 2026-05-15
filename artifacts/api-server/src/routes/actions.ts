@@ -3,21 +3,25 @@ import { db } from "@workspace/db";
 import { suggestedActionsTable, inboxItemsTable, calendarEventsTable, tasksTable, auditLogTable, contactsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/whatsapp";
+import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
 
 router.get("/actions", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const { status, category } = req.query as { status?: string; category?: string };
 
-    let query = db.select().from(suggestedActionsTable);
-    const conditions = [];
+    const conditions = [eq(suggestedActionsTable.household_id, hid)];
     if (status) conditions.push(eq(suggestedActionsTable.status, status));
     if (category) conditions.push(eq(suggestedActionsTable.category, category));
 
-    const actions = conditions.length
-      ? await db.select().from(suggestedActionsTable).where(and(...conditions)).orderBy(suggestedActionsTable.created_at)
-      : await db.select().from(suggestedActionsTable).orderBy(suggestedActionsTable.created_at);
+    const actions = await db
+      .select()
+      .from(suggestedActionsTable)
+      .where(and(...conditions))
+      .orderBy(suggestedActionsTable.created_at);
 
     res.json(actions);
   } catch (err) {
@@ -27,18 +31,21 @@ router.get("/actions", async (req, res) => {
 });
 
 router.post("/actions/:id/approve", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
     const [action] = await db
       .select()
       .from(suggestedActionsTable)
-      .where(eq(suggestedActionsTable.id, id));
+      .where(and(eq(suggestedActionsTable.id, id), eq(suggestedActionsTable.household_id, hid)));
 
     if (!action) return res.status(404).json({ error: "Not found" });
 
     // Write calendar event if it's an event type
     if (action.type === "event" && action.datetime) {
       await db.insert(calendarEventsTable).values({
+        household_id: hid,
         title: action.title,
         start_at: new Date(action.datetime),
         category: action.category,
@@ -51,6 +58,7 @@ router.post("/actions/:id/approve", async (req, res) => {
     // Write task if task type
     if (action.type === "task" || action.type === "reminder") {
       await db.insert(tasksTable).values({
+        household_id: hid,
         title: action.title,
         status: "pending",
         category: action.category,
@@ -62,17 +70,23 @@ router.post("/actions/:id/approve", async (req, res) => {
     const [updated] = await db
       .update(suggestedActionsTable)
       .set({ status: "approved" })
-      .where(eq(suggestedActionsTable.id, id))
+      .where(and(eq(suggestedActionsTable.id, id), eq(suggestedActionsTable.household_id, hid)))
       .returning();
 
     // Update inbox item status
     await db
       .update(inboxItemsTable)
       .set({ status: "approved" })
-      .where(eq(inboxItemsTable.id, action.inbox_item_id));
+      .where(
+        and(
+          eq(inboxItemsTable.id, action.inbox_item_id),
+          eq(inboxItemsTable.household_id, hid),
+        ),
+      );
 
     // Audit
     await db.insert(auditLogTable).values({
+      household_id: hid,
       action: "action_approved",
       actor: "user",
       action_type: "approved",
@@ -85,7 +99,12 @@ router.post("/actions/:id/approve", async (req, res) => {
       const [inboxItem] = await db
         .select()
         .from(inboxItemsTable)
-        .where(eq(inboxItemsTable.id, action.inbox_item_id));
+        .where(
+          and(
+            eq(inboxItemsTable.id, action.inbox_item_id),
+            eq(inboxItemsTable.household_id, hid),
+          ),
+        );
 
       if (inboxItem?.sender_name) {
         const contacts = await db
@@ -94,17 +113,14 @@ router.post("/actions/:id/approve", async (req, res) => {
           .where(
             and(
               eq(contactsTable.name, inboxItem.sender_name),
-              eq(contactsTable.household_id, action.household_id ?? 1),
+              eq(contactsTable.household_id, hid),
             ),
           );
 
         const contact = contacts[0];
         if (contact?.phone) {
           const summary = action.title.substring(0, 80);
-          void sendWhatsApp(
-            contact.phone,
-            `✓ Confirmado! ${summary}`,
-          );
+          void sendWhatsApp(contact.phone, `✓ Confirmado! ${summary}`);
         }
       }
     }
@@ -117,22 +133,25 @@ router.post("/actions/:id/approve", async (req, res) => {
 });
 
 router.post("/actions/:id/dismiss", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
     const [action] = await db
       .select()
       .from(suggestedActionsTable)
-      .where(eq(suggestedActionsTable.id, id));
+      .where(and(eq(suggestedActionsTable.id, id), eq(suggestedActionsTable.household_id, hid)));
 
     if (!action) return res.status(404).json({ error: "Not found" });
 
     const [updated] = await db
       .update(suggestedActionsTable)
       .set({ status: "dismissed" })
-      .where(eq(suggestedActionsTable.id, id))
+      .where(and(eq(suggestedActionsTable.id, id), eq(suggestedActionsTable.household_id, hid)))
       .returning();
 
     await db.insert(auditLogTable).values({
+      household_id: hid,
       action: "action_dismissed",
       actor: "user",
       action_type: "dismissed",
@@ -148,14 +167,16 @@ router.post("/actions/:id/dismiss", async (req, res) => {
 });
 
 router.patch("/actions/:id/edit", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
     const { title, category, type, datetime, suggested_owner, notes } = req.body;
 
     const [action] = await db
       .select()
       .from(suggestedActionsTable)
-      .where(eq(suggestedActionsTable.id, id));
+      .where(and(eq(suggestedActionsTable.id, id), eq(suggestedActionsTable.household_id, hid)));
 
     if (!action) return res.status(404).json({ error: "Not found" });
 
@@ -170,10 +191,11 @@ router.patch("/actions/:id/edit", async (req, res) => {
         notes: notes ?? action.notes,
         status: "approved",
       })
-      .where(eq(suggestedActionsTable.id, id))
+      .where(and(eq(suggestedActionsTable.id, id), eq(suggestedActionsTable.household_id, hid)))
       .returning();
 
     await db.insert(auditLogTable).values({
+      household_id: hid,
       action: "action_edited_approved",
       actor: "user",
       action_type: "approved",

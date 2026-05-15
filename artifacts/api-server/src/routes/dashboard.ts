@@ -9,27 +9,30 @@ import {
   patternObservationsTable,
   auditLogTable,
 } from "@workspace/db";
-import { eq, and, gte, lte, lt, isNull, count, sql } from "drizzle-orm";
+import { eq, and, gte, lte, lt, count, sql } from "drizzle-orm";
+import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
 
 router.get("/dashboard/summary", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayEnd = new Date(todayStart.getTime() + 86400000);
-    const weekEnd = new Date(todayStart.getTime() + 7 * 86400000);
 
     const [pendingInbox] = await db
       .select({ count: count() })
       .from(inboxItemsTable)
-      .where(eq(inboxItemsTable.status, "ready_for_review"));
+      .where(and(eq(inboxItemsTable.household_id, hid), eq(inboxItemsTable.status, "ready_for_review")));
 
     const [todaysEvents] = await db
       .select({ count: count() })
       .from(calendarEventsTable)
       .where(
         and(
+          eq(calendarEventsTable.household_id, hid),
           gte(calendarEventsTable.start_at, todayStart),
           lt(calendarEventsTable.start_at, todayEnd),
         ),
@@ -40,6 +43,7 @@ router.get("/dashboard/summary", async (req, res) => {
       .from(tasksTable)
       .where(
         and(
+          eq(tasksTable.household_id, hid),
           eq(tasksTable.status, "pending"),
           gte(tasksTable.due_at, todayStart),
           lt(tasksTable.due_at, todayEnd),
@@ -50,18 +54,18 @@ router.get("/dashboard/summary", async (req, res) => {
       .select({ count: count() })
       .from(tasksTable)
       .where(
-        and(eq(tasksTable.status, "pending"), lt(tasksTable.due_at, todayStart)),
+        and(eq(tasksTable.household_id, hid), eq(tasksTable.status, "pending"), lt(tasksTable.due_at, todayStart)),
       );
 
     const [activeRules] = await db
       .select({ count: count() })
       .from(rulesTable)
-      .where(eq(rulesTable.active, true));
+      .where(and(eq(rulesTable.household_id, hid), eq(rulesTable.active, true)));
 
     const [patternsPending] = await db
       .select({ count: count() })
       .from(patternObservationsTable)
-      .where(eq(patternObservationsTable.status, "suggested"));
+      .where(and(eq(patternObservationsTable.household_id, hid), eq(patternObservationsTable.status, "suggested")));
 
     res.json({
       pending_inbox_count: pendingInbox.count,
@@ -78,7 +82,9 @@ router.get("/dashboard/summary", async (req, res) => {
 });
 
 router.get("/dashboard/today-events", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayEnd = new Date(todayStart.getTime() + 86400000);
@@ -88,6 +94,7 @@ router.get("/dashboard/today-events", async (req, res) => {
       .from(calendarEventsTable)
       .where(
         and(
+          eq(calendarEventsTable.household_id, hid),
           gte(calendarEventsTable.start_at, todayStart),
           lt(calendarEventsTable.start_at, todayEnd),
         ),
@@ -103,7 +110,9 @@ router.get("/dashboard/today-events", async (req, res) => {
 });
 
 router.get("/dashboard/upcoming-tasks", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const now = new Date();
     const weekEnd = new Date(now.getTime() + 7 * 86400000);
 
@@ -112,6 +121,7 @@ router.get("/dashboard/upcoming-tasks", async (req, res) => {
       .from(tasksTable)
       .where(
         and(
+          eq(tasksTable.household_id, hid),
           eq(tasksTable.status, "pending"),
           gte(tasksTable.due_at, now),
           lte(tasksTable.due_at, weekEnd),
@@ -129,10 +139,13 @@ router.get("/dashboard/upcoming-tasks", async (req, res) => {
 });
 
 router.get("/dashboard/activity-feed", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const items = await db
       .select()
       .from(auditLogTable)
+      .where(eq(auditLogTable.household_id, hid))
       .orderBy(sql`${auditLogTable.timestamp} desc`)
       .limit(20);
 
@@ -153,26 +166,24 @@ router.get("/dashboard/activity-feed", async (req, res) => {
 });
 
 router.get("/dashboard/category-breakdown", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const rows = await db
-      .select({
-        category: inboxItemsTable.status,
-        raw: sql<string>`${inboxItemsTable.household_id}`,
-      })
-      .from(inboxItemsTable)
-      .where(gte(inboxItemsTable.created_at, monthStart));
-
-    // Get breakdown from suggested_actions instead
     const breakdown = await db
       .select({
         category: suggestedActionsTable.category,
         count: count(),
       })
       .from(suggestedActionsTable)
-      .where(gte(suggestedActionsTable.created_at, monthStart))
+      .where(
+        and(
+          eq(suggestedActionsTable.household_id, hid),
+          gte(suggestedActionsTable.created_at, monthStart),
+        ),
+      )
       .groupBy(suggestedActionsTable.category);
 
     const labelMap: Record<string, string> = {

@@ -1,13 +1,20 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { rulesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
 
 router.get("/rules", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
-    const rules = await db.select().from(rulesTable).orderBy(rulesTable.created_at);
+    const hid = getHouseholdId(req);
+    const rules = await db
+      .select()
+      .from(rulesTable)
+      .where(eq(rulesTable.household_id, hid))
+      .orderBy(rulesTable.created_at);
     res.json(rules);
   } catch (err) {
     req.log.error({ err }, "Failed to list rules");
@@ -16,7 +23,9 @@ router.get("/rules", async (req, res) => {
 });
 
 router.post("/rules", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const { name, category, trigger_desc, action_desc, approval_level } = req.body;
 
     if (!name || !category || !trigger_desc || !action_desc) {
@@ -26,6 +35,7 @@ router.post("/rules", async (req, res) => {
     const [rule] = await db
       .insert(rulesTable)
       .values({
+        household_id: hid,
         name,
         category,
         trigger_desc,
@@ -45,11 +55,16 @@ router.post("/rules", async (req, res) => {
 });
 
 router.patch("/rules/:id", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
     const { name, trigger_desc, action_desc, approval_level, active } = req.body;
 
-    const [rule] = await db.select().from(rulesTable).where(eq(rulesTable.id, id));
+    const [rule] = await db
+      .select()
+      .from(rulesTable)
+      .where(and(eq(rulesTable.id, id), eq(rulesTable.household_id, hid)));
     if (!rule) return res.status(404).json({ error: "Not found" });
 
     const [updated] = await db
@@ -61,7 +76,7 @@ router.patch("/rules/:id", async (req, res) => {
         approval_level: approval_level ?? rule.approval_level,
         active: active !== undefined ? active : rule.active,
       })
-      .where(eq(rulesTable.id, id))
+      .where(and(eq(rulesTable.id, id), eq(rulesTable.household_id, hid)))
       .returning();
 
     return res.json(updated);
@@ -72,9 +87,13 @@ router.patch("/rules/:id", async (req, res) => {
 });
 
 router.delete("/rules/:id", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
-    await db.delete(rulesTable).where(eq(rulesTable.id, id));
+    await db
+      .delete(rulesTable)
+      .where(and(eq(rulesTable.id, id), eq(rulesTable.household_id, hid)));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete rule");
@@ -83,15 +102,20 @@ router.delete("/rules/:id", async (req, res) => {
 });
 
 router.post("/rules/:id/toggle", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
-    const [rule] = await db.select().from(rulesTable).where(eq(rulesTable.id, id));
+    const [rule] = await db
+      .select()
+      .from(rulesTable)
+      .where(and(eq(rulesTable.id, id), eq(rulesTable.household_id, hid)));
     if (!rule) return res.status(404).json({ error: "Not found" });
 
     const [updated] = await db
       .update(rulesTable)
       .set({ active: !rule.active })
-      .where(eq(rulesTable.id, id))
+      .where(and(eq(rulesTable.id, id), eq(rulesTable.household_id, hid)))
       .returning();
 
     return res.json(updated);

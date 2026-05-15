@@ -147,6 +147,7 @@ router.post("/auth/otp/verify", async (req: Request, res: Response) => {
       firstName: user.firstName ?? null,
       lastName: user.lastName ?? null,
       profileImageUrl: user.profileImageUrl ?? null,
+      household_id: user.household_id ?? null,
     },
     access_token: "",
   };
