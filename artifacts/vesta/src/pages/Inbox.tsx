@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, MessageCircle, Mail, Camera, PenLine, RefreshCw } from "lucide-react";
 import {
   useListInboxItems,
@@ -73,6 +73,16 @@ export default function InboxPage() {
       },
     },
   });
+
+  // Close compose on Escape
+  useEffect(() => {
+    if (!showCompose) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setShowCompose(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showCompose]);
 
   const pendingItemIds = new Set(pendingActions?.map((a) => a.inbox_item_id) ?? []);
 
