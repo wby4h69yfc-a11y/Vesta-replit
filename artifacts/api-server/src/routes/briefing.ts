@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { calendarEventsTable, tasksTable, usersTable } from "@workspace/db";
+import { calendarEventsTable, tasksTable } from "@workspace/db";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/whatsapp";
 
@@ -42,19 +42,13 @@ router.post("/briefing/send", async (req: Request, res: Response) => {
       .from(tasksTable)
       .where(eq(tasksTable.status, "pending"));
 
-    // Determine admin phone — use req.user if present, otherwise first user with a phone
-    let adminPhone: string | null = null;
-
-    if (req.user?.phone) {
-      adminPhone = req.user.phone;
-    } else {
-      const users = await db.select().from(usersTable).limit(10);
-      const userWithPhone = users.find((u) => u.phone);
-      adminPhone = userWithPhone?.phone ?? null;
-    }
+    // Determine admin phone from the authenticated user
+    const adminPhone: string | null = req.user?.phone ?? null;
 
     if (!adminPhone) {
-      res.status(400).json({ error: "Nenhum número de WhatsApp encontrado para o administrador." });
+      res.status(400).json({
+        error: "Nenhum número de WhatsApp cadastrado na sua conta. Faça login com seu número de telefone.",
+      });
       return;
     }
 

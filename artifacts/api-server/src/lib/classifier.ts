@@ -1,6 +1,6 @@
 import { db } from "@workspace/db";
-import { inboxItemsTable, suggestedActionsTable, contactsTable, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { inboxItemsTable, suggestedActionsTable, contactsTable, membersTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { sendWhatsApp } from "./whatsapp";
 
 export type ClassificationResult = {
@@ -191,13 +191,33 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
 
   // Notify household admin when the action requires explicit approval
   if (result.approval_level === "explicit") {
-    // Find admin phone — first user with a phone number
-    const users = await db.select().from(usersTable).limit(10);
-    const admin = users.find((u) => u.phone);
-    if (admin?.phone) {
+    // Find admin member phone scoped to this household
+    const adminMembers = await db
+      .select()
+      .from(membersTable)
+      .where(
+        and(
+          eq(membersTable.household_id, item.household_id),
+          eq(membersTable.role, "admin"),
+        ),
+      )
+      .limit(5);
+
+    // Fall back to any member with a phone in this household
+    let adminPhone: string | null = adminMembers.find((m) => m.phone)?.phone ?? null;
+    if (!adminPhone) {
+      const anyMember = await db
+        .select()
+        .from(membersTable)
+        .where(eq(membersTable.household_id, item.household_id))
+        .limit(10);
+      adminPhone = anyMember.find((m) => m.phone)?.phone ?? null;
+    }
+
+    if (adminPhone) {
       const senderLabel = senderDisplayName ?? "alguém";
       void sendWhatsApp(
-        admin.phone,
+        adminPhone,
         `📬 Nova mensagem de *${senderLabel}* para revisar no Vesta.`,
       );
     }

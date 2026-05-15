@@ -91,7 +91,12 @@ router.post("/actions/:id/approve", async (req, res) => {
         const contacts = await db
           .select()
           .from(contactsTable)
-          .where(eq(contactsTable.name, inboxItem.sender_name));
+          .where(
+            and(
+              eq(contactsTable.name, inboxItem.sender_name),
+              eq(contactsTable.household_id, action.household_id ?? 1),
+            ),
+          );
 
         const contact = contacts[0];
         if (contact?.phone) {

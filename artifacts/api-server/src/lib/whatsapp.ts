@@ -5,7 +5,11 @@ export type SendResult =
   | { ok: false; error: string };
 
 export function isTwilioConfigured(): boolean {
-  return !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
+  return !!(
+    process.env.TWILIO_ACCOUNT_SID &&
+    process.env.TWILIO_AUTH_TOKEN &&
+    process.env.TWILIO_WHATSAPP_FROM
+  );
 }
 
 export async function sendWhatsApp(to: string, message: string): Promise<SendResult> {
