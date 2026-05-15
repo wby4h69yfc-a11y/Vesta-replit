@@ -26,6 +26,22 @@ declare global {
   }
 }
 
+/**
+ * Middleware that rejects unauthenticated requests with 401.
+ * Mount this in front of any router that must require a valid session.
+ */
+export function requireAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  next();
+}
+
 async function refreshIfExpired(
   sid: string,
   session: SessionData,

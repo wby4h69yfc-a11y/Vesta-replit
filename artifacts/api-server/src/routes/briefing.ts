@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { calendarEventsTable, tasksTable } from "@workspace/db";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "../lib/whatsapp";
+import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
 
@@ -10,48 +11,43 @@ const router = Router();
  * POST /api/briefing/send
  *
  * Sends the daily household briefing via WhatsApp to the primary admin.
- * Requires authentication (authMiddleware is applied globally in app.ts).
- * Can be triggered manually or by a future cron job.
+ * requireAuth is applied via the protected router in routes/index.ts.
  */
 router.post("/briefing/send", async (req: Request, res: Response) => {
-  if (!req.user) {
+  if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Não autenticado." });
     return;
   }
   try {
+    const hid = getHouseholdId(req);
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date(now);
     todayEnd.setHours(23, 59, 59, 999);
 
-    // Use single-tenant household id; when multi-household is added this should be
-    // resolved from req.user → household membership.
-    const householdId = 1;
-
-    // Fetch today's events scoped to this household
     const events = await db
       .select()
       .from(calendarEventsTable)
       .where(
         and(
-          eq(calendarEventsTable.household_id, householdId),
+          eq(calendarEventsTable.household_id, hid),
           gte(calendarEventsTable.start_at, todayStart),
           lte(calendarEventsTable.start_at, todayEnd),
         ),
       );
 
-    // Fetch pending tasks scoped to this household
     const tasks = await db
       .select()
       .from(tasksTable)
       .where(
         and(
-          eq(tasksTable.household_id, householdId),
+          eq(tasksTable.household_id, hid),
           eq(tasksTable.status, "pending"),
         ),
       );
-    let adminPhone: string | null = await resolveHouseholdAdminPhone(householdId);
+
+    let adminPhone: string | null = await resolveHouseholdAdminPhone(hid);
     if (!adminPhone) {
       adminPhone = req.user.phone ?? null;
     }
@@ -63,7 +59,6 @@ router.post("/briefing/send", async (req: Request, res: Response) => {
       return;
     }
 
-    // Format message
     const dateStr = now.toLocaleDateString("pt-BR", {
       weekday: "long",
       day: "numeric",

@@ -121,6 +121,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
   let userFirst: string | null;
   let userLast: string | null;
   let userPic: string | null;
+  let userHouseholdId: number | null;
 
   if (existing) {
     userId = existing.id;
@@ -128,6 +129,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     userFirst = existing.firstName ?? firstName ?? null;
     userLast = existing.lastName ?? lastName ?? null;
     userPic = existing.profileImageUrl ?? picture ?? null;
+    userHouseholdId = existing.household_id ?? null;
     if (!existing.googleId) {
       await db
         .update(usersTable)
@@ -150,6 +152,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     userFirst = created.firstName ?? null;
     userLast = created.lastName ?? null;
     userPic = created.profileImageUrl ?? null;
+    userHouseholdId = created.household_id ?? null;
   }
 
   const sid = await createSession({
@@ -160,6 +163,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       firstName: userFirst,
       lastName: userLast,
       profileImageUrl: userPic,
+      household_id: userHouseholdId,
       google_connected: false,
     },
     access_token: accessToken,
@@ -307,12 +311,14 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
   let userEmail: string | null;
   let userFirst: string | null;
   let userLast: string | null;
+  let userHouseholdId: number | null;
 
   if (existing) {
     userId = existing.id;
     userEmail = existing.email ?? appleEmail ?? null;
     userFirst = existing.firstName ?? firstName ?? null;
     userLast = existing.lastName ?? lastName ?? null;
+    userHouseholdId = existing.household_id ?? null;
     if (!existing.appleId) {
       await db
         .update(usersTable)
@@ -333,6 +339,7 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
     userEmail = created.email ?? null;
     userFirst = created.firstName ?? null;
     userLast = created.lastName ?? null;
+    userHouseholdId = created.household_id ?? null;
   }
 
   const sid = await createSession({
@@ -343,6 +350,7 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
       firstName: userFirst,
       lastName: userLast,
       profileImageUrl: null,
+      household_id: userHouseholdId,
       google_connected: false,
     },
     access_token: "",

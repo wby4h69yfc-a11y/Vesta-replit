@@ -3,23 +3,26 @@ import { db } from "@workspace/db";
 import { inboxItemsTable, suggestedActionsTable } from "@workspace/db";
 import { eq, and, count, desc } from "drizzle-orm";
 import { classifyAndSaveAction } from "../lib/classifier";
+import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
 
 router.get("/inbox", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const { status, limit = "50" } = req.query as { status?: string; limit?: string };
 
-    const where = status ? eq(inboxItemsTable.status, status) : undefined;
+    const conditions = [eq(inboxItemsTable.household_id, hid)];
+    if (status) conditions.push(eq(inboxItemsTable.status, status));
 
     const items = await db
       .select()
       .from(inboxItemsTable)
-      .where(where)
+      .where(and(...conditions))
       .orderBy(desc(inboxItemsTable.created_at))
       .limit(parseInt(limit, 10));
 
-    // Count actions per item
     const itemsWithCount = await Promise.all(
       items.map(async (item) => {
         const [{ count: ac }] = await db
@@ -38,7 +41,9 @@ router.get("/inbox", async (req, res) => {
 });
 
 router.post("/inbox", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const { raw_content, source = "manual", sender_name } = req.body;
 
     if (!raw_content) {
@@ -47,7 +52,7 @@ router.post("/inbox", async (req, res) => {
 
     const [item] = await db
       .insert(inboxItemsTable)
-      .values({ raw_content, source, sender_name, status: "received" })
+      .values({ household_id: hid, raw_content, source, sender_name, status: "received" })
       .returning();
 
     return res.status(201).json({ ...item, actions_count: 0 });
@@ -58,12 +63,14 @@ router.post("/inbox", async (req, res) => {
 });
 
 router.get("/inbox/:id", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
     const [item] = await db
       .select()
       .from(inboxItemsTable)
-      .where(eq(inboxItemsTable.id, id));
+      .where(and(eq(inboxItemsTable.id, id), eq(inboxItemsTable.household_id, hid)));
 
     if (!item) {
       return res.status(404).json({ error: "Not found" });
@@ -83,12 +90,14 @@ router.get("/inbox/:id", async (req, res) => {
 });
 
 router.post("/inbox/:id/classify", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
     const [item] = await db
       .select()
       .from(inboxItemsTable)
-      .where(eq(inboxItemsTable.id, id));
+      .where(and(eq(inboxItemsTable.id, id), eq(inboxItemsTable.household_id, hid)));
 
     if (!item) {
       return res.status(404).json({ error: "Not found" });
@@ -99,7 +108,7 @@ router.post("/inbox/:id/classify", async (req, res) => {
     const [updated] = await db
       .select()
       .from(inboxItemsTable)
-      .where(eq(inboxItemsTable.id, id));
+      .where(and(eq(inboxItemsTable.id, id), eq(inboxItemsTable.household_id, hid)));
 
     const [{ count: ac }] = await db
       .select({ count: count() })

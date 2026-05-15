@@ -1,17 +1,25 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { contactsTable, inboxItemsTable } from "@workspace/db";
-import { eq, and, notInArray, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
+import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
 
 router.get("/contacts", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const { category } = req.query as { category?: string };
 
-    const contacts = category
-      ? await db.select().from(contactsTable).where(eq(contactsTable.category, category)).orderBy(contactsTable.name)
-      : await db.select().from(contactsTable).orderBy(contactsTable.name);
+    const conditions = [eq(contactsTable.household_id, hid)];
+    if (category) conditions.push(eq(contactsTable.category, category));
+
+    const contacts = await db
+      .select()
+      .from(contactsTable)
+      .where(and(...conditions))
+      .orderBy(contactsTable.name);
 
     res.json(contacts);
   } catch (err) {
@@ -21,14 +29,16 @@ router.get("/contacts", async (req, res) => {
 });
 
 router.post("/contacts", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const { name, phone, category, aliases, notes } = req.body;
 
     if (!name || !category) return res.status(400).json({ error: "name and category are required" });
 
     const [contact] = await db
       .insert(contactsTable)
-      .values({ name, phone: phone ?? null, category, aliases: aliases ?? [], notes: notes ?? null })
+      .values({ household_id: hid, name, phone: phone ?? null, category, aliases: aliases ?? [], notes: notes ?? null })
       .returning();
 
     res.status(201).json(contact);
@@ -39,11 +49,16 @@ router.post("/contacts", async (req, res) => {
 });
 
 router.patch("/contacts/:id", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
     const { name, phone, category, aliases, notes } = req.body;
 
-    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, id));
+    const [contact] = await db
+      .select()
+      .from(contactsTable)
+      .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)));
     if (!contact) return res.status(404).json({ error: "Not found" });
 
     const [updated] = await db
@@ -55,7 +70,7 @@ router.patch("/contacts/:id", async (req, res) => {
         aliases: aliases ?? contact.aliases,
         notes: notes !== undefined ? notes : contact.notes,
       })
-      .where(eq(contactsTable.id, id))
+      .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)))
       .returning();
 
     res.json(updated);
@@ -66,9 +81,13 @@ router.patch("/contacts/:id", async (req, res) => {
 });
 
 router.delete("/contacts/:id", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
-    await db.delete(contactsTable).where(eq(contactsTable.id, id));
+    await db
+      .delete(contactsTable)
+      .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete contact");
@@ -76,23 +95,22 @@ router.delete("/contacts/:id", async (req, res) => {
   }
 });
 
-/**
- * GET /api/contacts/whatsapp-senders
- * Returns unique senders from the inbox that are NOT yet saved as contacts.
- * Used by the "Import from inbox" flow in the WhatsApp settings UI.
- */
 router.get("/contacts/whatsapp-senders", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
-    // Get all existing contact names (case-insensitive comparison done in JS)
-    const existing = await db.select({ name: contactsTable.name }).from(contactsTable);
+    const hid = getHouseholdId(req);
+
+    const existing = await db
+      .select({ name: contactsTable.name })
+      .from(contactsTable)
+      .where(eq(contactsTable.household_id, hid));
     const existingNames = new Set(existing.map((c) => c.name.toLowerCase().trim()));
 
-    // Get all distinct sender_names from inbox (whatsapp + photo sources only)
     const rows = await db
       .selectDistinct({ sender_name: inboxItemsTable.sender_name })
       .from(inboxItemsTable)
       .where(
-        sql`${inboxItemsTable.sender_name} IS NOT NULL AND ${inboxItemsTable.source} IN ('whatsapp', 'photo')`,
+        sql`${inboxItemsTable.household_id} = ${hid} AND ${inboxItemsTable.sender_name} IS NOT NULL AND ${inboxItemsTable.source} IN ('whatsapp', 'photo')`,
       );
 
     const unmatched = rows
@@ -106,13 +124,10 @@ router.get("/contacts/whatsapp-senders", async (req, res) => {
   }
 });
 
-/**
- * POST /api/contacts/bulk
- * Creates multiple contacts in one shot.
- * Body: { contacts: Array<{ name, phone?, category, notes? }> }
- */
 router.post("/contacts/bulk", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const { contacts } = req.body as {
       contacts: Array<{ name: string; phone?: string; category: string; notes?: string }>;
     };
@@ -127,7 +142,7 @@ router.post("/contacts/bulk", async (req, res) => {
       category: c.category ?? "outros",
       aliases: [] as string[],
       notes: c.notes ?? null,
-      household_id: 1,
+      household_id: hid,
     }));
 
     const created = await db.insert(contactsTable).values(values).returning();
@@ -138,23 +153,13 @@ router.post("/contacts/bulk", async (req, res) => {
   }
 });
 
-/**
- * POST /api/contacts/parse-whatsapp-export
- * Parses the text content of a WhatsApp exported chat (.txt) and returns
- * unique senders (name or phone) not already in the contacts list.
- *
- * WhatsApp export line formats (Brazil):
- *   [DD/MM/YYYY, HH:MM:SS] +55 11 99999-9999: text
- *   [DD/MM/YYYY, HH:MM:SS] Nome do Contato: text
- */
 router.post("/contacts/parse-whatsapp-export", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const { text } = req.body as { text?: string };
     if (!text) return res.status(400).json({ error: "text is required" });
 
-    // Matches both date formats used by WhatsApp in Brazil
-    // [DD/MM/YYYY, HH:MM:SS] Sender: ...
-    // [DD/MM/YYYY HH:MM:SS] Sender: ...
     const lineRe = /^\[[\d/]+[, ]+[\d:]+\]\s+([^:]+):/gm;
 
     const systemMessages = new Set([
@@ -174,7 +179,6 @@ router.post("/contacts/parse-whatsapp-export", async (req, res) => {
       if (seen.has(raw)) continue;
       seen.add(raw);
 
-      // Detect if it looks like a phone number
       const isPhone = /^\+?\d[\d\s\-()]{6,}$/.test(raw);
       senders.push({
         name: isPhone ? raw : raw,
@@ -182,8 +186,10 @@ router.post("/contacts/parse-whatsapp-export", async (req, res) => {
       });
     }
 
-    // Filter out names already in contacts
-    const existing = await db.select({ name: contactsTable.name, phone: contactsTable.phone }).from(contactsTable);
+    const existing = await db
+      .select({ name: contactsTable.name, phone: contactsTable.phone })
+      .from(contactsTable)
+      .where(eq(contactsTable.household_id, hid));
     const existingNames = new Set(existing.map((c) => c.name.toLowerCase().trim()));
     const existingPhones = new Set(
       existing.filter((c) => c.phone).map((c) => c.phone!.replace(/\D/g, "").slice(-8)),

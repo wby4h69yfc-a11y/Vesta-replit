@@ -1,6 +1,10 @@
 import { Router, type IRouter } from "express";
+import { requireAuth } from "../middlewares/authMiddleware";
 import healthRouter from "./health";
 import authRouter from "./auth";
+import authOtpRouter from "./auth-otp";
+import authSocialRouter from "./auth-social";
+import webhookRouter from "./webhook";
 import dashboardRouter from "./dashboard";
 import inboxRouter from "./inbox";
 import actionsRouter from "./actions";
@@ -10,31 +14,36 @@ import contactsRouter from "./contacts";
 import rulesRouter from "./rules";
 import householdRouter from "./household";
 import patternsRouter from "./patterns";
-import webhookRouter from "./webhook";
 import onboardingRouter from "./onboarding";
-import authOtpRouter from "./auth-otp";
 import googleRouter from "./google";
-import authSocialRouter from "./auth-social";
 import briefingRouter from "./briefing";
 
 const router: IRouter = Router();
 
+// ── Public routes (no auth required) ──────────────────────────────────────────
 router.use(healthRouter);
 router.use(authRouter);
-router.use(dashboardRouter);
-router.use(inboxRouter);
-router.use(actionsRouter);
-router.use(tasksRouter);
-router.use(eventsRouter);
-router.use(contactsRouter);
-router.use(rulesRouter);
-router.use(householdRouter);
-router.use(patternsRouter);
-router.use(webhookRouter);
-router.use(onboardingRouter);
 router.use(authOtpRouter);
-router.use(googleRouter);
 router.use(authSocialRouter);
-router.use(briefingRouter);
+router.use(webhookRouter);
+
+// ── Protected routes (session required) ───────────────────────────────────────
+// requireAuth returns 401 for any request without a valid session.
+const protectedRouter: IRouter = Router();
+protectedRouter.use(requireAuth);
+protectedRouter.use(dashboardRouter);
+protectedRouter.use(inboxRouter);
+protectedRouter.use(actionsRouter);
+protectedRouter.use(tasksRouter);
+protectedRouter.use(eventsRouter);
+protectedRouter.use(contactsRouter);
+protectedRouter.use(rulesRouter);
+protectedRouter.use(householdRouter);
+protectedRouter.use(patternsRouter);
+protectedRouter.use(onboardingRouter);
+protectedRouter.use(googleRouter);
+protectedRouter.use(briefingRouter);
+
+router.use(protectedRouter);
 
 export default router;

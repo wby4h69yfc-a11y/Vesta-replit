@@ -13,6 +13,7 @@ import {
   updateSession,
   type SessionData,
 } from "../lib/auth";
+import { getHouseholdId } from "../lib/tenant";
 
 const router: IRouter = Router();
 
@@ -206,6 +207,8 @@ router.post("/google/calendar/sync", async (req: Request, res: Response) => {
     return;
   }
 
+  const hid = getHouseholdId(req);
+
   const oauth2 = await getAuthedOAuth2(req.user.id);
   if (!oauth2) {
     res.status(400).json({ error: "Google not connected" });
@@ -256,7 +259,7 @@ router.post("/google/calendar/sync", async (req: Request, res: Response) => {
     await db
       .insert(calendarEventsTable)
       .values({
-        household_id: 1,
+        household_id: hid,
         title: ev.summary,
         start_at: startAt,
         end_at: endAt ?? undefined,
@@ -291,6 +294,8 @@ router.post("/google/gmail/sync", async (req: Request, res: Response) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+
+  const hid = getHouseholdId(req);
 
   const oauth2 = await getAuthedOAuth2(req.user.id);
   if (!oauth2) {
@@ -340,7 +345,7 @@ router.post("/google/gmail/sync", async (req: Request, res: Response) => {
     await db
       .insert(inboxItemsTable)
       .values({
-        household_id: 1,
+        household_id: hid,
         source: "email",
         raw_content: `De: ${from}\nAssunto: ${subject}\n\n${snippet}`,
         status: "received",

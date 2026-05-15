@@ -1,17 +1,25 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { patternObservationsTable, rulesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
 
 router.get("/patterns", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const { status } = req.query as { status?: string };
 
-    const patterns = status
-      ? await db.select().from(patternObservationsTable).where(eq(patternObservationsTable.status, status)).orderBy(patternObservationsTable.created_at)
-      : await db.select().from(patternObservationsTable).orderBy(patternObservationsTable.created_at);
+    const conditions = [eq(patternObservationsTable.household_id, hid)];
+    if (status) conditions.push(eq(patternObservationsTable.status, status));
+
+    const patterns = await db
+      .select()
+      .from(patternObservationsTable)
+      .where(and(...conditions))
+      .orderBy(patternObservationsTable.created_at);
 
     res.json(patterns);
   } catch (err) {
@@ -21,17 +29,20 @@ router.get("/patterns", async (req, res) => {
 });
 
 router.post("/patterns/:id/accept", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
     const [pattern] = await db
       .select()
       .from(patternObservationsTable)
-      .where(eq(patternObservationsTable.id, id));
+      .where(and(eq(patternObservationsTable.id, id), eq(patternObservationsTable.household_id, hid)));
 
     if (!pattern) return res.status(404).json({ error: "Not found" });
 
     // Create a rule from the pattern
     await db.insert(rulesTable).values({
+      household_id: hid,
       name: pattern.description,
       category: "outros",
       trigger_desc: pattern.description,
@@ -45,7 +56,7 @@ router.post("/patterns/:id/accept", async (req, res) => {
     const [updated] = await db
       .update(patternObservationsTable)
       .set({ status: "rule_created" })
-      .where(eq(patternObservationsTable.id, id))
+      .where(and(eq(patternObservationsTable.id, id), eq(patternObservationsTable.household_id, hid)))
       .returning();
 
     return res.json(updated);
@@ -56,12 +67,14 @@ router.post("/patterns/:id/accept", async (req, res) => {
 });
 
 router.post("/patterns/:id/dismiss", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
     const [updated] = await db
       .update(patternObservationsTable)
       .set({ status: "dismissed" })
-      .where(eq(patternObservationsTable.id, id))
+      .where(and(eq(patternObservationsTable.id, id), eq(patternObservationsTable.household_id, hid)))
       .returning();
 
     if (!updated) return res.status(404).json({ error: "Not found" });
