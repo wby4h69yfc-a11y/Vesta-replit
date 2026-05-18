@@ -138,10 +138,13 @@ router.get("/google/callback", async (req: Request, res: Response) => {
     return;
   }
 
-  if (!session.google_oauth_nonce || !crypto.timingSafeEqual(
-    Buffer.from(state),
-    Buffer.from(session.google_oauth_nonce),
-  )) {
+  const stateBuffer = Buffer.from(state);
+  const nonceBuffer = Buffer.from(session.google_oauth_nonce ?? "");
+  if (
+    !session.google_oauth_nonce ||
+    stateBuffer.length !== nonceBuffer.length ||
+    !crypto.timingSafeEqual(stateBuffer, nonceBuffer)
+  ) {
     req.log.warn({ userId: session.user.id }, "Google OAuth state mismatch — possible CSRF");
     res.redirect("/app?google=error");
     return;
