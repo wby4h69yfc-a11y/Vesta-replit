@@ -24,9 +24,11 @@ export const inboxItemsTable = pgTable(
     uniqueIndex("inbox_items_twilio_message_sid_unique")
       .on(table.twilio_message_sid)
       .where(sql`${table.twilio_message_sid} IS NOT NULL`),
-    // Partial unique index: prevents the same Gmail message being imported twice.
-    uniqueIndex("inbox_items_gmail_message_id_unique")
-      .on(table.gmail_message_id)
+    // Composite partial unique index: prevents the same Gmail message being
+    // imported twice within the same household. Tenant-scoped so a message ID
+    // collision across different users' mailboxes cannot cause false conflicts.
+    uniqueIndex("inbox_items_household_gmail_message_id_unique")
+      .on(table.household_id, table.gmail_message_id)
       .where(sql`${table.gmail_message_id} IS NOT NULL`),
   ],
 );

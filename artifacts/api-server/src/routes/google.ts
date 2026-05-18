@@ -6,7 +6,7 @@ import {
   calendarEventsTable,
   inboxItemsTable,
 } from "@workspace/db";
-import { eq, inArray, isNotNull } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import {
   getSessionId,
   getSession,
