@@ -167,6 +167,8 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     //     Policy: 0 matches → discard; 1 household → accept; >1 → quarantine.
     let householdId: number | null = null;
     let resolvedSenderName: string | null = ProfileName ?? null;
+    let resolvedSenderIsContact = false;
+    let resolvedContactConsentStatus: string | null = null;
 
     // Collect ALL contacts whose normalised phone matches exactly.
     const allContacts = await db
@@ -175,6 +177,7 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         name: contactsTable.name,
         phone: contactsTable.phone,
         household_id: contactsTable.household_id,
+        consent_status: contactsTable.consent_status,
       })
       .from(contactsTable);
 
@@ -213,8 +216,10 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       );
       if (contactMatch) {
         resolvedSenderName = contactMatch.name;
+        resolvedSenderIsContact = true;
+        resolvedContactConsentStatus = contactMatch.consent_status;
         req.log.info(
-          { contact: contactMatch.name, householdId },
+          { contact: contactMatch.name, householdId, consent_status: contactMatch.consent_status },
           "Webhook: matched sender to contact",
         );
       } else {
@@ -280,18 +285,29 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       "WhatsApp message ingested",
     );
 
-    // Fire acknowledgement back to sender (fire-and-forget — response already sent)
-    void sendWhatsApp(
-      phoneRaw,
-      "✓ Mensagem recebida! Vou analisar e avisar você em breve.",
-    ).then((result) => {
-      if (!result.ok) {
-        req.log.warn(
-          { error: result.error, phone: phoneRaw },
-          "ACK send failed",
-        );
-      }
-    });
+    // Fire acknowledgement back to sender only when consent permits.
+    // External contacts (from the contacts table) require consent_status === "granted"
+    // before any outbound WhatsApp message is sent (LGPD requirement).
+    // Household members are not subject to the same LGPD consent gate.
+    const ackAllowed = !resolvedSenderIsContact || resolvedContactConsentStatus === "granted";
+    if (ackAllowed) {
+      void sendWhatsApp(
+        phoneRaw,
+        "✓ Mensagem recebida! Vou analisar e avisar você em breve.",
+      ).then((result) => {
+        if (!result.ok) {
+          req.log.warn(
+            { error: result.error, phone: phoneRaw },
+            "ACK send failed",
+          );
+        }
+      });
+    } else {
+      req.log.info(
+        { phone: phoneRaw, consent_status: resolvedContactConsentStatus },
+        "Webhook: skipping ACK — contact has not granted WhatsApp consent",
+      );
+    }
 
     // Run classifier asynchronously so response was already sent
     await classifyAndSaveAction(item.id);
