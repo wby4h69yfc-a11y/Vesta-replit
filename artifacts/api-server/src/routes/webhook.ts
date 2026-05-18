@@ -4,6 +4,7 @@ import { inboxItemsTable, contactsTable, membersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { classifyAndSaveAction } from "../lib/classifier";
 import { sendWhatsApp, isTwilioConfigured } from "../lib/whatsapp";
+import { processWhatsAppMedia } from "../lib/media-analysis";
 
 const router = Router();
 
@@ -104,6 +105,7 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       Body,
       ProfileName,
       MediaUrl0,
+      MediaContentType0,
       NumMedia,
       MessageSid,
     } = req.body as {
@@ -111,6 +113,7 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       Body?: string;
       ProfileName?: string;
       MediaUrl0?: string;
+      MediaContentType0?: string;
       NumMedia?: string;
       MessageSid?: string;
     };
@@ -261,10 +264,27 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       return;
     }
 
-    // Determine source and media
+    // Determine source and content — process media if present
     const hasMedia = parseInt(NumMedia ?? "0", 10) > 0;
-    const source = hasMedia ? "photo" : "whatsapp";
-    const rawContent = Body?.trim() ?? "(mídia recebida)";
+
+    let source: string = "whatsapp";
+    let rawContent: string = Body?.trim() ?? "";
+
+    if (hasMedia && MediaUrl0 && MediaContentType0) {
+      req.log.info(
+        { contentType: MediaContentType0, MessageSid },
+        "Webhook: processing media attachment",
+      );
+      const processed = await processWhatsAppMedia(
+        MediaUrl0,
+        MediaContentType0,
+        Body,
+      );
+      source = processed.source;
+      rawContent = processed.rawContent;
+    } else if (!rawContent) {
+      rawContent = "(mídia recebida)";
+    }
 
     // Create inbox item scoped to the resolved household
     const [item] = await db
