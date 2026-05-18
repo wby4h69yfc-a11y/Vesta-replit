@@ -1,21 +1,25 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { calendarEventsTable, householdsTable, tasksTable } from "@workspace/db";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "../lib/whatsapp";
 import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
 
-const BRIEFING_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour minimum between sends
+const BRIEFING_COOLDOWN_INTERVAL = "1 hour";
 
 /**
  * POST /api/briefing/send
  *
  * Sends the daily household briefing via WhatsApp to the primary admin.
  * requireAuth is applied via the protected router in routes/index.ts.
- * Cooldown is enforced via `households.last_briefing_sent_at` so it
- * survives process restarts and works across multiple instances.
+ *
+ * Cooldown is enforced with an atomic conditional UPDATE on
+ * `households.last_briefing_sent_at`. The timestamp is claimed before any
+ * outbound call, so concurrent requests racing through the same gate will
+ * only see one row updated. If the UPDATE touches 0 rows the cooldown is
+ * still active and we return 429 immediately without sending anything.
  */
 router.post("/briefing/send", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -24,28 +28,42 @@ router.post("/briefing/send", async (req: Request, res: Response) => {
   }
   try {
     const hid = getHouseholdId(req);
+    const now = new Date();
 
-    const [household] = await db
-      .select({ last_briefing_sent_at: householdsTable.last_briefing_sent_at })
-      .from(householdsTable)
-      .where(eq(householdsTable.id, hid));
+    // Atomic test-and-set: claim the send slot only when the cooldown has
+    // elapsed. Returns the old timestamp so we can compute Retry-After.
+    const claimed = await db
+      .update(householdsTable)
+      .set({ last_briefing_sent_at: now })
+      .where(
+        and(
+          eq(householdsTable.id, hid),
+          sql`(
+            ${householdsTable.last_briefing_sent_at} IS NULL
+            OR ${householdsTable.last_briefing_sent_at} < NOW() - INTERVAL ${sql.raw(`'${BRIEFING_COOLDOWN_INTERVAL}'`)}
+          )`,
+        ),
+      )
+      .returning({ prev: householdsTable.last_briefing_sent_at });
 
-    if (!household) {
-      res.status(404).json({ error: "Household não encontrado." });
+    if (claimed.length === 0) {
+      // Cooldown is still active — read the timestamp only to build Retry-After.
+      const [row] = await db
+        .select({ last_briefing_sent_at: householdsTable.last_briefing_sent_at })
+        .from(householdsTable)
+        .where(eq(householdsTable.id, hid));
+
+      let retryAfterSec = 3600;
+      if (row?.last_briefing_sent_at) {
+        const cooldownMs = 60 * 60 * 1000;
+        const elapsed = Date.now() - row.last_briefing_sent_at.getTime();
+        retryAfterSec = Math.max(1, Math.ceil((cooldownMs - elapsed) / 1000));
+      }
+      res.setHeader("Retry-After", String(retryAfterSec));
+      res.status(429).json({ error: "Briefing já enviado recentemente. Tente novamente mais tarde." });
       return;
     }
 
-    if (household.last_briefing_sent_at) {
-      const elapsed = Date.now() - household.last_briefing_sent_at.getTime();
-      if (elapsed < BRIEFING_COOLDOWN_MS) {
-        const retryAfterSec = Math.ceil((BRIEFING_COOLDOWN_MS - elapsed) / 1000);
-        res.setHeader("Retry-After", String(retryAfterSec));
-        res.status(429).json({ error: "Briefing já enviado recentemente. Tente novamente mais tarde." });
-        return;
-      }
-    }
-
-    const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date(now);
@@ -78,6 +96,11 @@ router.post("/briefing/send", async (req: Request, res: Response) => {
     }
 
     if (!adminPhone) {
+      // Roll back the cooldown claim so the user can retry after fixing their phone.
+      await db
+        .update(householdsTable)
+        .set({ last_briefing_sent_at: claimed[0].prev ?? null })
+        .where(eq(householdsTable.id, hid));
       res.status(400).json({
         error: "Nenhum número de WhatsApp encontrado para o administrador da casa.",
       });
@@ -133,11 +156,6 @@ router.post("/briefing/send", async (req: Request, res: Response) => {
       res.status(502).json({ error: result.error });
       return;
     }
-
-    await db
-      .update(householdsTable)
-      .set({ last_briefing_sent_at: now })
-      .where(eq(householdsTable.id, hid));
 
     req.log.info({ sid: result.sid, adminPhone }, "Daily briefing sent");
     res.json({
