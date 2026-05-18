@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { google, type calendar_v3, type gmail_v1 } from "googleapis";
+import crypto from "crypto";
 import {
   db,
   googleTokensTable,
@@ -74,18 +75,33 @@ export async function getAuthedOAuth2(userId: string) {
 
 // ── OAuth connect ─────────────────────────────────────────────────────────────
 
-router.get("/google/connect", (req: Request, res: Response) => {
+router.get("/google/connect", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+
+  const sid = getSessionId(req);
+  if (!sid) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const session = await getSession(sid);
+  if (!session) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const nonce = crypto.randomBytes(32).toString("hex");
+  await updateSession(sid, { ...session, google_oauth_nonce: nonce });
 
   const oauth2 = getOAuth2Client();
   const url = oauth2.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
     scope: SCOPES,
-    state: getSessionId(req) ?? "",
+    state: nonce,
   });
 
   res.redirect(url);
@@ -100,14 +116,19 @@ router.get("/google/callback", async (req: Request, res: Response) => {
     return;
   }
 
-  if (!code) {
+  if (!code || !state) {
     res.redirect("/app?google=error");
     return;
   }
 
-  const sid = state;
+  if (!req.isAuthenticated()) {
+    res.redirect("/login");
+    return;
+  }
+
+  const sid = getSessionId(req);
   if (!sid) {
-    res.redirect("/app?google=error");
+    res.redirect("/login");
     return;
   }
 
@@ -116,6 +137,18 @@ router.get("/google/callback", async (req: Request, res: Response) => {
     res.redirect("/login");
     return;
   }
+
+  if (!session.google_oauth_nonce || !crypto.timingSafeEqual(
+    Buffer.from(state),
+    Buffer.from(session.google_oauth_nonce),
+  )) {
+    req.log.warn({ userId: session.user.id }, "Google OAuth state mismatch — possible CSRF");
+    res.redirect("/app?google=error");
+    return;
+  }
+
+  const { google_oauth_nonce: _removed, ...sessionWithoutNonce } = session;
+  await updateSession(sid, sessionWithoutNonce as SessionData);
 
   const oauth2 = getOAuth2Client();
   let accessToken: string;
@@ -160,11 +193,10 @@ router.get("/google/callback", async (req: Request, res: Response) => {
       },
     });
 
-  const updatedSession: SessionData = {
-    ...session,
-    user: { ...session.user, google_connected: true },
-  };
-  await updateSession(sid, updatedSession);
+  await updateSession(sid, {
+    ...sessionWithoutNonce,
+    user: { ...sessionWithoutNonce.user, google_connected: true },
+  } as SessionData);
 
   res.redirect("/app?google=connected");
 });
