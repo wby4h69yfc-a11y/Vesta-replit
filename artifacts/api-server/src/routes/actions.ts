@@ -118,7 +118,7 @@ router.post("/actions/:id/approve", async (req, res) => {
           );
 
         const contact = contacts[0];
-        if (contact?.phone) {
+        if (contact?.phone && contact.consent_status === "granted") {
           const summary = action.title.substring(0, 80);
           void sendWhatsApp(contact.phone, `✓ Confirmado! ${summary}`);
         }
