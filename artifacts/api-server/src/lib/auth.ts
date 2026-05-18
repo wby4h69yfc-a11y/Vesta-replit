@@ -23,6 +23,7 @@ export interface SessionData {
   access_token: string;
   refresh_token?: string;
   expires_at?: number;
+  google_oauth_nonce?: string;
 }
 
 let oidcConfig: client.Configuration | null = null;
