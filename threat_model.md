@@ -55,6 +55,7 @@ Required guarantees:
 - Business objects MUST be written with the correct household/user scope rather than relying on implicit defaults.
 - External inbound data MUST be authenticated before it can create inbox items, tasks, events, or suggested actions.
 - Webhook sender identity MUST be matched using exact normalized identifiers rather than lossy partial-phone comparisons that can collide across households.
+- External-provider identifiers used for sync or deduplication (for example Google event IDs) MUST be scoped to the owning household or account, not treated as globally tenant-agnostic keys.
 
 ### Information Disclosure
 
@@ -64,6 +65,7 @@ Required guarantees:
 - Every read of household data MUST be scoped to the authenticated user’s authorized household(s).
 - Integration tokens and message contents MUST never be exposed through unauthenticated endpoints or overbroad queries.
 - API responses and logs MUST avoid leaking secrets or unnecessary personal data.
+- Outbound WhatsApp messages to non-household contacts MUST enforce the stored consent state before any message is sent.
 
 ### Denial of Service
 
