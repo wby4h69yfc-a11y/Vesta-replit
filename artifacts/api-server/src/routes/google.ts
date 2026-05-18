@@ -342,7 +342,7 @@ router.post("/google/gmail/sync", async (req: Request, res: Response) => {
     const from = headers.find((h: gmail_v1.Schema$MessagePartHeader) => h.name === "From")?.value ?? "";
     const snippet = full.snippet ?? "";
 
-    await db
+    const insertResult = await db
       .insert(inboxItemsTable)
       .values({
         household_id: hid,
@@ -350,10 +350,12 @@ router.post("/google/gmail/sync", async (req: Request, res: Response) => {
         raw_content: `De: ${from}\nAssunto: ${subject}\n\n${snippet}`,
         status: "received",
         sender_name: from,
+        gmail_message_id: msg.id,
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: inboxItemsTable.id });
 
-    imported++;
+    if (insertResult.length > 0) imported++;
   }
 
   res.json({ imported, total: messageList?.length ?? 0 });

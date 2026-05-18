@@ -14,6 +14,7 @@ export const inboxItemsTable = pgTable(
     status: text("status").notNull().default("received"),
     sender_name: text("sender_name"),
     twilio_message_sid: text("twilio_message_sid"),
+    gmail_message_id: text("gmail_message_id"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
@@ -23,6 +24,10 @@ export const inboxItemsTable = pgTable(
     uniqueIndex("inbox_items_twilio_message_sid_unique")
       .on(table.twilio_message_sid)
       .where(sql`${table.twilio_message_sid} IS NOT NULL`),
+    // Partial unique index: prevents the same Gmail message being imported twice.
+    uniqueIndex("inbox_items_gmail_message_id_unique")
+      .on(table.gmail_message_id)
+      .where(sql`${table.gmail_message_id} IS NOT NULL`),
   ],
 );
 

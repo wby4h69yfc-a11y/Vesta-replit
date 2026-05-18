@@ -7,6 +7,11 @@ import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
 
+// Per-household cooldown: track the last time a briefing was sent.
+// Prevents a single authenticated user from spamming outbound WhatsApp messages.
+const lastBriefingSent = new Map<number, Date>();
+const BRIEFING_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour minimum between sends
+
 /**
  * POST /api/briefing/send
  *
@@ -20,6 +25,14 @@ router.post("/briefing/send", async (req: Request, res: Response) => {
   }
   try {
     const hid = getHouseholdId(req);
+
+    const lastSent = lastBriefingSent.get(hid);
+    if (lastSent && Date.now() - lastSent.getTime() < BRIEFING_COOLDOWN_MS) {
+      const retryAfterSec = Math.ceil((BRIEFING_COOLDOWN_MS - (Date.now() - lastSent.getTime())) / 1000);
+      res.setHeader("Retry-After", String(retryAfterSec));
+      res.status(429).json({ error: "Briefing já enviado recentemente. Tente novamente mais tarde." });
+      return;
+    }
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
@@ -109,6 +122,7 @@ router.post("/briefing/send", async (req: Request, res: Response) => {
       return;
     }
 
+    lastBriefingSent.set(hid, new Date());
     req.log.info({ sid: result.sid, adminPhone }, "Daily briefing sent");
     res.json({
       sent: true,
