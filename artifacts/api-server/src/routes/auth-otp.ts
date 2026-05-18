@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq, and, gt, isNull } from "drizzle-orm";
+import { eq, and, gt, isNull, sql } from "drizzle-orm";
 import { db, otpCodesTable, usersTable, householdsTable } from "@workspace/db";
 import {
   createSession,
@@ -11,6 +11,43 @@ import {
 import { sendWhatsApp, isTwilioConfigured } from "../lib/whatsapp";
 
 const router: IRouter = Router();
+
+const MAX_VERIFY_ATTEMPTS = 5;
+
+const SEND_PHONE_MAX = 3;
+const SEND_IP_MAX = 10;
+const VERIFY_PHONE_MAX = 10;
+const VERIFY_IP_MAX = 20;
+const RATE_WINDOW_MS = 10 * 60 * 1_000;
+
+interface RateBucket {
+  count: number;
+  resetAt: number;
+}
+
+const rateBuckets = new Map<string, RateBucket>();
+
+function checkRateLimit(key: string, max: number): boolean {
+  const now = Date.now();
+  const bucket = rateBuckets.get(key);
+
+  if (!bucket || now >= bucket.resetAt) {
+    rateBuckets.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    return true;
+  }
+
+  if (bucket.count >= max) return false;
+
+  bucket.count++;
+  return true;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of rateBuckets) {
+    if (now >= bucket.resetAt) rateBuckets.delete(key);
+  }
+}, RATE_WINDOW_MS).unref();
 
 function generateOtp(): string {
   return crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");
@@ -51,6 +88,13 @@ async function sendWhatsAppOtp(
   }
 }
 
+/**
+ * POST /api/auth/otp/send
+ *
+ * Rate limits per 10-minute window:
+ *   - 3 sends per phone number
+ *   - 10 sends per IP address
+ */
 router.post("/auth/otp/send", async (req: Request, res: Response) => {
   const { phone: rawPhone } = req.body as { phone?: unknown };
 
@@ -60,13 +104,22 @@ router.post("/auth/otp/send", async (req: Request, res: Response) => {
   }
 
   const phone = normalizePhone(rawPhone.trim());
+  const ip = req.ip ?? "unknown";
 
-  // Delete any previous unused codes for this number
+  if (
+    !checkRateLimit(`send:phone:${phone}`, SEND_PHONE_MAX) ||
+    !checkRateLimit(`send:ip:${ip}`, SEND_IP_MAX)
+  ) {
+    req.log.warn({ phone, ip }, "OTP send rate limit exceeded");
+    res.status(429).json({
+      error: "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.",
+    });
+    return;
+  }
+
   await db
     .delete(otpCodesTable)
-    .where(
-      and(eq(otpCodesTable.phone, phone), isNull(otpCodesTable.used_at)),
-    );
+    .where(and(eq(otpCodesTable.phone, phone), isNull(otpCodesTable.used_at)));
 
   const code = generateOtp();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1_000);
@@ -78,8 +131,7 @@ router.post("/auth/otp/send", async (req: Request, res: Response) => {
   } catch (err) {
     req.log.error({ err }, "WhatsApp OTP send failed");
     res.status(500).json({
-      error:
-        "Falha ao enviar o código. Verifique o número e tente novamente.",
+      error: "Falha ao enviar o código. Verifique o número e tente novamente.",
     });
     return;
   }
@@ -87,6 +139,19 @@ router.post("/auth/otp/send", async (req: Request, res: Response) => {
   res.json({ sent: true, message: `Código enviado para ${phone}` });
 });
 
+/**
+ * POST /api/auth/otp/verify
+ *
+ * Rate limits per 10-minute window:
+ *   - 10 verify attempts per phone number
+ *   - 20 verify attempts per IP address
+ *
+ * Failed attempts are also tracked on the OTP row itself: after
+ * MAX_VERIFY_ATTEMPTS (5) wrong guesses the code is atomically invalidated
+ * (used_at set) so no further guesses are accepted. The attempt increment
+ * is performed as a single atomic SQL UPDATE so concurrent requests cannot
+ * race past the cap.
+ */
 router.post("/auth/otp/verify", async (req: Request, res: Response) => {
   const { phone: rawPhone, code } = req.body as {
     phone?: unknown;
@@ -104,15 +169,30 @@ router.post("/auth/otp/verify", async (req: Request, res: Response) => {
   }
 
   const phone = normalizePhone(rawPhone.trim());
-  const now = new Date();
+  const ip = req.ip ?? "unknown";
 
+  // Time-window rate limiting on verify (independent of per-OTP attempt cap)
+  if (
+    !checkRateLimit(`verify:phone:${phone}`, VERIFY_PHONE_MAX) ||
+    !checkRateLimit(`verify:ip:${ip}`, VERIFY_IP_MAX)
+  ) {
+    req.log.warn({ phone, ip }, "OTP verify rate limit exceeded");
+    res.status(429).json({
+      error: "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.",
+    });
+    return;
+  }
+
+  const now = new Date();
+  const invalidMsg = "Código inválido ou expirado";
+
+  // Fetch the active (unused, unexpired, under-cap) OTP for this phone.
   const [otp] = await db
     .select()
     .from(otpCodesTable)
     .where(
       and(
         eq(otpCodesTable.phone, phone),
-        eq(otpCodesTable.code, code.trim()),
         gt(otpCodesTable.expires_at, now),
         isNull(otpCodesTable.used_at),
       ),
@@ -120,16 +200,52 @@ router.post("/auth/otp/verify", async (req: Request, res: Response) => {
     .limit(1);
 
   if (!otp) {
-    res.status(400).json({ error: "Código inválido ou expirado" });
+    res.status(400).json({ error: invalidMsg });
     return;
   }
 
+  // Constant-time comparison to prevent timing side-channels.
+  const codeBuffer = Buffer.from(code.trim().padEnd(6));
+  const otpBuffer = Buffer.from(otp.code.padEnd(6));
+  const codeMatches =
+    codeBuffer.length === otpBuffer.length &&
+    crypto.timingSafeEqual(codeBuffer, otpBuffer);
+
+  if (!codeMatches) {
+    // Atomically increment failed_attempts and conditionally set used_at
+    // when the cap is reached — all in a single UPDATE so concurrent wrong
+    // guesses cannot race past the attempt limit.
+    const [updated] = await db
+      .update(otpCodesTable)
+      .set({
+        failed_attempts: sql`${otpCodesTable.failed_attempts} + 1`,
+        used_at: sql`CASE WHEN ${otpCodesTable.failed_attempts} + 1 >= ${MAX_VERIFY_ATTEMPTS} THEN NOW() ELSE ${otpCodesTable.used_at} END`,
+      })
+      .where(
+        and(
+          eq(otpCodesTable.id, otp.id),
+          isNull(otpCodesTable.used_at),
+        ),
+      )
+      .returning({ failed_attempts: otpCodesTable.failed_attempts });
+
+    const attempts = updated?.failed_attempts ?? MAX_VERIFY_ATTEMPTS;
+    req.log.warn(
+      { phone, attempts, invalidated: attempts >= MAX_VERIFY_ATTEMPTS },
+      "OTP verify: wrong code",
+    );
+
+    res.status(400).json({ error: invalidMsg });
+    return;
+  }
+
+  // Correct code — mark as used so it cannot be replayed.
   await db
     .update(otpCodesTable)
     .set({ used_at: now })
-    .where(eq(otpCodesTable.id, otp.id));
+    .where(and(eq(otpCodesTable.id, otp.id), isNull(otpCodesTable.used_at)));
 
-  // Upsert user by phone — creates a new account on first login
+  // Upsert user by phone — creates a new account on first login.
   let [user] = await db
     .insert(usersTable)
     .values({ phone })
@@ -139,8 +255,7 @@ router.post("/auth/otp/verify", async (req: Request, res: Response) => {
     })
     .returning();
 
-  // Ensure every user has a dedicated household at login time.
-  // This guarantees household isolation from the very first session.
+  // Ensure every user has a household at login time.
   let householdId = user.household_id;
   if (!householdId) {
     const [newHousehold] = await db

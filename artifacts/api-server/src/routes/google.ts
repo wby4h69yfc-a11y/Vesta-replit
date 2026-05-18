@@ -1,12 +1,13 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { google, type calendar_v3, type gmail_v1 } from "googleapis";
+import crypto from "crypto";
 import {
   db,
   googleTokensTable,
   calendarEventsTable,
   inboxItemsTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import {
   getSessionId,
   getSession,
@@ -74,18 +75,33 @@ export async function getAuthedOAuth2(userId: string) {
 
 // ── OAuth connect ─────────────────────────────────────────────────────────────
 
-router.get("/google/connect", (req: Request, res: Response) => {
+router.get("/google/connect", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+
+  const sid = getSessionId(req);
+  if (!sid) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const session = await getSession(sid);
+  if (!session) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const nonce = crypto.randomBytes(32).toString("hex");
+  await updateSession(sid, { ...session, google_oauth_nonce: nonce });
 
   const oauth2 = getOAuth2Client();
   const url = oauth2.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
     scope: SCOPES,
-    state: getSessionId(req) ?? "",
+    state: nonce,
   });
 
   res.redirect(url);
@@ -100,14 +116,19 @@ router.get("/google/callback", async (req: Request, res: Response) => {
     return;
   }
 
-  if (!code) {
+  if (!code || !state) {
     res.redirect("/app?google=error");
     return;
   }
 
-  const sid = state;
+  if (!req.isAuthenticated()) {
+    res.redirect("/login");
+    return;
+  }
+
+  const sid = getSessionId(req);
   if (!sid) {
-    res.redirect("/app?google=error");
+    res.redirect("/login");
     return;
   }
 
@@ -116,6 +137,21 @@ router.get("/google/callback", async (req: Request, res: Response) => {
     res.redirect("/login");
     return;
   }
+
+  const stateBuffer = Buffer.from(state);
+  const nonceBuffer = Buffer.from(session.google_oauth_nonce ?? "");
+  if (
+    !session.google_oauth_nonce ||
+    stateBuffer.length !== nonceBuffer.length ||
+    !crypto.timingSafeEqual(stateBuffer, nonceBuffer)
+  ) {
+    req.log.warn({ userId: session.user.id }, "Google OAuth state mismatch — possible CSRF");
+    res.redirect("/app?google=error");
+    return;
+  }
+
+  const { google_oauth_nonce: _removed, ...sessionWithoutNonce } = session;
+  await updateSession(sid, sessionWithoutNonce as SessionData);
 
   const oauth2 = getOAuth2Client();
   let accessToken: string;
@@ -160,11 +196,10 @@ router.get("/google/callback", async (req: Request, res: Response) => {
       },
     });
 
-  const updatedSession: SessionData = {
-    ...session,
-    user: { ...session.user, google_connected: true },
-  };
-  await updateSession(sid, updatedSession);
+  await updateSession(sid, {
+    ...sessionWithoutNonce,
+    user: { ...sessionWithoutNonce.user, google_connected: true },
+  } as SessionData);
 
   res.redirect("/app?google=connected");
 });
@@ -270,7 +305,7 @@ router.post("/google/calendar/sync", async (req: Request, res: Response) => {
         notes: ev.description ?? null,
       })
       .onConflictDoUpdate({
-        target: calendarEventsTable.gcal_event_id,
+        target: [calendarEventsTable.household_id, calendarEventsTable.gcal_event_id],
         set: {
           title: ev.summary,
           start_at: startAt,
@@ -319,8 +354,28 @@ router.post("/google/gmail/sync", async (req: Request, res: Response) => {
     return;
   }
 
+  // Determine which Gmail IDs are already stored to avoid redundant API calls.
+  const listedIds = messageList.map((m) => m.id).filter((id): id is string => !!id);
+
+  let alreadyKnownIds = new Set<string>();
+  if (listedIds.length > 0) {
+    const existing = await db
+      .select({ gmail_message_id: inboxItemsTable.gmail_message_id })
+      .from(inboxItemsTable)
+      .where(
+        inArray(inboxItemsTable.gmail_message_id, listedIds),
+      );
+    alreadyKnownIds = new Set(
+      existing
+        .map((r) => r.gmail_message_id)
+        .filter((id): id is string => id !== null),
+    );
+  }
+
+  const newMessages = messageList.filter((m) => m.id && !alreadyKnownIds.has(m.id));
+
   let imported = 0;
-  for (const msg of messageList ?? []) {
+  for (const msg of newMessages) {
     if (!msg.id) continue;
 
     let full: gmail_v1.Schema$Message;
@@ -342,7 +397,7 @@ router.post("/google/gmail/sync", async (req: Request, res: Response) => {
     const from = headers.find((h: gmail_v1.Schema$MessagePartHeader) => h.name === "From")?.value ?? "";
     const snippet = full.snippet ?? "";
 
-    await db
+    const insertResult = await db
       .insert(inboxItemsTable)
       .values({
         household_id: hid,
@@ -350,13 +405,15 @@ router.post("/google/gmail/sync", async (req: Request, res: Response) => {
         raw_content: `De: ${from}\nAssunto: ${subject}\n\n${snippet}`,
         status: "received",
         sender_name: from,
+        gmail_message_id: msg.id,
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: inboxItemsTable.id });
 
-    imported++;
+    if (insertResult.length > 0) imported++;
   }
 
-  res.json({ imported, total: messageList?.length ?? 0 });
+  res.json({ imported, total: messageList.length, skipped: alreadyKnownIds.size });
 });
 
 export default router;

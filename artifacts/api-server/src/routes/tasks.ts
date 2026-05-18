@@ -53,6 +53,14 @@ router.post("/tasks", async (req, res) => {
 
     if (!title) return res.status(400).json({ error: "title is required" });
 
+    if (owner_id != null) {
+      const [member] = await db
+        .select({ id: membersTable.id })
+        .from(membersTable)
+        .where(and(eq(membersTable.id, owner_id), eq(membersTable.household_id, hid)));
+      if (!member) return res.status(400).json({ error: "owner_id does not belong to this household" });
+    }
+
     const [task] = await db
       .insert(tasksTable)
       .values({
@@ -104,6 +112,14 @@ router.patch("/tasks/:id", async (req, res) => {
       .from(tasksTable)
       .where(and(eq(tasksTable.id, id), eq(tasksTable.household_id, hid)));
     if (!task) return res.status(404).json({ error: "Not found" });
+
+    if (owner_id != null) {
+      const [member] = await db
+        .select({ id: membersTable.id })
+        .from(membersTable)
+        .where(and(eq(membersTable.id, owner_id), eq(membersTable.household_id, hid)));
+      if (!member) return res.status(400).json({ error: "owner_id does not belong to this household" });
+    }
 
     const [updated] = await db
       .update(tasksTable)

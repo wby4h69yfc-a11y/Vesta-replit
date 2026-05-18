@@ -1,6 +1,6 @@
 import { db } from "@workspace/db";
 import { inboxItemsTable, suggestedActionsTable, contactsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "./whatsapp";
 
 export type ClassificationResult = {
@@ -155,13 +155,19 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
 
   const result = classifyText(item.raw_content, item.sender_name);
 
-  // Look up contact for better title
+  // Look up contact for better title — scoped to the inbox item's household
+  // to prevent cross-tenant name leakage.
   let senderDisplayName = item.sender_name;
   if (item.sender_name) {
     const contacts = await db
       .select()
       .from(contactsTable)
-      .where(eq(contactsTable.name, item.sender_name));
+      .where(
+        and(
+          eq(contactsTable.household_id, item.household_id),
+          eq(contactsTable.name, item.sender_name),
+        ),
+      );
     if (contacts.length > 0) {
       senderDisplayName = contacts[0].name;
     }

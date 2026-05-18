@@ -19,7 +19,7 @@ export const calendarEventsTable = pgTable("calendar_events", {
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 },
-(table) => [uniqueIndex("calendar_events_gcal_event_id_idx").on(table.gcal_event_id)],
+(table) => [uniqueIndex("calendar_events_household_gcal_event_id_idx").on(table.household_id, table.gcal_event_id)],
 );
 
 export const insertCalendarEventSchema = createInsertSchema(calendarEventsTable).omit({ id: true, created_at: true, updated_at: true });
