@@ -305,7 +305,7 @@ router.post("/google/calendar/sync", async (req: Request, res: Response) => {
         notes: ev.description ?? null,
       })
       .onConflictDoUpdate({
-        target: calendarEventsTable.gcal_event_id,
+        target: [calendarEventsTable.household_id, calendarEventsTable.gcal_event_id],
         set: {
           title: ev.summary,
           start_at: startAt,
