@@ -1,15 +1,12 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { calendarEventsTable, tasksTable } from "@workspace/db";
+import { calendarEventsTable, householdsTable, tasksTable } from "@workspace/db";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "../lib/whatsapp";
 import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
 
-// Per-household cooldown: track the last time a briefing was sent.
-// Prevents a single authenticated user from spamming outbound WhatsApp messages.
-const lastBriefingSent = new Map<number, Date>();
 const BRIEFING_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour minimum between sends
 
 /**
@@ -17,6 +14,8 @@ const BRIEFING_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour minimum between sends
  *
  * Sends the daily household briefing via WhatsApp to the primary admin.
  * requireAuth is applied via the protected router in routes/index.ts.
+ * Cooldown is enforced via `households.last_briefing_sent_at` so it
+ * survives process restarts and works across multiple instances.
  */
 router.post("/briefing/send", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -26,13 +25,26 @@ router.post("/briefing/send", async (req: Request, res: Response) => {
   try {
     const hid = getHouseholdId(req);
 
-    const lastSent = lastBriefingSent.get(hid);
-    if (lastSent && Date.now() - lastSent.getTime() < BRIEFING_COOLDOWN_MS) {
-      const retryAfterSec = Math.ceil((BRIEFING_COOLDOWN_MS - (Date.now() - lastSent.getTime())) / 1000);
-      res.setHeader("Retry-After", String(retryAfterSec));
-      res.status(429).json({ error: "Briefing já enviado recentemente. Tente novamente mais tarde." });
+    const [household] = await db
+      .select({ last_briefing_sent_at: householdsTable.last_briefing_sent_at })
+      .from(householdsTable)
+      .where(eq(householdsTable.id, hid));
+
+    if (!household) {
+      res.status(404).json({ error: "Household não encontrado." });
       return;
     }
+
+    if (household.last_briefing_sent_at) {
+      const elapsed = Date.now() - household.last_briefing_sent_at.getTime();
+      if (elapsed < BRIEFING_COOLDOWN_MS) {
+        const retryAfterSec = Math.ceil((BRIEFING_COOLDOWN_MS - elapsed) / 1000);
+        res.setHeader("Retry-After", String(retryAfterSec));
+        res.status(429).json({ error: "Briefing já enviado recentemente. Tente novamente mais tarde." });
+        return;
+      }
+    }
+
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
@@ -122,7 +134,11 @@ router.post("/briefing/send", async (req: Request, res: Response) => {
       return;
     }
 
-    lastBriefingSent.set(hid, new Date());
+    await db
+      .update(householdsTable)
+      .set({ last_briefing_sent_at: now })
+      .where(eq(householdsTable.id, hid));
+
     req.log.info({ sid: result.sid, adminPhone }, "Daily briefing sent");
     res.json({
       sent: true,

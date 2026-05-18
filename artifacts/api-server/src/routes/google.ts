@@ -6,7 +6,7 @@ import {
   calendarEventsTable,
   inboxItemsTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray, isNotNull } from "drizzle-orm";
 import {
   getSessionId,
   getSession,
@@ -319,8 +319,28 @@ router.post("/google/gmail/sync", async (req: Request, res: Response) => {
     return;
   }
 
+  // Determine which Gmail IDs are already stored to avoid redundant API calls.
+  const listedIds = messageList.map((m) => m.id).filter((id): id is string => !!id);
+
+  let alreadyKnownIds = new Set<string>();
+  if (listedIds.length > 0) {
+    const existing = await db
+      .select({ gmail_message_id: inboxItemsTable.gmail_message_id })
+      .from(inboxItemsTable)
+      .where(
+        inArray(inboxItemsTable.gmail_message_id, listedIds),
+      );
+    alreadyKnownIds = new Set(
+      existing
+        .map((r) => r.gmail_message_id)
+        .filter((id): id is string => id !== null),
+    );
+  }
+
+  const newMessages = messageList.filter((m) => m.id && !alreadyKnownIds.has(m.id));
+
   let imported = 0;
-  for (const msg of messageList ?? []) {
+  for (const msg of newMessages) {
     if (!msg.id) continue;
 
     let full: gmail_v1.Schema$Message;
@@ -358,7 +378,7 @@ router.post("/google/gmail/sync", async (req: Request, res: Response) => {
     if (insertResult.length > 0) imported++;
   }
 
-  res.json({ imported, total: messageList?.length ?? 0 });
+  res.json({ imported, total: messageList.length, skipped: alreadyKnownIds.size });
 });
 
 export default router;
