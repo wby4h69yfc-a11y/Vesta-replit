@@ -150,8 +150,12 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       return;
     }
 
-    // Normalise: last 8 digits for loose matching across country-code formats
-    const normalized = (p: string) => p.replace(/\D/g, "").slice(-8);
+    // Normalise: strip all non-digit characters and compare the full number.
+    // Partial-digit matching (e.g. last 8 digits) is intentionally avoided
+    // because it allows numbers from different area codes or countries to
+    // collide, enabling an attacker to inject messages into another
+    // household's inbox.  Exact normalised matching is required.
+    const normalized = (p: string) => p.replace(/\D/g, "");
     const phoneNorm = normalized(phoneRaw);
 
     // ── Resolve household from sender phone ──────────────────────────────────
