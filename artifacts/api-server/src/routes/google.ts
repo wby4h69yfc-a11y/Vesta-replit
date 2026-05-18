@@ -236,6 +236,17 @@ router.delete("/google/disconnect", async (req: Request, res: Response) => {
 
 // ── Calendar sync ─────────────────────────────────────────────────────────────
 
+/**
+ * POST /api/google/calendar/sync
+ *
+ * Pulls events from Google Calendar into the local DB using an upsert keyed
+ * on (household_id, gcal_event_id).  Conflicts are resolved by overwriting
+ * local copies with the authoritative Google data.
+ *
+ * Query params:
+ *   days_back    — how many past days to include (default 7, max 30)
+ *   days_forward — how many future days to include (default 90, max 365)
+ */
 router.post("/google/calendar/sync", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
@@ -250,20 +261,31 @@ router.post("/google/calendar/sync", async (req: Request, res: Response) => {
     return;
   }
 
-  const cal = google.calendar({ version: "v3", auth: oauth2 });
+  // Configurable window — clamp to safe maximums to avoid hammering the API
+  const daysBack = Math.min(
+    parseInt(String(req.query.days_back ?? "7"), 10) || 7,
+    30,
+  );
+  const daysForward = Math.min(
+    parseInt(String(req.query.days_forward ?? "90"), 10) || 90,
+    365,
+  );
 
   const now = new Date();
-  const thirtyDaysOut = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const timeMin = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000);
+  const timeMax = new Date(now.getTime() + daysForward * 24 * 60 * 60 * 1000);
+
+  const cal = google.calendar({ version: "v3", auth: oauth2 });
 
   let gcalEvents: calendar_v3.Schema$Event[] = [];
   try {
     const resp = await cal.events.list({
       calendarId: "primary",
-      timeMin: now.toISOString(),
-      timeMax: thirtyDaysOut.toISOString(),
+      timeMin: timeMin.toISOString(),
+      timeMax: timeMax.toISOString(),
       singleEvents: true,
       orderBy: "startTime",
-      maxResults: 100,
+      maxResults: 500,
     });
     gcalEvents = resp.data.items ?? [];
   } catch (err) {
@@ -273,7 +295,7 @@ router.post("/google/calendar/sync", async (req: Request, res: Response) => {
   }
 
   let synced = 0;
-  for (const ev of gcalEvents ?? []) {
+  for (const ev of gcalEvents) {
     if (!ev.id || !ev.summary) continue;
 
     const startAt = ev.start?.dateTime
@@ -319,7 +341,119 @@ router.post("/google/calendar/sync", async (req: Request, res: Response) => {
     synced++;
   }
 
-  res.json({ synced, total: gcalEvents?.length ?? 0 });
+  res.json({
+    synced,
+    total: gcalEvents.length,
+    window: { days_back: daysBack, days_forward: daysForward },
+  });
+});
+
+// ── Calendar write-back ────────────────────────────────────────────────────────
+
+/**
+ * POST /api/google/calendar/events
+ *
+ * Creates an event in Google Calendar and mirrors it into the local DB.
+ * If the user has not connected Google, falls back to local-only creation.
+ *
+ * Body: { title, start_at, end_at?, all_day?, notes?, category? }
+ */
+router.post("/google/calendar/events", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const hid = getHouseholdId(req);
+
+  const { title, start_at, end_at, all_day, notes, category } = req.body as {
+    title?: string;
+    start_at?: string;
+    end_at?: string;
+    all_day?: boolean;
+    notes?: string;
+    category?: string;
+  };
+
+  if (!title || !start_at) {
+    res.status(400).json({ error: "title and start_at are required" });
+    return;
+  }
+
+  const startAt = new Date(start_at);
+  if (isNaN(startAt.getTime())) {
+    res.status(400).json({ error: "Invalid start_at date" });
+    return;
+  }
+
+  const endAt = end_at ? new Date(end_at) : null;
+  const isAllDay = all_day ?? false;
+
+  let gcalEventId: string | null = null;
+
+  // Attempt to write to Google Calendar if connected
+  const oauth2 = await getAuthedOAuth2(req.user.id);
+  if (oauth2) {
+    const cal = google.calendar({ version: "v3", auth: oauth2 });
+
+    const gcalEvent: calendar_v3.Schema$Event = {
+      summary: title,
+      description: notes ?? undefined,
+      start: isAllDay
+        ? { date: startAt.toISOString().split("T")[0] }
+        : { dateTime: startAt.toISOString(), timeZone: "America/Sao_Paulo" },
+      end: isAllDay
+        ? {
+            date: (endAt ?? startAt).toISOString().split("T")[0],
+          }
+        : {
+            dateTime: (endAt ?? new Date(startAt.getTime() + 60 * 60 * 1000)).toISOString(),
+            timeZone: "America/Sao_Paulo",
+          },
+    };
+
+    try {
+      const created = await cal.events.insert({
+        calendarId: "primary",
+        requestBody: gcalEvent,
+      });
+      gcalEventId = created.data.id ?? null;
+      req.log.info({ gcalEventId }, "Event written to Google Calendar");
+    } catch (err) {
+      req.log.warn({ err }, "Failed to write event to Google Calendar — saving locally only");
+    }
+  }
+
+  // Upsert into local DB (use gcal ID if we got one, else local-only)
+  const [event] = await db
+    .insert(calendarEventsTable)
+    .values({
+      household_id: hid,
+      title,
+      start_at: startAt,
+      end_at: endAt ?? undefined,
+      all_day: isAllDay,
+      source: gcalEventId ? "google" : "manual",
+      sync_status: gcalEventId ? "synced" : "local",
+      gcal_event_id: gcalEventId,
+      notes: notes ?? null,
+      category: category ?? "outros",
+    })
+    .onConflictDoUpdate({
+      target: [calendarEventsTable.household_id, calendarEventsTable.gcal_event_id],
+      set: {
+        title,
+        start_at: startAt,
+        end_at: endAt ?? undefined,
+        all_day: isAllDay,
+        notes: notes ?? null,
+        sync_status: "synced",
+        updated_at: new Date(),
+      },
+    })
+    .returning();
+
+  res.status(201).json({ event, google_synced: !!gcalEventId });
 });
 
 // ── Gmail sync ────────────────────────────────────────────────────────────────
