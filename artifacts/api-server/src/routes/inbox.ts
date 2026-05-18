@@ -103,6 +103,10 @@ router.post("/inbox/:id/classify", async (req, res) => {
       return res.status(404).json({ error: "Not found" });
     }
 
+    if (item.status !== "received") {
+      return res.status(409).json({ error: "Item já foi classificado." });
+    }
+
     await classifyAndSaveAction(id);
 
     const [updated] = await db

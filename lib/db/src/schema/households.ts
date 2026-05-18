@@ -8,6 +8,7 @@ export const householdsTable = pgTable("households", {
   location: text("location"),
   plan: text("plan").notNull().default("free"),
   concierge_eligible: boolean("concierge_eligible").notNull().default(false),
+  last_briefing_sent_at: timestamp("last_briefing_sent_at", { withTimezone: true }),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
