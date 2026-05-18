@@ -159,11 +159,16 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     const phoneNorm = normalized(phoneRaw);
 
     // ── Resolve household from sender phone ──────────────────────────────────
-    // Priority: contacts table (explicit contact), then members table (household adults)
+    // Security requirements:
+    //  1. Exact normalised match only — no partial/trailing-digit matching.
+    //  2. Deterministic duplicate policy: if the same number appears in more
+    //     than one household we MUST NOT silently route to whichever row
+    //     happens to come first.  That would be a cross-tenant trust flaw.
+    //     Policy: 0 matches → discard; 1 household → accept; >1 → quarantine.
     let householdId: number | null = null;
     let resolvedSenderName: string | null = ProfileName ?? null;
 
-    // 1. Search contacts across all households
+    // Collect ALL contacts whose normalised phone matches exactly.
     const allContacts = await db
       .select({
         id: contactsTable.id,
@@ -173,39 +178,71 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       })
       .from(contactsTable);
 
-    const matchedContact = allContacts.find(
+    const matchedContacts = allContacts.filter(
       (c) => c.phone && normalized(c.phone) === phoneNorm,
     );
 
-    if (matchedContact) {
-      householdId = matchedContact.household_id;
-      resolvedSenderName = matchedContact.name;
-      req.log.info(
-        { contact: matchedContact.name, householdId },
-        "Webhook: matched sender to contact",
-      );
-    } else {
-      // 2. Search members as fallback
-      const allMembers = await db
-        .select({
-          name: membersTable.name,
-          phone: membersTable.phone,
-          household_id: membersTable.household_id,
-        })
-        .from(membersTable);
+    // Collect ALL members whose normalised phone matches exactly.
+    const allMembers = await db
+      .select({
+        name: membersTable.name,
+        phone: membersTable.phone,
+        household_id: membersTable.household_id,
+      })
+      .from(membersTable);
 
-      const matchedMember = allMembers.find(
-        (m) => m.phone && normalized(m.phone) === phoneNorm,
-      );
+    const matchedMembers = allMembers.filter(
+      (m) => m.phone && normalized(m.phone) === phoneNorm,
+    );
 
-      if (matchedMember) {
-        householdId = matchedMember.household_id;
-        resolvedSenderName = matchedMember.name;
+    // Gather the distinct set of household IDs across both tables.
+    const matchedHouseholdIds = new Set<number>([
+      ...matchedContacts.map((c) => c.household_id),
+      ...matchedMembers.map((m) => m.household_id),
+    ]);
+
+    if (matchedHouseholdIds.size === 0) {
+      // Unknown sender — discard (handled below).
+    } else if (matchedHouseholdIds.size === 1) {
+      // Exactly one household — safe to accept.
+      householdId = [...matchedHouseholdIds][0];
+
+      // Prefer contact name over member name; fall back to WhatsApp ProfileName.
+      const contactMatch = matchedContacts.find(
+        (c) => c.household_id === householdId,
+      );
+      if (contactMatch) {
+        resolvedSenderName = contactMatch.name;
         req.log.info(
-          { member: matchedMember.name, householdId },
-          "Webhook: matched sender to member",
+          { contact: contactMatch.name, householdId },
+          "Webhook: matched sender to contact",
         );
+      } else {
+        const memberMatch = matchedMembers.find(
+          (m) => m.household_id === householdId,
+        );
+        if (memberMatch) {
+          resolvedSenderName = memberMatch.name;
+          req.log.info(
+            { member: memberMatch.name, householdId },
+            "Webhook: matched sender to member",
+          );
+        }
       }
+    } else {
+      // Phone number exists in multiple households — routing would be
+      // non-deterministic and could cause cross-tenant message misdelivery.
+      // Quarantine: discard the message and emit a high-severity alert so an
+      // operator can resolve the duplicate before messages are accepted.
+      req.log.error(
+        {
+          phone: phoneRaw,
+          matchedHouseholdIds: [...matchedHouseholdIds],
+          MessageSid,
+        },
+        "Webhook: phone number matched multiple households — discarding to prevent cross-tenant misdelivery",
+      );
+      return;
     }
 
     // Discard messages from unrecognised senders to prevent cross-tenant
