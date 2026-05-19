@@ -19,6 +19,7 @@ import googleRouter from "./google";
 import briefingRouter from "./briefing";
 import adminRouter from "./admin";
 import devRouter from "./dev";
+import memoryRouter from "./memory";
 
 const router: IRouter = Router();
 
@@ -69,6 +70,7 @@ protectedRouter.use(patternsRouter);   // GET /patterns, POST /patterns/:id/*
 protectedRouter.use(onboardingRouter); // GET|POST /onboarding/*
 protectedRouter.use(googleRouter);     // GET|POST /google/*, DELETE /google/disconnect
 protectedRouter.use(briefingRouter);   // POST /briefing/send
+protectedRouter.use(memoryRouter);     // GET /memory/staging, POST /memory/staging/:id/confirm|dismiss, GET /audit
 protectedRouter.use(adminRouter);      // GET /admin/stats
 
 // Catch-all: any path that reaches here through the protectedRouter did not
