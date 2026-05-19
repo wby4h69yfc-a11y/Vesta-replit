@@ -6,6 +6,11 @@ import {
   replyVerificationSuccess,
   replyTokenExpired,
   replyIngestAck,
+  replyActionProposal,
+  replyApproved,
+  replyDismissed,
+  replyEdited,
+  replyUndone,
   replyExplicitReviewNeeded,
 } from "../lib/wa-reply-composer";
 
@@ -73,6 +78,14 @@ async function validateTwilioSignature(req: Request): Promise<boolean> {
  *   2. ACK Twilio immediately (prevents retries)
  *   3. Delegate to WhatsAppMessageProcessor (async)
  *   4. Send WhatsApp reply via WhatsAppReplyComposer output
+ *
+ * WhatsApp-native approval loop:
+ *   • New message → classified → replyActionProposal (shows action, asks sim/não)
+ *   • "sim"         → replyApproved   (action written to DB)
+ *   • "não"         → replyDismissed
+ *   • "editar: X"   → replyEdited     (title corrected and action written)
+ *   • "desfazer"    → replyUndone     (30-min undo window)
+ *   • explicit item → replyExplicitReviewNeeded to household admin
  */
 router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
   // ── 1. Authenticate ────────────────────────────────────────────────────────
@@ -123,10 +136,42 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         void sendWhatsApp(outcome.phone, replyTokenExpired());
         break;
 
+      // ── WhatsApp-native approval responses ─────────────────────────────────
+      case "approved_via_wa":
+        void sendWhatsApp(outcome.phone, replyApproved(outcome.actionTitle));
+        req.log.info({ actionId: outcome.actionId }, "Sent approved reply via WhatsApp");
+        break;
+
+      case "dismissed_via_wa":
+        void sendWhatsApp(outcome.phone, replyDismissed());
+        break;
+
+      case "edited_via_wa":
+        void sendWhatsApp(outcome.phone, replyEdited(outcome.newTitle));
+        break;
+
+      case "undone_via_wa":
+        void sendWhatsApp(outcome.phone, replyUndone(outcome.actionTitle));
+        break;
+
+      // ── New inbound message — classified and proposed ─────────────────────
       case "ingested": {
-        // ACK sender (LGPD: only when consent allows)
         if (outcome.consentGranted) {
-          void sendWhatsApp(outcome.phone, replyIngestAck());
+          if (outcome.actionTitle) {
+            // Send action proposal so the user can approve/reject in WhatsApp
+            void sendWhatsApp(
+              outcome.phone,
+              replyActionProposal(
+                outcome.actionTitle,
+                outcome.actionType,
+                outcome.actionCategory,
+                outcome.actionDatetime,
+              ),
+            );
+          } else {
+            // Classification produced no action (e.g. pure chitchat) — simple ack
+            void sendWhatsApp(outcome.phone, replyIngestAck());
+          }
         }
 
         // Notify household admin for explicit-approval items

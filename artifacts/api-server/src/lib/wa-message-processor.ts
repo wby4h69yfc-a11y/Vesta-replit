@@ -21,6 +21,7 @@ import { eq, and } from "drizzle-orm";
 import { classifyAndSaveAction } from "./classifier";
 import { processWhatsAppMedia } from "./media-analysis";
 import { looksLikeToken, markTokenVerified } from "./wa-token-store";
+import { handleApprovalResponse } from "./wa-approval-handler";
 
 /** Payload shape normalised by the webhook handler before calling us. */
 export interface InboundWAMessage {
@@ -45,6 +46,10 @@ export type ProcessOutcome =
   | { kind: "duplicate"; messageSid: string }
   | { kind: "unknown_sender"; phone: string }
   | { kind: "multi_household"; phone: string }
+  | { kind: "approved_via_wa"; actionId: number; actionTitle: string; householdId: number; phone: string }
+  | { kind: "dismissed_via_wa"; actionId: number; householdId: number; phone: string }
+  | { kind: "edited_via_wa"; actionId: number; newTitle: string; householdId: number; phone: string }
+  | { kind: "undone_via_wa"; actionTitle: string; householdId: number; phone: string }
   | {
       kind: "ingested";
       inboxItemId: number;
@@ -53,6 +58,10 @@ export type ProcessOutcome =
       approvalLevel: string;
       senderName: string | null;
       consentGranted: boolean;
+      actionTitle: string | null;
+      actionType: string | null;
+      actionCategory: string | null;
+      actionDatetime: string | null;
     };
 
 /** Strip all non-digit chars for exact phone matching. */
@@ -156,6 +165,16 @@ export async function processInboundWAMessage(
 
   const householdId = [...matchedHouseholdIds][0];
 
+  // ── 4.5. WhatsApp-native approval / dismiss / edit / undo ─────────────────
+  // Short replies like "sim", "não", "editar: X", "desfazer" are checked
+  // before the full pipeline so they never create duplicate inbox items.
+  if (bodyText) {
+    const approvalOutcome = await handleApprovalResponse(bodyText, householdId, log);
+    if (approvalOutcome) {
+      return { ...approvalOutcome, phone: phoneRaw };
+    }
+  }
+
   // Prefer contact name, fall back to WA profile name
   let senderName: string | null = payload.profileName ?? null;
   let senderIsContact = false;
@@ -221,9 +240,15 @@ export async function processInboundWAMessage(
   await classifyAndSaveAction(item.id);
   log.info({ inboxItemId: item.id }, "Message classified");
 
-  // Read back the final approval_level to inform the caller's reply decision
+  // Read back the saved action to inform the caller's reply (proposal message)
   const [savedAction] = await db
-    .select({ approval_level: suggestedActionsTable.approval_level })
+    .select({
+      approval_level: suggestedActionsTable.approval_level,
+      title: suggestedActionsTable.title,
+      type: suggestedActionsTable.type,
+      category: suggestedActionsTable.category,
+      datetime: suggestedActionsTable.datetime,
+    })
     .from(suggestedActionsTable)
     .where(eq(suggestedActionsTable.inbox_item_id, item.id))
     .limit(1);
@@ -236,5 +261,9 @@ export async function processInboundWAMessage(
     approvalLevel: savedAction?.approval_level ?? "one_tap",
     senderName,
     consentGranted: !senderIsContact || consentGranted,
+    actionTitle: savedAction?.title ?? null,
+    actionType: savedAction?.type ?? null,
+    actionCategory: savedAction?.category ?? null,
+    actionDatetime: savedAction?.datetime ?? null,
   };
 }
