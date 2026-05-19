@@ -17,6 +17,7 @@ import CasaPage from "@/pages/Casa";
 import SettingsPage from "@/pages/Settings";
 import OnboardingPage from "@/pages/Onboarding";
 import AdminPage from "@/pages/Admin";
+import WaDevConsole from "@/pages/WaDevConsole";
 import NotFound from "@/pages/not-found";
 import DevToolbar from "@/components/DevToolbar";
 import { Home } from "lucide-react";
@@ -138,6 +139,13 @@ function Router() {
       <Route path="/admin">
         {isLoading ? <LoadingScreen /> : !user ? <LoginPage /> : <AdminPage />}
       </Route>
+
+      {/* Dev tools — only in development, no onboarding check */}
+      {import.meta.env.DEV && (
+        <Route path="/dev/wa-console">
+          {isLoading ? <LoadingScreen /> : !user ? <LoginPage /> : <WaDevConsole />}
+        </Route>
+      )}
 
       {/* All other routes require auth */}
       <Route>

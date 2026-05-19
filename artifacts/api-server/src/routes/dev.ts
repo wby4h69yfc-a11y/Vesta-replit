@@ -1,21 +1,21 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq } from "drizzle-orm";
-import { db, onboardingStateTable, sessionsTable } from "@workspace/db";
+import { db, onboardingStateTable, sessionsTable, inboxItemsTable } from "@workspace/db";
+import { classifyAndSaveAction } from "../lib/classifier";
+import { getHouseholdId } from "../lib/tenant";
 
 const router: IRouter = Router();
 
 /**
  * Dev-only routes. Guarded at mount time — only registered when
- * NODE_ENV !== "production". Never call getHouseholdId here; these routes
- * exist precisely to fix/reset state before a household is confirmed.
+ * NODE_ENV !== "production". Never exposed in production builds.
  */
 
 if (process.env.NODE_ENV !== "production") {
   /**
    * POST /api/dev/reset-onboarding
    *
-   * Resets the authenticated user's onboarding state back to step 0 so
-   * the full flow can be retested without touching the DB directly.
+   * Resets the authenticated user's onboarding state back to step 0.
    */
   router.post(
     "/dev/reset-onboarding",
@@ -46,8 +46,7 @@ if (process.env.NODE_ENV !== "production") {
   /**
    * POST /api/dev/complete-onboarding
    *
-   * Fast-forwards onboarding to completed so you can test the main app
-   * without going through the flow.
+   * Fast-forwards onboarding to completed.
    */
   router.post(
     "/dev/complete-onboarding",
@@ -76,8 +75,7 @@ if (process.env.NODE_ENV !== "production") {
   /**
    * DELETE /api/dev/session
    *
-   * Clears the current session cookie so you can test the login flow
-   * without opening the browser's DevTools.
+   * Clears the current session cookie.
    */
   router.delete("/dev/session", async (req: Request, res: Response) => {
     const sid = req.cookies?.sid;
@@ -87,6 +85,104 @@ if (process.env.NODE_ENV !== "production") {
     res.clearCookie("sid", { path: "/" });
     res.json({ ok: true, message: "Session cleared" });
   });
+
+  /**
+   * POST /api/dev/wa-simulate
+   *
+   * Developer test console: injects a message directly into the real
+   * AI classification pipeline without going through Twilio.
+   *
+   * The message is attributed to the authenticated user's household,
+   * bypassing the phone-based sender resolution used in production.
+   * This lets developers test classification results without needing
+   * a registered phone number in the members/contacts table.
+   *
+   * Body: { body: string, sender_phone?: string, sender_name?: string }
+   */
+  router.post(
+    "/dev/wa-simulate",
+    async (req: Request, res: Response) => {
+      if (!req.isAuthenticated()) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      if (!req.user.household_id) {
+        res.status(409).json({ error: "No household — complete onboarding first" });
+        return;
+      }
+
+      const { body, sender_phone, sender_name } = req.body as {
+        body?: string;
+        sender_phone?: string;
+        sender_name?: string;
+      };
+
+      if (!body?.trim()) {
+        res.status(400).json({ error: "body is required" });
+        return;
+      }
+
+      const householdId = getHouseholdId(req);
+
+      try {
+        // Inject directly into the household's inbox, bypassing phone resolution
+        const [item] = await db
+          .insert(inboxItemsTable)
+          .values({
+            household_id: householdId,
+            source: "whatsapp",
+            raw_content: body.trim(),
+            media_url: null,
+            status: "classifying",
+            sender_name: sender_name?.trim() ?? "Dev Console",
+            twilio_message_sid: null,
+          })
+          .returning();
+
+        req.log.info(
+          { inboxItemId: item.id, householdId },
+          "Dev wa-simulate: inbox item created",
+        );
+
+        // Run the real AI classification pipeline
+        await classifyAndSaveAction(item.id);
+        req.log.info({ inboxItemId: item.id }, "Dev wa-simulate: classified");
+
+        // Read back the result
+        const { suggestedActionsTable } = await import("@workspace/db");
+        const [action] = await db
+          .select({
+            approval_level: suggestedActionsTable.approval_level,
+            category: suggestedActionsTable.category,
+            type: suggestedActionsTable.type,
+            title: suggestedActionsTable.title,
+            confidence: suggestedActionsTable.confidence,
+          })
+          .from(suggestedActionsTable)
+          .where(eq(suggestedActionsTable.inbox_item_id, item.id))
+          .limit(1);
+
+        res.json({
+          outcome: "ingested",
+          inboxItemId: item.id,
+          approvalLevel: action?.approval_level ?? "one_tap",
+          category: action?.category,
+          type: action?.type,
+          title: action?.title,
+          confidence: action?.confidence,
+          senderName: sender_name?.trim() ?? "Dev Console",
+          senderPhone: sender_phone ?? null,
+        });
+      } catch (err) {
+        req.log.error({ err }, "Dev wa-simulate: failed");
+        res.status(500).json({
+          outcome: "error",
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    },
+  );
 }
 
 export default router;
