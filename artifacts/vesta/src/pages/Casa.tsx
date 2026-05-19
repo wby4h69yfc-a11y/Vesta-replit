@@ -51,6 +51,7 @@ type WebhookInfo = {
   method: string;
   status: string;
   twilioConfigured: boolean;
+  twilio_number: string | null;
 };
 
 function WhatsAppSetupBanner() {
@@ -64,15 +65,59 @@ function WhatsAppSetupBanner() {
       .catch(() => null);
   }, []);
 
-  if (!info || info.twilioConfigured) return null;
+  if (!info) return null;
 
   async function copyUrl() {
-    if (!info?.webhook_url) return;
-    await navigator.clipboard.writeText(info.webhook_url);
+    const text = info?.webhook_url;
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
 
+  /* ── WhatsApp active ── */
+  if (info.twilioConfigured) {
+    return (
+      <div className="p-4 rounded-2xl mb-4" style={{ background: "#F0FDF4", border: "1px solid #86EFAC" }}>
+        <div className="flex items-start gap-3">
+          <MessageCircle className="h-5 w-5 shrink-0 mt-0.5" style={{ color: "#059669" }} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold mb-0.5" style={{ color: "#065F46" }}>WhatsApp ativo</p>
+            {info.twilio_number && (
+              <p className="text-xs mb-2" style={{ color: "#047857" }}>
+                Número: +{info.twilio_number}
+              </p>
+            )}
+            <p className="text-xs mb-3" style={{ color: "#047857" }}>
+              Encaminhe mensagens pelo WhatsApp — a Vesta classifica, organiza e avisa quando precisar de aprovação.
+            </p>
+            {info.webhook_url && (
+              <>
+                <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: "#065F46" }}>
+                  Webhook Twilio
+                </p>
+                <div className="flex items-center gap-2 p-2 rounded-xl" style={{ background: "rgba(5,150,105,0.08)" }}>
+                  <code className="flex-1 text-[10px] break-all" style={{ color: "#065F46" }}>
+                    {info.webhook_url}
+                  </code>
+                  <button onClick={() => void copyUrl()}
+                    className="shrink-0 p-1.5 rounded-lg transition-colors"
+                    style={{ background: copied ? "#D1FAE5" : "rgba(5,150,105,0.12)" }}
+                    title="Copiar URL">
+                    {copied
+                      ? <Check className="h-3.5 w-3.5" style={{ color: "#065F46" }} />
+                      : <Copy className="h-3.5 w-3.5" style={{ color: "#059669" }} />}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── WhatsApp not configured ── */
   return (
     <div className="p-4 rounded-2xl mb-6" style={{ background: "#FEF3C7", border: "1px solid rgba(245,158,11,0.2)" }}>
       <div className="flex items-start gap-3">

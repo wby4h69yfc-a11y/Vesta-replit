@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Clock, CheckSquare, Inbox as InboxIcon, Zap, ChevronDown, ChevronUp, ArrowRight, MessageCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Clock, CheckSquare, Inbox as InboxIcon, Zap, ArrowRight, MessageCircle } from "lucide-react";
 import { Link } from "wouter";
 import {
   useGetDashboardSummary,
@@ -10,8 +10,6 @@ import {
 import CategoryBadge from "@/components/CategoryBadge";
 import { formatTime, formatRelativeTime, formatDate, isPast } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import WhatsAppSimulator from "@/components/WhatsAppSimulator";
-
 const V = {
   primary: "#0E3B2E",
   sage:    "#6F856F",
@@ -24,8 +22,31 @@ const V = {
 };
 
 /* ── WhatsApp CTA card ── */
+type WaInfo = { twilio_number?: string | null; twilioConfigured?: boolean };
+
 function WhatsAppHero({ name }: { name?: string }) {
-  const [expanded, setExpanded] = useState(false);
+  const [waNumber, setWaNumber] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/webhook/whatsapp/info", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d: WaInfo) => { if (d.twilio_number) setWaNumber(d.twilio_number); })
+      .catch(() => {});
+  }, []);
+
+  function openWA(prefill?: string) {
+    const num = waNumber ?? "14155238886"; // Twilio sandbox fallback
+    const url = prefill
+      ? `https://wa.me/${num}?text=${encodeURIComponent(prefill)}`
+      : `https://wa.me/${num}`;
+    window.open(url, "_blank");
+  }
+
+  const EXAMPLES = [
+    "Reunião da escola quinta 19h",
+    "Consulta da Bia semana que vem",
+    "Levar lanche quinta",
+  ];
 
   return (
     <div className="rounded-3xl overflow-hidden" style={{ border: "1px solid rgba(14,59,46,0.10)" }}>
@@ -35,56 +56,33 @@ function WhatsAppHero({ name }: { name?: string }) {
           <MessageCircle className="h-5 w-5 text-white" />
         </div>
         <div className="flex-1">
-          <p className="text-sm font-bold text-white leading-none">Continue no WhatsApp</p>
+          <p className="text-sm font-bold text-white leading-none">Encaminhe um recado</p>
           <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.65)" }}>
-            {name ? `Oi, ${name}! ` : ""}Encaminhe um recado — a Vesta resolve.
+            {name ? `Oi, ${name}! ` : ""}A Vesta organiza e avisa quando precisar.
           </p>
         </div>
         <button
-          onClick={() => setExpanded((v) => !v)}
-          className="text-white/70 hover:text-white transition-colors"
+          onClick={() => openWA()}
+          className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold"
+          style={{ background: "#25D366", color: "white" }}
         >
-          {expanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+          Abrir →
         </button>
       </div>
 
-      {/* Collapsed: quick action chips */}
-      {!expanded && (
-        <div className="px-4 py-3 flex flex-wrap gap-2" style={{ background: "#ECE5DD" }}>
-          {[
-            "Reunião da escola quinta 19h",
-            "Consulta da Bia semana que vem",
-            "Levar lanche quinta",
-          ].map((ex) => (
-            <button
-              key={ex}
-              onClick={() => setExpanded(true)}
-              className="rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
-              style={{ borderColor: "rgba(14,59,46,0.25)", color: V.primary, background: "rgba(255,255,255,0.70)" }}
-            >
-              {ex}
-            </button>
-          ))}
+      {/* Quick-action chips — each opens WhatsApp with pre-filled text */}
+      <div className="px-4 py-3 flex flex-wrap gap-2" style={{ background: "#ECE5DD" }}>
+        {EXAMPLES.map((ex) => (
           <button
-            onClick={() => setExpanded(true)}
-            className="rounded-full px-3 py-1.5 text-xs font-semibold text-white"
-            style={{ background: V.primary }}
+            key={ex}
+            onClick={() => openWA(ex)}
+            className="rounded-full border px-3 py-1.5 text-xs font-medium transition-colors hover:opacity-80"
+            style={{ borderColor: "rgba(14,59,46,0.25)", color: V.primary, background: "rgba(255,255,255,0.70)" }}
           >
-            Enviar →
+            {ex}
           </button>
-        </div>
-      )}
-
-      {/* Expanded: full simulator */}
-      {expanded && (
-        <div style={{ height: "420px" }}>
-          <WhatsAppSimulator
-            contactName="Vesta"
-            showExamples
-            className="h-full"
-          />
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 }
