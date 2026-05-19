@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Plus, MessageCircle, Mail, Camera, PenLine, RefreshCw } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, MessageCircle, Mail, Camera, PenLine, RefreshCw, Brain, CheckCircle2, X } from "lucide-react";
 import {
   useListInboxItems,
   useListActions,
@@ -7,6 +7,7 @@ import {
   useClassifyInboxItem,
   getListInboxItemsQueryKey,
   getListActionsQueryKey,
+  type SuggestedAction,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import ApprovalCard from "@/components/ApprovalCard";
@@ -14,6 +15,14 @@ import CategoryBadge from "@/components/CategoryBadge";
 import { formatRelativeTime } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+
+const V = {
+  primary: "#0E3B2E",
+  ink:     "#12231C",
+  muted:   "#5F6B61",
+  cream:   "#FFFDF6",
+  beige:   "#EEE6D6",
+};
 
 const SOURCE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   whatsapp: ({ className }) => <MessageCircle className={cn(className, "text-emerald-600")} />,
@@ -33,12 +42,177 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const FILTERS = [
-  { value: undefined,         label: "Todos" },
+  { value: undefined,          label: "Todos" },
   { value: "ready_for_review", label: "Para revisar" },
   { value: "approved",         label: "Aprovados" },
   { value: "dismissed",        label: "Descartados" },
 ];
 
+/* ── MemoryConfirmationCard ────────────────────────────────────────────────── */
+type StagingItem = {
+  id: number;
+  target_table: string;
+  context_summary: string;
+  proposed_record: Record<string, unknown>;
+  status: string;
+};
+
+const TABLE_LABELS: Record<string, string> = {
+  household_places:      "Lugar",
+  household_routines:    "Rotina",
+  household_preferences: "Preferência",
+};
+
+const TABLE_ICONS: Record<string, string> = {
+  household_places:      "📍",
+  household_routines:    "🔄",
+  household_preferences: "⚙️",
+};
+
+function MemoryConfirmationSection() {
+  const [items, setItems] = useState<StagingItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch("/api/memory/staging", { credentials: "include" });
+      if (r.ok) {
+        const data = await r.json() as StagingItem[];
+        setItems(data);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function respond(id: number, action: "confirm" | "dismiss") {
+    try {
+      await fetch(`/api/memory/staging/${id}/${action}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      setItems((prev) => prev.filter((i) => i.id !== id));
+      toast({ description: action === "confirm" ? "Confirmado e salvo na memória." : "Ignorado." });
+    } catch {
+      toast({ description: "Erro ao responder. Tente novamente.", variant: "destructive" });
+    }
+  }
+
+  if (loading || items.length === 0) return null;
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-2">
+        <Brain className="h-4 w-4" style={{ color: V.primary }} />
+        <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: V.muted }}>
+          Vesta aprendeu ({items.length})
+        </h2>
+      </div>
+      <div className="space-y-2">
+        {items.map((item) => {
+          const icon = TABLE_ICONS[item.target_table] ?? "🧠";
+          const label = TABLE_LABELS[item.target_table] ?? "Memória";
+          const record = item.proposed_record;
+          const name = (record.name as string | undefined) ?? (record.preference_key as string | undefined);
+
+          return (
+            <div key={item.id}
+              className="rounded-2xl overflow-hidden"
+              style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.12)" }}>
+              <div className="px-4 pt-4 pb-3">
+                <div className="flex items-start gap-2.5 mb-2">
+                  <span className="text-lg shrink-0 leading-none">{icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                        style={{ background: "#EAF1E5", color: V.primary }}>
+                        {label}
+                      </span>
+                      {name && (
+                        <span className="text-xs font-semibold truncate" style={{ color: V.ink }}>{name}</span>
+                      )}
+                    </div>
+                    <p className="text-sm leading-snug" style={{ color: V.ink }}>
+                      {item.context_summary}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex border-t" style={{ borderColor: "rgba(14,59,46,0.08)" }}>
+                <button
+                  onClick={() => void respond(item.id, "dismiss")}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm transition-colors hover:bg-red-50"
+                  style={{ color: V.muted }}>
+                  <X className="h-4 w-4" />
+                  Ignorar
+                </button>
+                <div className="w-px" style={{ background: "rgba(14,59,46,0.08)" }} />
+                <button
+                  onClick={() => void respond(item.id, "confirm")}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold transition-colors hover:bg-green-50"
+                  style={{ color: V.primary }}>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Confirmar
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* ── AppEscalationCard wrapper ─────────────────────────────────────────────── */
+function AppEscalationSection({ actions }: { actions: SuggestedAction[] }) {
+  if (actions.length === 0) return null;
+
+  const explicit = actions.filter((a) => a.approval_level === "explicit");
+  const oneTap   = actions.filter((a) => a.approval_level !== "explicit" && a.approval_level !== "soft");
+  const soft     = actions.filter((a) => a.approval_level === "soft");
+
+  return (
+    <section>
+      <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+        Aguardando aprovação ({actions.length})
+      </h2>
+
+      {explicit.length > 0 && (
+        <div className="mb-3">
+          <div className="flex items-center gap-1.5 mb-2 px-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+              Confirmação necessária
+            </span>
+          </div>
+          <div className="space-y-2">
+            {explicit.map((a) => <ApprovalCard key={a.id} action={a} />)}
+          </div>
+        </div>
+      )}
+
+      {oneTap.length > 0 && (
+        <div className="space-y-2 mb-3">
+          {oneTap.map((a) => <ApprovalCard key={a.id} action={a} />)}
+        </div>
+      )}
+
+      {soft.length > 0 && (
+        <div className="space-y-1">
+          {soft.map((a) => <ApprovalCard key={a.id} action={a} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ── Main ──────────────────────────────────────────────────────────────────── */
 export default function InboxPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -74,7 +248,6 @@ export default function InboxPage() {
     },
   });
 
-  // Close compose on Escape
   useEffect(() => {
     if (!showCompose) return;
     function onKey(e: KeyboardEvent) {
@@ -93,8 +266,7 @@ export default function InboxPage() {
         <button
           onClick={() => setShowCompose(true)}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors"
-          data-testid="button-compose"
-        >
+          data-testid="button-compose">
           <Plus className="w-4 h-4" />
           Nova
         </button>
@@ -104,63 +276,42 @@ export default function InboxPage() {
       {showCompose && (
         <div className="bg-card border border-border rounded-2xl p-4 space-y-3 animate-fade-in-up">
           <h3 className="text-sm font-semibold">Adicionar mensagem manualmente</h3>
-          <input
-            value={senderName}
-            onChange={(e) => setSenderName(e.target.value)}
+          <input value={senderName} onChange={(e) => setSenderName(e.target.value)}
             placeholder="Nome do remetente (opcional)"
             className="w-full text-sm bg-muted px-3 py-2 rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
-            data-testid="input-sender"
-          />
-          <textarea
-            value={newContent}
-            onChange={(e) => setNewContent(e.target.value)}
-            placeholder="Cole aqui a mensagem..."
-            rows={4}
+            data-testid="input-sender" />
+          <textarea value={newContent} onChange={(e) => setNewContent(e.target.value)}
+            placeholder="Cole aqui a mensagem..." rows={4}
             className="w-full text-sm bg-muted px-3 py-2 rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-            data-testid="input-content"
-          />
+            data-testid="input-content" />
           <div className="flex gap-2">
-            <button
-              onClick={() => setShowCompose(false)}
-              className="flex-1 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:text-foreground"
-            >
+            <button onClick={() => setShowCompose(false)}
+              className="flex-1 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:text-foreground">
               Cancelar
             </button>
             <button
-              onClick={() =>
-                createItem.mutate({
-                  data: { raw_content: newContent, source: "manual", sender_name: senderName || undefined },
-                })
-              }
+              onClick={() => createItem.mutate({ data: { raw_content: newContent, source: "manual", sender_name: senderName || undefined } })}
               disabled={!newContent.trim() || createItem.isPending}
               className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
-              data-testid="button-submit-compose"
-            >
+              data-testid="button-submit-compose">
               {createItem.isPending ? "Enviando..." : "Adicionar"}
             </button>
           </div>
         </div>
       )}
 
-      {/* Pending actions (approval cards) */}
+      {/* Memory confirmations — Vesta learned something, needs sign-off */}
+      <MemoryConfirmationSection />
+
+      {/* Escalation section — pending actions grouped by approval level */}
       {filter === "ready_for_review" && (pendingActions?.length ?? 0) > 0 && (
-        <section>
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-            Aguardando aprovação ({pendingActions?.length})
-          </h2>
-          <div className="space-y-2">
-            {pendingActions?.map((action) => (
-              <ApprovalCard key={action.id} action={action} />
-            ))}
-          </div>
-        </section>
+        <AppEscalationSection actions={pendingActions ?? []} />
       )}
 
       {/* Filter tabs */}
       <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1">
         {FILTERS.map((f) => (
-          <button
-            key={f.label}
+          <button key={f.label}
             onClick={() => setFilter(f.value as import("@workspace/api-client-react").ListInboxItemsStatus | undefined)}
             className={cn(
               "shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors",
@@ -168,8 +319,7 @@ export default function InboxPage() {
                 ? "bg-primary text-primary-foreground"
                 : "bg-card border border-border text-muted-foreground hover:text-foreground",
             )}
-            data-testid={`filter-${f.value ?? "all"}`}
-          >
+            data-testid={`filter-${f.value ?? "all"}`}>
             {f.label}
           </button>
         ))}
@@ -194,14 +344,9 @@ export default function InboxPage() {
             const SourceIcon = SOURCE_ICONS[item.source] ?? SOURCE_ICONS.manual;
             const hasPending = pendingItemIds.has(item.id);
             return (
-              <div
-                key={item.id}
-                className={cn(
-                  "bg-card border rounded-2xl p-3 space-y-2",
-                  hasPending ? "border-primary/30" : "border-border",
-                )}
-                data-testid={`inbox-item-${item.id}`}
-              >
+              <div key={item.id}
+                className={cn("bg-card border rounded-2xl p-3 space-y-2", hasPending ? "border-primary/30" : "border-border")}
+                data-testid={`inbox-item-${item.id}`}>
                 <div className="flex items-start gap-2.5">
                   <SourceIcon className="w-4 h-4 mt-0.5 shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -212,27 +357,22 @@ export default function InboxPage() {
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <span className="text-[10px] text-muted-foreground">{formatRelativeTime(item.created_at)}</span>
-                    <span
-                      className={cn(
-                        "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
-                        item.status === "ready_for_review" && "bg-primary/10 text-primary",
-                        item.status === "approved" && "bg-emerald-100 text-emerald-700",
-                        item.status === "dismissed" && "bg-muted text-muted-foreground",
-                        item.status === "received" && "bg-blue-100 text-blue-700",
-                      )}
-                    >
+                    <span className={cn(
+                      "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                      item.status === "ready_for_review" && "bg-primary/10 text-primary",
+                      item.status === "approved" && "bg-emerald-100 text-emerald-700",
+                      item.status === "dismissed" && "bg-muted text-muted-foreground",
+                      item.status === "received" && "bg-blue-100 text-blue-700",
+                    )}>
                       {STATUS_LABELS[item.status] ?? item.status}
                     </span>
                   </div>
                 </div>
 
                 {item.status === "received" && (
-                  <button
-                    onClick={() => classify.mutate({ id: item.id })}
-                    disabled={classify.isPending}
+                  <button onClick={() => classify.mutate({ id: item.id })} disabled={classify.isPending}
                     className="flex items-center gap-1.5 text-xs text-primary font-medium py-1"
-                    data-testid={`classify-${item.id}`}
-                  >
+                    data-testid={`classify-${item.id}`}>
                     <RefreshCw className={cn("w-3 h-3", classify.isPending && "animate-spin")} />
                     Classificar agora
                   </button>

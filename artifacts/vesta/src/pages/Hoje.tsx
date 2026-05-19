@@ -1,18 +1,19 @@
 /**
  * Hoje — the app's primary surface.
  *
- * The app's job: connect, configure, audit, and escalate.
  * WhatsApp is where Vesta operates day to day.
+ * This screen connects, audits, and escalates.
  *
  * Layout (top → bottom):
  *  1. Greeting + date
- *  2. WhatsApp CTA — the primary call to action
- *  3. Last action strip — one-line audit of most recent WA activity
- *  4. Escalation banner — only shown when items need web review
- *  5. Today's agenda — informational, below the fold
+ *  2. WhatsApp CTA card (with connection status pill)
+ *  3. FirstForwardPrompt — only when Vesta has never handled anything
+ *  4. RecentWhatsAppActionsHandled — last 3 things Vesta did
+ *  5. EscalationBanner — only when items need web review
+ *  6. Today's agenda
  */
 import { useState, useEffect } from "react";
-import { ArrowRight, MessageCircle } from "lucide-react";
+import { ArrowRight, MessageCircle, CheckCircle2, Clock, Wifi, WifiOff } from "lucide-react";
 import { Link } from "wouter";
 import {
   useGetDashboardSummary,
@@ -29,32 +30,54 @@ const V = {
   cream:     "#FFFDF6",
   ink:       "#12231C",
   muted:     "#5F6B61",
+  beige:     "#EEE6D6",
   wa:        "#25D366",
   waHeader:  "#075E54",
-  escalation:"#EAF1E5",
 };
 
-/* ── WhatsApp CTA card ─────────────────────────────────────────────────────── */
-type WaInfo = { twilio_number?: string | null; twilioConfigured?: boolean };
+type WaInfo = {
+  twilio_number?: string | null;
+  twilioConfigured?: boolean;
+  status?: string;
+};
 
+/* ── ConnectionStatusPill ──────────────────────────────────────────────────── */
+function ConnectionStatusPill({ info }: { info: WaInfo | null }) {
+  if (!info) return null;
+  if (info.twilioConfigured && info.twilio_number) {
+    return (
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+        style={{ background: "rgba(37,211,102,0.15)" }}>
+        <Wifi className="h-3 w-3" style={{ color: "#25D366" }} />
+        <span className="text-[11px] font-medium" style={{ color: "#25D366" }}>
+          Conectado · +{info.twilio_number}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <Link href="/casa">
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full cursor-pointer"
+        style={{ background: "rgba(245,158,11,0.15)" }}>
+        <WifiOff className="h-3 w-3" style={{ color: "#D97706" }} />
+        <span className="text-[11px] font-medium" style={{ color: "#D97706" }}>
+          Não configurado · Configurar →
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+/* ── WhatsApp CTA card ─────────────────────────────────────────────────────── */
 const QUICK_SENDS = [
   "Reunião da escola quinta 19h",
   "Consulta da Bia semana que vem",
   "Levar lanche quinta",
 ];
 
-function WhatsAppHero({ name }: { name?: string }) {
-  const [waNumber, setWaNumber] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/webhook/whatsapp/info", { credentials: "include" })
-      .then((r) => r.json())
-      .then((d: WaInfo) => { if (d.twilio_number) setWaNumber(d.twilio_number); })
-      .catch(() => {});
-  }, []);
-
+function WhatsAppHero({ name, waInfo }: { name?: string; waInfo: WaInfo | null }) {
   function openWA(prefill?: string) {
-    const num = waNumber ?? "14155238886";
+    const num = waInfo?.twilio_number ?? "14155238886";
     const url = prefill
       ? `https://wa.me/${num}?text=${encodeURIComponent(prefill)}`
       : `https://wa.me/${num}`;
@@ -64,10 +87,8 @@ function WhatsAppHero({ name }: { name?: string }) {
   return (
     <div className="rounded-3xl overflow-hidden" style={{ border: "1px solid rgba(14,59,46,0.10)" }}>
       <div className="flex items-center gap-3 px-4 py-4" style={{ background: V.waHeader }}>
-        <div
-          className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-          style={{ background: "rgba(255,255,255,0.15)" }}
-        >
+        <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+          style={{ background: "rgba(255,255,255,0.15)" }}>
           <MessageCircle className="h-5 w-5 text-white" />
         </div>
         <div className="flex-1 min-w-0">
@@ -76,28 +97,68 @@ function WhatsAppHero({ name }: { name?: string }) {
             {name ? `Oi, ${name}! ` : ""}A Vesta organiza e avisa quando precisar.
           </p>
         </div>
-        <button
-          onClick={() => openWA()}
+        <button onClick={() => openWA()}
           className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold"
-          style={{ background: V.wa, color: "white" }}
-        >
+          style={{ background: V.wa, color: "white" }}>
           Abrir →
         </button>
       </div>
 
-      <div className="px-4 py-3 flex flex-wrap gap-2" style={{ background: "#ECE5DD" }}>
-        {QUICK_SENDS.map((ex) => (
-          <button
-            key={ex}
-            onClick={() => openWA(ex)}
-            className="rounded-full border px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
-            style={{
-              borderColor: "rgba(14,59,46,0.25)",
-              color: V.primary,
-              background: "rgba(255,255,255,0.70)",
-            }}
-          >
-            {ex}
+      <div className="px-4 py-3 space-y-2.5" style={{ background: "#ECE5DD" }}>
+        <div className="flex flex-wrap gap-2">
+          {QUICK_SENDS.map((ex) => (
+            <button key={ex} onClick={() => openWA(ex)}
+              className="rounded-full border px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
+              style={{ borderColor: "rgba(14,59,46,0.25)", color: V.primary, background: "rgba(255,255,255,0.70)" }}>
+              {ex}
+            </button>
+          ))}
+        </div>
+        <ConnectionStatusPill info={waInfo} />
+      </div>
+    </div>
+  );
+}
+
+/* ── FirstForwardPrompt ────────────────────────────────────────────────────── */
+function FirstForwardPrompt({ waNumber }: { waNumber: string | null }) {
+  function openWA(prefill: string) {
+    const num = waNumber ?? "14155238886";
+    window.open(`https://wa.me/${num}?text=${encodeURIComponent(prefill)}`, "_blank");
+  }
+
+  return (
+    <div className="rounded-2xl p-5 space-y-4"
+      style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.10)" }}>
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+          style={{ background: "#EAF1E5" }}>
+          <MessageCircle className="h-5 w-5" style={{ color: V.primary }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold" style={{ color: V.ink }}>
+            Pronto! Encaminhe seu primeiro recado
+          </p>
+          <p className="text-xs mt-1 leading-relaxed" style={{ color: V.muted }}>
+            A Vesta está no ar. Encaminhe qualquer mensagem da escola, consulta, boleto ou lembrete pelo WhatsApp — ela classifica e organiza automaticamente.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: V.muted }}>
+          Experimente agora
+        </p>
+        {[
+          { label: "📅  Evento ou reunião", ex: "Reunião da escola quinta 19h" },
+          { label: "🏥  Consulta médica", ex: "Consulta da Bia pediatra na terça 14h" },
+          { label: "💰  Conta ou boleto", ex: "Conta de luz vence dia 10 R$280" },
+        ].map(({ label, ex }) => (
+          <button key={ex} onClick={() => openWA(ex)}
+            className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm text-left transition-opacity hover:opacity-80"
+            style={{ background: "#EAF1E5", color: V.ink }}>
+            <span>{label}</span>
+            <ArrowRight className="h-4 w-4 shrink-0" style={{ color: V.sage }} />
           </button>
         ))}
       </div>
@@ -105,36 +166,67 @@ function WhatsAppHero({ name }: { name?: string }) {
   );
 }
 
-/* ── Last action strip (audit) ─────────────────────────────────────────────── */
-function LastActionStrip() {
-  const { data: activityFeed } = useGetActivityFeed();
-  const last = activityFeed?.[0];
-  if (!last) return null;
+/* ── RecentWhatsAppActionsHandled ──────────────────────────────────────────── */
+type ActivityItem = {
+  id: number;
+  description: string;
+  category?: string | null;
+  action_type?: string | null;
+  timestamp: string;
+};
+
+function RecentWhatsAppActionsHandled({ items }: { items: ActivityItem[] }) {
+  if (items.length === 0) return null;
+
+  const ACTION_TYPE_ICON: Record<string, string> = {
+    approved:  "✅",
+    dismissed: "✖️",
+    auto:      "⚡",
+  };
+
   return (
-    <div
-      className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm"
-      style={{ background: V.escalation, color: V.ink }}
-    >
-      <span className="w-1.5 h-1.5 rounded-full shrink-0 mt-0.5" style={{ background: V.sage, display: "inline-block" }} />
-      <span className="flex-1 min-w-0 truncate">
-        <span className="font-medium">Vesta anotou: </span>{last.description}
-      </span>
-      <span className="text-xs shrink-0" style={{ color: V.muted }}>
-        {formatRelativeTime(last.timestamp)}
-      </span>
-    </div>
+    <section>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: V.muted }}>
+          Últimas ações da Vesta
+        </h2>
+        <Link href="/inbox">
+          <span className="text-xs font-medium" style={{ color: V.primary }}>Ver todas →</span>
+        </Link>
+      </div>
+      <div className="rounded-2xl overflow-hidden" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
+        {items.slice(0, 3).map((item, i) => (
+          <div key={item.id}
+            className="flex items-start gap-3 px-4 py-3"
+            style={{ borderTop: i > 0 ? "1px solid rgba(14,59,46,0.06)" : "none" }}>
+            <span className="text-sm shrink-0 mt-0.5">
+              {ACTION_TYPE_ICON[item.action_type ?? "approved"] ?? "✅"}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm leading-snug line-clamp-1" style={{ color: V.ink }}>
+                {item.description}
+              </p>
+              {item.category && (
+                <CategoryBadge category={item.category} className="mt-1" />
+              )}
+            </div>
+            <span className="text-[10px] shrink-0 mt-0.5" style={{ color: V.muted }}>
+              {formatRelativeTime(item.timestamp)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
-/* ── Escalation banner (requires web review) ───────────────────────────────── */
+/* ── EscalationBanner ──────────────────────────────────────────────────────── */
 function EscalationBanner({ count }: { count: number }) {
   if (count === 0) return null;
   return (
     <Link href="/inbox">
-      <div
-        className="flex items-center justify-between rounded-2xl px-4 py-3 cursor-pointer hover:opacity-90 transition-opacity"
-        style={{ background: V.primary, color: "white" }}
-      >
+      <div className="flex items-center justify-between rounded-2xl px-4 py-3 cursor-pointer hover:opacity-90 transition-opacity"
+        style={{ background: V.primary, color: "white" }}>
         <div>
           <p className="text-sm font-semibold">
             {count === 1 ? "1 recado" : `${count} recados`} aguardando revisão
@@ -153,11 +245,22 @@ function EscalationBanner({ count }: { count: number }) {
 export default function Hoje() {
   const { data: summary } = useGetDashboardSummary();
   const { data: todayEvents, isLoading: loadingEvents } = useGetTodayEvents();
+  const { data: activityFeed } = useGetActivityFeed();
+  const [waInfo, setWaInfo] = useState<WaInfo | null>(null);
+
+  useEffect(() => {
+    fetch("/api/webhook/whatsapp/info", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d: WaInfo) => setWaInfo(d))
+      .catch(() => {});
+  }, []);
 
   const today = new Date();
   const h = today.getHours();
   const greeting = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
   const pendingInbox = summary?.pending_inbox_count ?? 0;
+  const feed = (activityFeed ?? []) as ActivityItem[];
+  const isFirstUse = feed.length === 0 && pendingInbox === 0;
 
   return (
     <div className="p-4 space-y-4 animate-fade-in-up">
@@ -168,20 +271,20 @@ export default function Hoje() {
       </div>
 
       {/* ② PRIMARY — WhatsApp is where Vesta works */}
-      <WhatsAppHero />
+      <WhatsAppHero waInfo={waInfo} />
 
-      {/* ③ Audit strip — last thing Vesta recorded */}
-      <LastActionStrip />
+      {/* ③ First-use prompt — only before Vesta has handled anything */}
+      {isFirstUse && <FirstForwardPrompt waNumber={waInfo?.twilio_number ?? null} />}
 
-      {/* ④ Escalation — only surfaces when explicit web review is needed */}
+      {/* ④ Recent WA actions — replaces the single audit strip */}
+      {!isFirstUse && <RecentWhatsAppActionsHandled items={feed} />}
+
+      {/* ⑤ Escalation — only surfaces when explicit web review is needed */}
       <EscalationBanner count={pendingInbox} />
 
-      {/* ⑤ Today's agenda — informational */}
+      {/* ⑥ Today's agenda */}
       <section>
-        <h2
-          className="text-xs font-semibold uppercase tracking-wide mb-2"
-          style={{ color: V.muted }}
-        >
+        <h2 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: V.muted }}>
           Agenda de hoje
         </h2>
         {loadingEvents ? (
@@ -197,19 +300,13 @@ export default function Hoje() {
         ) : (
           <div className="space-y-2">
             {todayEvents.map((ev) => (
-              <div
-                key={ev.id}
+              <div key={ev.id}
                 className="flex items-start gap-3 bg-card border border-border rounded-xl p-3"
-                data-testid={`event-card-${ev.id}`}
-              >
+                data-testid={`event-card-${ev.id}`}>
                 <div className="flex flex-col items-center min-w-[40px]">
-                  <span className="text-sm font-semibold text-foreground">
-                    {formatTime(ev.start_at)}
-                  </span>
+                  <span className="text-sm font-semibold text-foreground">{formatTime(ev.start_at)}</span>
                   {ev.end_at && (
-                    <span className="text-[10px] text-muted-foreground">
-                      {formatTime(ev.end_at)}
-                    </span>
+                    <span className="text-[10px] text-muted-foreground">{formatTime(ev.end_at)}</span>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -217,9 +314,7 @@ export default function Hoje() {
                   <div className="mt-1 flex items-center gap-2">
                     <CategoryBadge category={ev.category} />
                     {(ev.members?.length ?? 0) > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        {ev.members?.join(", ")}
-                      </span>
+                      <span className="text-xs text-muted-foreground">{ev.members?.join(", ")}</span>
                     )}
                   </div>
                 </div>
