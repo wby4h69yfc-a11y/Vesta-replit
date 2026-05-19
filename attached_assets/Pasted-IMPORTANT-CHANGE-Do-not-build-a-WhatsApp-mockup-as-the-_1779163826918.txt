@@ -1,0 +1,60 @@
+IMPORTANT CHANGE:
+Do not build a WhatsApp mockup as the main product experience.
+
+Vesta must be architected as an actual WhatsApp-integrated assistant using WhatsApp Business API / Twilio / Meta Cloud API or a backend-ready abstraction for those services.
+
+The app should not pretend to be WhatsApp. The app should only:
+- connect the user’s WhatsApp account/phone
+- verify the phone number
+- configure permissions, rules, privacy, memory, family roles, and calendar connections
+- show audit logs
+- show complex escalations that cannot safely happen in WhatsApp
+- show examples of what to send to Vesta in WhatsApp
+- provide test/developer tooling only when needed
+
+Daily user interaction should happen in the real WhatsApp channel.
+
+Do not create a WhatsAppChatSimulator as a user-facing feature.
+If a simulator is needed, keep it as a developer-only test harness hidden behind a debug/dev route, not part of the core user experience.
+
+Replace “WhatsAppChatSimulator” with:
+
+1. WhatsAppIntegrationLayer
+   - abstraction for WhatsApp Business API / Twilio / Meta Cloud API
+   - handles inbound messages, voice notes, photos, forwarded messages, documents, and quick replies
+   - normalizes inbound events into conversation_turns
+   - sends outbound Vesta responses back into WhatsApp
+   - supports future provider replacement
+
+2. WhatsAppConnectionScreen
+   - explains that Vesta works inside WhatsApp
+   - verifies phone number
+   - generates a unique verification token
+   - opens WhatsApp with the token prefilled
+   - shows connection status
+   - polls backend verification state
+
+3. WhatsAppWebhookHandler
+   - receives inbound WhatsApp events
+   - maps messages to user_id and household_id
+   - stores original message payload
+   - creates conversation_turns
+   - triggers parsing/classification
+   - returns concise WhatsApp-native responses
+
+4. WhatsAppMessageProcessor
+   - classifies incoming message intent
+   - extracts candidate actions
+   - creates proposed_actions
+   - identifies missing fields
+   - determines whether approval can stay in WhatsApp or must escalate to app
+
+5. WhatsAppReplyComposer
+   - formats concise Brazilian Portuguese responses
+   - supports WhatsApp quick-reply button patterns where available
+   - falls back to numbered text replies when buttons are unavailable
+
+6. DeveloperTestConsole
+   - optional internal-only tool for testing inbound/outbound WhatsApp messages
+   - must not be presented as the actual user experience
+   - label clearly as “Dev test console”

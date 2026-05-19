@@ -6,7 +6,6 @@ import {
   Home, ChevronRight, ChevronLeft, Check, Calendar,
   MessageCircle, Sparkles, X, Loader2, ArrowRight,
 } from "lucide-react";
-import WhatsAppSimulator from "@/components/WhatsAppSimulator";
 
 /* ── tokens ── */
 const V = {
@@ -302,57 +301,107 @@ function Step2WhatsApp({ onNext, onBack, data }: StepProps) {
 }
 
 /* ────────────────────────────────────────────
-   STEP 3 — First interaction (WA simulator)
-   Activation = first item approved
+   STEP 3 — WhatsApp usage examples
+   (instructional — no simulator)
 ──────────────────────────────────────────── */
-function Step3FirstItem({ onNext, onBack, data }: StepProps) {
-  const [activated, setActivated] = useState(false);
-  const name = (data.name as string) || "você";
+
+const WA_EXAMPLES = [
+  {
+    emoji: "📅",
+    category: "Eventos",
+    sample: "Reunião da escola quinta 19h",
+    outcome: "Cria evento no calendário e lembra 1h antes",
+  },
+  {
+    emoji: "✅",
+    category: "Tarefas",
+    sample: "Lembra de comprar caderno da Sofia até sexta",
+    outcome: "Tarefa com prazo e lembrete",
+  },
+  {
+    emoji: "💊",
+    category: "Saúde",
+    sample: "Consulta da pediatra confirmada 20/06 14h",
+    outcome: "Salvo no calendário, aguarda sua aprovação",
+  },
+  {
+    emoji: "📸",
+    category: "Fotos e áudios",
+    sample: "[circular da escola encaminhada]",
+    outcome: "Transcrito, classificado automaticamente",
+  },
+];
+
+function Step3Examples({ onNext, onBack }: StepProps) {
+  const [waInfo, setWaInfo] = useState<{ whatsapp_number?: string } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/webhook/whatsapp/info", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d: { webhook_url?: string }) => {
+        const match = d.webhook_url?.match(/(\+?\d[\d\s-]{7,})/);
+        if (match) setWaInfo({ whatsapp_number: match[1].replace(/\D/g, "") });
+      })
+      .catch(() => {});
+  }, []);
+
+  function openWA() {
+    const num = waInfo?.whatsapp_number ?? "14155238886";
+    window.open(`https://wa.me/${num}`, "_blank");
+  }
 
   return (
     <div className="space-y-5">
       <div>
         <h2 className="font-serif text-2xl font-semibold mb-1" style={{ color: V.ink }}>
-          Primeiro recado da casa.
+          É assim que funciona.
         </h2>
         <p className="text-sm leading-6" style={{ color: V.muted }}>
-          Experimente agora — encaminhe uma mensagem real ou use um dos exemplos.
+          Encaminhe qualquer mensagem da casa pelo WhatsApp. A Vesta entende, organiza e só te chama quando precisa de uma decisão.
         </p>
       </div>
 
-      {/* WA simulator — compact, no phone frame */}
-      <div className="rounded-3xl overflow-hidden border"
-        style={{ borderColor: "rgba(14,59,46,0.10)", height: "380px" }}>
-        <WhatsAppSimulator
-          contactName="Vesta"
-          showExamples
-          onFirstItemApproved={() => setActivated(true)}
-          className="h-full"
-        />
+      {/* Example cards */}
+      <div className="space-y-2.5">
+        {WA_EXAMPLES.map((ex) => (
+          <div key={ex.category}
+            className="rounded-2xl px-4 py-3.5 flex gap-3 items-start"
+            style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.07)" }}>
+            <span className="text-xl leading-none mt-0.5 shrink-0">{ex.emoji}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: V.sage }}>{ex.category}</p>
+              <p className="text-sm italic mb-1" style={{ color: V.ink }}>"{ex.sample}"</p>
+              <p className="text-xs" style={{ color: V.muted }}>→ {ex.outcome}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {activated && (
-        <div className="flex items-center gap-3 rounded-2xl px-4 py-3"
-          style={{ background: "#EAF1E5", border: "1px solid rgba(14,59,46,0.15)" }}>
-          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: V.primary }}>
-            <Check className="h-4 w-4 text-white" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold" style={{ color: V.ink }}>Ativação completa!</p>
-            <p className="text-xs" style={{ color: V.muted }}>O primeiro combinado da Vesta para a {name.includes("Casa") ? name : `casa de ${name}`} está anotado.</p>
-          </div>
-        </div>
-      )}
+      {/* CTA: open WhatsApp */}
+      <div className="rounded-2xl p-4 space-y-3" style={{ background: "#F0FDF4", border: "1px solid #86EFAC" }}>
+        <p className="text-sm font-semibold text-center" style={{ color: "#065F46" }}>
+          Pronto para começar? Abra o WhatsApp agora.
+        </p>
+        <button onClick={openWA}
+          className="w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
+          style={{ background: V.wa, color: "white" }}>
+          <MessageCircle className="h-4 w-4" />
+          Abrir WhatsApp
+        </button>
+        <p className="text-xs text-center" style={{ color: "#047857" }}>
+          Pode encaminhar qualquer mensagem agora — ou fazer isso depois.
+        </p>
+      </div>
 
       <div className="flex gap-3">
         <button onClick={onBack} className="px-6 py-3.5 rounded-full text-sm font-medium"
           style={{ background: V.beige, color: V.ink }}>
           <ChevronLeft className="h-4 w-4 inline" /> Voltar
         </button>
-        <button onClick={() => onNext({ first_item_approved: activated })}
+        <button onClick={() => onNext({})}
           className="flex-1 py-3.5 rounded-full text-sm font-semibold text-white"
           style={{ background: V.primary }}>
-          {activated ? "Pronto, continuar →" : "Pular por agora"} <ChevronRight className="h-4 w-4 inline" />
+          Continuar <ChevronRight className="h-4 w-4 inline" />
         </button>
       </div>
     </div>
@@ -579,7 +628,7 @@ const STEPS = [
   { component: Step0Welcome,   title: "" },
   { component: Step1Account,   title: "Conta" },
   { component: Step2WhatsApp,  title: "WhatsApp" },
-  { component: Step3FirstItem, title: "Primeiro recado" },
+  { component: Step3Examples,  title: "Como usar" },
   { component: Step4Enrich,    title: "Configurar" },
   { component: Step5Done,      title: "Pronto!" },
 ];

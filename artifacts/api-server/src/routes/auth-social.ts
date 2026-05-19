@@ -55,7 +55,7 @@ async function ensureHousehold(userId: string, existingHouseholdId: number | nul
 
   const [newHousehold] = await db
     .insert(householdsTable)
-    .values({ name: "Minha Casa", plan: "free" })
+    .values({ name: "Minha Casa", plan: "free", concierge_eligible: false })
     .returning();
 
   await db
