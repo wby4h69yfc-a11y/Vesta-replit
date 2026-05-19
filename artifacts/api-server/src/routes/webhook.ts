@@ -57,6 +57,19 @@ async function validateTwilioSignature(req: Request): Promise<boolean> {
     ?? "localhost";
   const webhookUrl = `${proto}://${host}/api/webhook/whatsapp`;
 
+  // Debug: log headers and reconstructed URL so we can compare against Twilio's signature
+  req.log.info({
+    webhookUrl,
+    "x-forwarded-proto": req.headers["x-forwarded-proto"],
+    "x-forwarded-host": req.headers["x-forwarded-host"],
+    "x-forwarded-for": req.headers["x-forwarded-for"],
+    host: req.headers["host"],
+    REPLIT_DEV_DOMAIN: process.env.REPLIT_DEV_DOMAIN,
+    REPLIT_DOMAINS: process.env.REPLIT_DOMAINS,
+    signaturePresent: !!signature,
+    bodyKeys: Object.keys(req.body ?? {}),
+  }, "Webhook: signature debug");
+
   const { validateRequest } = await import("twilio");
   const params = (req.body ?? {}) as Record<string, string>;
   return validateRequest(authToken, signature, webhookUrl, params);
