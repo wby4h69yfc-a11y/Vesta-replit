@@ -19,10 +19,16 @@ const router: IRouter = Router();
 function isAdmin(req: Request): boolean {
   if (!req.isAuthenticated() || !req.user) return false;
   if (process.env.NODE_ENV !== "production") return true;
-  const adminEmails = process.env.ADMIN_EMAILS;
+  const adminEmails = process.env.ADMIN_EMAILS?.trim();
   if (!adminEmails) return false;
-  const list = adminEmails.split(",").map((e) => e.trim().toLowerCase());
-  return list.includes((req.user.email ?? "").toLowerCase());
+  const list = adminEmails
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => e.length > 0);
+  if (list.length === 0) return false;
+  const userEmail = (req.user.email ?? "").trim().toLowerCase();
+  if (!userEmail) return false;
+  return list.includes(userEmail);
 }
 
 /**
