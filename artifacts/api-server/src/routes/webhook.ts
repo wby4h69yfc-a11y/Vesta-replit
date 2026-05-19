@@ -164,6 +164,10 @@ router.get("/webhook/whatsapp/info", async (req: Request, res: Response) => {
   const domains = (process.env.REPLIT_DOMAINS ?? "").split(",").filter(Boolean);
   const primaryDomain = domains[0] ?? null;
 
+  // Extract the phone number digits from TWILIO_WHATSAPP_FROM (e.g. "whatsapp:+14155238886" → "14155238886")
+  const rawFrom = process.env.TWILIO_WHATSAPP_FROM ?? "";
+  const twilioNumber = rawFrom.replace(/^whatsapp:/i, "").replace(/\D/g, "") || null;
+
   res.json({
     webhook_url: primaryDomain
       ? `https://${primaryDomain}/api/webhook/whatsapp`
@@ -173,6 +177,7 @@ router.get("/webhook/whatsapp/info", async (req: Request, res: Response) => {
       "Configure este URL no console do Twilio como webhook de entrada para seu número WhatsApp Business.",
     status: primaryDomain ? "configured" : "needs_domain",
     twilioConfigured: isTwilioConfigured(),
+    twilio_number: twilioNumber,
   });
 });
 
