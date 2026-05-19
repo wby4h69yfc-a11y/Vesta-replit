@@ -17,6 +17,7 @@ import patternsRouter from "./patterns";
 import onboardingRouter from "./onboarding";
 import googleRouter from "./google";
 import briefingRouter from "./briefing";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -57,6 +58,7 @@ protectedRouter.use(patternsRouter);   // GET /patterns, POST /patterns/:id/*
 protectedRouter.use(onboardingRouter); // GET|POST /onboarding/*
 protectedRouter.use(googleRouter);     // GET|POST /google/*, DELETE /google/disconnect
 protectedRouter.use(briefingRouter);   // POST /briefing/send
+protectedRouter.use(adminRouter);      // GET /admin/stats
 
 // Catch-all: any path that reaches here through the protectedRouter did not
 // match a registered route. Return 404 so callers get a deterministic error
