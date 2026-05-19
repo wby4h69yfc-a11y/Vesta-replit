@@ -18,6 +18,7 @@ import SettingsPage from "@/pages/Settings";
 import OnboardingPage from "@/pages/Onboarding";
 import AdminPage from "@/pages/Admin";
 import NotFound from "@/pages/not-found";
+import DevToolbar from "@/components/DevToolbar";
 import { Home } from "lucide-react";
 
 const queryClient = new QueryClient({
@@ -158,6 +159,7 @@ function App() {
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
+          <DevToolbar />
         </WouterRouter>
         <Toaster />
       </TooltipProvider>
