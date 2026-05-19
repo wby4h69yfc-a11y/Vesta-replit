@@ -16,6 +16,7 @@ import ConciergePage from "@/pages/Concierge";
 import CasaPage from "@/pages/Casa";
 import SettingsPage from "@/pages/Settings";
 import OnboardingPage from "@/pages/Onboarding";
+import AdminPage from "@/pages/Admin";
 import NotFound from "@/pages/not-found";
 import { Home } from "lucide-react";
 
@@ -131,6 +132,11 @@ function Router() {
     <Switch>
       {/* Landing is always public */}
       <Route path="/" component={Landing} />
+
+      {/* Admin — requires auth, bypasses onboarding check */}
+      <Route path="/admin">
+        {isLoading ? <LoadingScreen /> : !user ? <LoginPage /> : <AdminPage />}
+      </Route>
 
       {/* All other routes require auth */}
       <Route>

@@ -23,17 +23,21 @@ const router = Router();
 async function validateTwilioSignature(req: Request): Promise<boolean> {
   const authToken = process.env.TWILIO_AUTH_TOKEN;
 
-  if (!authToken) {
-    if (process.env.NODE_ENV === "production") {
-      req.log.error(
-        "TWILIO_AUTH_TOKEN not set in production — rejecting webhook request",
-      );
-      return false;
-    }
+  // In development, skip signature validation so local/preview testing works.
+  // Twilio signs with the external URL; the Replit proxy doesn't always preserve
+  // the host header needed to reconstruct it. Production always enforces.
+  if (process.env.NODE_ENV !== "production") {
     req.log.warn(
-      "TWILIO_AUTH_TOKEN not set — skipping signature check (dev only, will fail in production)",
+      "NODE_ENV !== production — skipping Twilio signature check (development mode)",
     );
     return true;
+  }
+
+  if (!authToken) {
+    req.log.error(
+      "TWILIO_AUTH_TOKEN not set in production — rejecting webhook request",
+    );
+    return false;
   }
 
   const signature = (req.headers["x-twilio-signature"] ?? "") as string;
@@ -56,19 +60,6 @@ async function validateTwilioSignature(req: Request): Promise<boolean> {
     ?? process.env.REPLIT_DOMAINS?.split(",")[0]
     ?? "localhost";
   const webhookUrl = `${proto}://${host}/api/webhook/whatsapp`;
-
-  // Debug: log headers and reconstructed URL so we can compare against Twilio's signature
-  req.log.info({
-    webhookUrl,
-    "x-forwarded-proto": req.headers["x-forwarded-proto"],
-    "x-forwarded-host": req.headers["x-forwarded-host"],
-    "x-forwarded-for": req.headers["x-forwarded-for"],
-    host: req.headers["host"],
-    REPLIT_DEV_DOMAIN: process.env.REPLIT_DEV_DOMAIN,
-    REPLIT_DOMAINS: process.env.REPLIT_DOMAINS,
-    signaturePresent: !!signature,
-    bodyKeys: Object.keys(req.body ?? {}),
-  }, "Webhook: signature debug");
 
   const { validateRequest } = await import("twilio");
   const params = (req.body ?? {}) as Record<string, string>;
