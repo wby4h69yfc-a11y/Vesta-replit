@@ -1,0 +1,926 @@
+## Reconciliation decision
+
+Use the **new prompt as the backbone**. It is stronger because it forces the key strategic correction: **Vesta is not an app with WhatsApp intake; Vesta is a WhatsApp-native household coordinator, with the app as the 20% setup/configuration/review layer.**
+
+My earlier prompt contributes useful pieces, but some of it was still too app-centric. The unified prompt below resolves that.
+
+## Conflicts to resolve
+
+| Conflict            | Earlier prompt                                                              | New prompt                                            | Resolution                                                                                                                  |
+| ------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Product center      | App navigation with Entrada, Hoje, Casa, Calendário, Resolver, Aprendizados | WhatsApp is the daily command layer; app is secondary | Use WhatsApp as the product. App nav exists only for setup, rules, privacy, audit, complex review, calendar, and concierge. |
+| Onboarding          | “Manda uma bagunça da casa” inside app/chat                                 | Minimal signup → connect WhatsApp → first real item   | Use the new WhatsApp-first activation. Activation = first approved item, not setup completion.                              |
+| Daily usage         | App could become an operational cockpit                                     | 80% WhatsApp / 20% app                                | Explicitly demote app dashboard. Home should say “Continue no WhatsApp.”                                                    |
+| Brand promise       | “A casa aprende” as hero                                                    | “Manda um recado. A Vesta transforma em ação.”        | Use “Manda um recado…” for activation and CTA. Use “A casa aprende” as the longer-term learning promise.                    |
+| Learning/memory     | Aprendizados tab and rules                                                  | Memory staging + explicit confirmation                | Keep learning, but everything learned must be staged and approved. No silent memory.                                        |
+| Integration reality | General WhatsApp-like experience                                            | Real WhatsApp if possible, mocked if not              | Build mocked WhatsApp simulator now, with architecture ready for Twilio/WhatsApp later.                                     |
+| App escalation      | Not deeply specified                                                        | Clear escalation rules                                | Adopt the new escalation logic. App only for complex, sensitive, low-confidence, audit, payment, privacy, or visual review. |
+| Dashboard           | Could be overbuilt                                                          | “Do not overbuild dashboard”                          | Dashboard cleanup is explicitly lower priority than WhatsApp command layer.                                                 |
+
+---
+
+## Unified Lovable prompt
+
+```text
+You are working on Vesta, a WhatsApp-native household logistics assistant for Brazilian families.
+
+Use the existing Vesta Product Spec v9.0 as the source of truth if it is available in the project. If it is not available in the current Lovable context, do not invent unsupported requirements; use this prompt as the implementation source.
+
+Core strategic correction:
+Vesta should no longer feel like an app with WhatsApp intake. It should feel like a capable household coordinator that lives in WhatsApp, with the web/mobile app used only for setup, privacy, audit, rules, complex review, calendar connection, memory management, and configuration.
+
+The key product rule:
+Approximately 80% of daily user interactions should happen in WhatsApp, and only 20% should happen in the app.
+
+Primary positioning:
+“Manda um recado. A Vesta transforma em ação.”
+
+Long-term brand promise:
+“A casa aprende.”
+
+Use the learning promise carefully:
+- Day 1: “Você define as regras. A Vesta executa.”
+- Week 2–4: “Cada aprovação ensina algo.”
+- Month 2+: “A casa começou a saber.”
+
+Primary user experience:
+A tired caregiver should be able to forward a school message, photo, voice note, boleto, diarista message, condomínio notice, party reminder, medical appointment, or household reminder to Vesta in WhatsApp and get back a concise, actionable response without opening the app.
+
+Do not build a generic chatbot.
+Do not build a generic family management dashboard.
+Build a household operations assistant.
+
+The core product loop is:
+Capture → classify → propose action → ask smallest necessary question → approve → write/delegate/remind → audit → learn only with explicit confirmation.
+
+The desired feeling:
+“I forwarded a messy household message, and Vesta handled it.”
+
+Not:
+“I signed up for another family management app.”
+
+---
+
+## 1. Redesign onboarding around WhatsApp-first activation
+
+Replace the current app-heavy onboarding with a progressive WhatsApp-first activation flow.
+
+Activation does not mean “onboarding complete.”
+Activation means “first household item approved.”
+
+New onboarding sequence:
+
+### Step 1 — Minimal account creation
+
+Ask only:
+- name
+- phone number
+- city/timezone
+- preferred language
+- privacy/consent acceptance
+
+Do not ask for full household setup upfront.
+Do not ask for every family member upfront.
+Do not ask for routines upfront.
+Do not ask for calendar connection before the user has seen value.
+
+### Step 2 — Connect WhatsApp immediately
+
+Create a screen called WhatsAppConnectionScreen.
+
+Copy:
+
+“A Vesta trabalha pelo WhatsApp.”
+
+“Encaminhe recados, fotos, áudios e lembretes. A Vesta organiza, pergunta o mínimo necessário e escreve no calendário quando você aprovar.”
+
+Primary CTA:
+“Conectar WhatsApp”
+
+Behavior:
+- Generate a unique verification token, e.g. VESTA-482.
+- Open WhatsApp via deep link with the token prefilled.
+- Show verification status.
+- App should poll for verification status.
+- If real WhatsApp/Twilio integration is not implemented yet, mock verification but structure the code so real backend verification can replace it later.
+
+### Step 3 — First WhatsApp-style interaction
+
+After verification, show a WhatsApp-like chat simulation or continue in real WhatsApp if integration exists.
+
+Opening message:
+
+“Oi, sou a Vesta. Me encaminhe um recado real da casa — escola, consulta, boleto, diarista, condomínio ou festa. Se preferir, mande um áudio.”
+
+The user should process one household item before being asked to complete a full profile.
+
+Example user input:
+“Reunião da escola quinta 19h.”
+
+Vesta response:
+“Anotei: Reunião da escola — quinta 19h. Vou colocar no calendário e lembrar 1h antes. Quem vai?”
+
+Buttons:
+- “Eu”
+- “Outra pessoa”
+- “Depois”
+
+After approval:
+“Feito. Quer conectar seu calendário para eu escrever isso automaticamente?”
+
+### Step 4 — Progressive enrichment
+
+Only after the first useful action, ask contextual setup questions.
+
+Examples:
+- “Essa tarefa é para uma criança da casa?”
+- “Quer salvar essa escola como contato conhecido?”
+- “Tem mais alguém que divide essas tarefas com você?”
+- “Quer conectar seu calendário agora para eu escrever os eventos?”
+- “Quer convidar outra pessoa da casa?”
+
+Do not interrupt the first-use moment with long setup.
+
+### Track onboarding progress
+
+Prepare or mock these states:
+
+- onboarding_started
+- whatsapp_verified
+- first_message_processed
+- first_item_approved
+- calendar_connected
+- partner_invited
+- setup_completed
+- last_step
+
+Show internal progress in development/debug UI if useful, but do not make this feel like a checklist to the user.
+
+---
+
+## 2. Make WhatsApp the daily command layer
+
+Create or update a WhatsApp-style interaction layer. This can be mocked initially, but the UX should behave as if WhatsApp is the true daily interface.
+
+Create component:
+WhatsAppChatSimulator
+
+It should:
+- visually resemble a WhatsApp conversation
+- support user input
+- support quick reply buttons
+- support household-specific examples
+- support deterministic mock parsing for common household commands
+- be structured so an LLM parser can replace the mock parser later
+
+Supported user inputs:
+
+### Forwarded household message
+
+Example:
+“Passeio da Sofia quinta 14h. Levar lanche e R$30.”
+
+Expected Vesta response:
+“Anotei 3 coisas:
+1. Evento: Passeio da Sofia — quinta 14h
+2. Tarefa: levar lanche
+3. Pagamento: R$30
+
+Confirmar tudo?”
+
+Buttons:
+- “Sim”
+- “Revisar”
+- “Não”
+
+### Add task
+
+Example:
+“Lembra de comprar presente da festa da Julia até sexta.”
+
+Expected Vesta response:
+“Anotei: comprar presente da festa da Julia até sexta. Quer lembrete?”
+
+Buttons:
+- “Sim”
+- “Editar”
+- “Não”
+
+### Ask status
+
+Example:
+“O que ficou pendente da escola?”
+
+Expected Vesta response:
+“Da escola, tenho 2 pendências:
+1. Pagar passeio até sexta
+2. Levar lanche quinta
+
+Quer resolver alguma agora?”
+
+Buttons:
+- “Pagar passeio”
+- “Ver tudo”
+- “Depois”
+
+### Delegate
+
+Example:
+“Manda isso pro Pedro resolver.”
+
+Expected Vesta response:
+“Posso atribuir para Pedro. Quer que eu avise ele?”
+
+Buttons:
+- “Sim”
+- “Só atribuir”
+- “Outra pessoa”
+
+### Confirm payment proof
+
+Example:
+“Paguei a mensalidade” + image placeholder.
+
+Expected Vesta response:
+“Anotei o pagamento. Quer salvar o comprovante?”
+
+Buttons:
+- “Salvar”
+- “Só marcar como pago”
+- “Não”
+
+If payment safety is needed, escalate to app.
+
+### Reschedule
+
+Example:
+“Troca a consulta pra semana que vem.”
+
+Expected Vesta response:
+“Qual dia da semana que vem?”
+
+Buttons:
+- “Segunda”
+- “Terça”
+- “Quarta”
+- “Outro”
+
+### Ask memory
+
+Example:
+“Quando a Maria vem mesmo?”
+
+Expected Vesta response:
+“Tenho salvo: Maria vem às terças de manhã. Quer ver próximos lembretes?”
+
+Buttons:
+- “Sim”
+- “Não”
+
+If Vesta does not know:
+“Não tenho isso salvo ainda. Quer me contar?”
+
+Buttons:
+- “Salvar”
+- “Agora não”
+
+---
+
+## 3. Design WhatsApp-native response patterns
+
+Use concise Brazilian Portuguese. Always ask the smallest necessary question.
+
+### Simple confirmation
+
+“Anotei. Vou criar [item]. Confirmar?”
+
+Buttons:
+- “Sim”
+- “Editar”
+- “Não”
+
+### Owner suggestion
+
+“Anotei. [Item] — atribuir para [pessoa]?”
+
+Buttons:
+- “Sim”
+- “Outra pessoa”
+- “Depois”
+
+### Missing time
+
+“Que horário?”
+
+Buttons:
+- “Manhã”
+- “Tarde”
+- “Noite”
+- “Outro”
+
+### Small multi-intent
+
+“Anotei 3 coisas:
+1. Evento: [item]
+2. Tarefa: [item]
+3. Lembrete: [item]
+
+Confirmar tudo?”
+
+Buttons:
+- “Sim”
+- “Revisar”
+- “Não”
+
+### Memory update
+
+“Quer que eu salve isso na memória da casa?”
+
+Buttons:
+- “Salvar”
+- “Só dessa vez”
+
+### Low confidence
+
+“Não tenho certeza se isso é ação ou só aviso.”
+
+Buttons:
+- “Criar lembrete”
+- “Só aviso”
+- “Revisar”
+
+---
+
+## 4. Add natural-language correction behavior
+
+The user should be able to reply naturally instead of only tapping buttons.
+
+Support these examples in the mocked interaction logic:
+
+- “sim mas troca pra Pedro”
+- “na verdade é sexta”
+- “não, isso é só aviso”
+- “manda pra Maria”
+- “desfaz isso”
+- “lembra um dia antes”
+- “pode confirmar”
+- “muda para de manhã”
+- “não salva isso”
+- “sempre me pergunta antes”
+
+If full AI parsing is not wired yet, implement a deterministic mock parser for these common phrases and structure the code so an LLM parser can replace it later.
+
+Every correction should update the pending structured action visibly.
+
+Example:
+
+Original:
+“Consulta — quinta 15h.”
+
+User:
+“Na verdade é sexta.”
+
+Vesta:
+“Corrigi: Consulta — sexta 15h. Confirmar?”
+
+Buttons:
+- “Sim”
+- “Editar”
+- “Não”
+
+Add undo behavior:
+
+User:
+“desfaz isso”
+
+Vesta:
+“Desfeito.”
+
+---
+
+## 5. Reposition the app as the 20% configuration layer
+
+The app should not feel like the daily cockpit.
+
+Keep app surfaces for:
+
+- minimal onboarding
+- WhatsApp connection
+- calendar connection
+- household setup after activation
+- complex cascade review
+- rules management
+- memory management
+- audit log
+- privacy dashboard
+- payment safety checklist
+- concierge purchase
+- diarista profile and consent
+- settings: quiet hours, digest time, proactive message limits
+- visual review of complex linked actions
+
+Daily app home should emphasize:
+- “Continue no WhatsApp”
+- today’s critical items
+- pending approvals that require visual review
+- recent actions Vesta handled
+- trust/audit summary
+
+Avoid making the app inbox the main product experience.
+Avoid making the dashboard the hero.
+Avoid generic productivity cards.
+Avoid generic chatbot homepage language.
+
+Recommended app sections:
+
+1. Home
+   - “Continue no WhatsApp”
+   - critical items for today
+   - app-only escalations
+   - recent handled actions
+
+2. Regras
+   - household rules
+   - approval preferences
+   - quiet hours
+   - proactive message limits
+
+3. Memória da Casa
+   - confirmed household facts
+   - staged facts awaiting approval
+   - ability to delete or edit memory
+
+4. Calendário
+   - connected calendars
+   - upcoming approved events
+   - write-back status
+
+5. Auditoria
+   - what Vesta did
+   - what was approved
+   - what was rejected
+   - what changed
+   - who approved it
+
+6. Resolver
+   - concierge flows
+   - contractor/vendor handoff
+   - payment/purchase review
+   - only for flows that cannot safely happen only in WhatsApp
+
+7. Configurações
+   - privacy
+   - family roles
+   - notification preferences
+   - connected accounts
+
+Do not overbuild these screens. The WhatsApp command layer is the product.
+
+---
+
+## 6. Add app escalation rules
+
+Most approvals should stay in WhatsApp.
+
+Escalate to app only when:
+
+- confidence is low
+- there are 4+ linked actions
+- payment safety checklist is required
+- health data is ambiguous
+- external outbound message needs preview
+- concierge purchase/payment is required
+- memory review has multiple staged items
+- privacy/audit view is needed
+- calendar conflict needs visual review
+- a rule would affect multiple people or recurring actions
+
+When escalating, use specific copy.
+
+Good:
+“Esse caso tem 5 ações ligadas. Melhor revisar visualmente.”
+
+Good:
+“Esse pagamento precisa de uma checagem antes de salvar.”
+
+Good:
+“Tem conflito no calendário. Melhor revisar.”
+
+Bad:
+“Open the app to continue.”
+
+Bad:
+“Something went wrong.”
+
+Bad:
+“Please complete this process in the dashboard.”
+
+Create component:
+AppEscalationCard
+
+It should include:
+- reason for escalation
+- short summary of pending action
+- CTA: “Revisar no app”
+- secondary CTA where safe: “Agora não”
+
+---
+
+## 7. Create first-week activation journey
+
+Add a first-week lifecycle experience. This can be mocked initially.
+
+Create component:
+FirstWeekActivationTimeline
+
+Day 0:
+Goal: first approved item.
+
+Message:
+“Me encaminhe um recado real da casa. Eu transformo em ação.”
+
+Day 1:
+Morning digest:
+“Bom dia. Hoje estou acompanhando:
+1. [item]
+2. [item]
+
+Quer adicionar algo?”
+
+Day 2:
+Teach forwarding:
+“Quando chegar recado da escola, condomínio ou diarista, encaminha pra mim. Eu separo o que é ação do que é só aviso.”
+
+Day 3:
+Partner prompt, only if relevant:
+“Quer que Pedro também receba avisos dessas tarefas?”
+
+Buttons:
+- “Convidar”
+- “Depois”
+
+Day 4:
+Memory confirmation:
+“Anotei algumas coisas. Confirmar?”
+
+Examples:
+- Sofia = filha
+- Escola = Maple Bear
+- Pedro = parceiro
+
+Buttons:
+- “Confirmar”
+- “Editar”
+- “Não salvar”
+
+Day 5:
+Rule suggestion:
+“Notei que mensagens da escola geralmente viram calendário + lembrete. Quer que eu prepare assim da próxima vez?”
+
+Buttons:
+- “Sim”
+- “Sempre perguntar”
+
+Day 7:
+Weekly recap:
+“Essa semana organizei 6 itens:
+3 escola
+1 saúde
+1 pagamento
+1 casa
+
+Quer receber esse resumo todo domingo?”
+
+Buttons:
+- “Sim”
+- “Não”
+
+---
+
+## 8. Conversation style guide
+
+Vesta’s tone should be Brazilian Portuguese, concise, capable, and warm without being chatty.
+
+Principles:
+- Brief by default.
+- No corporate language.
+- No excessive enthusiasm.
+- No generic chatbot phrases.
+- No “Como posso ajudar hoje?” as the default.
+- Do not pretend to be human.
+- Never over-apologize.
+- Never moralize household dynamics.
+- Always ask the smallest necessary question.
+- If uncertain, say so.
+- Use household language, not productivity SaaS language.
+- Prefer action verbs: anotar, lembrar, confirmar, revisar, salvar, delegar, resolver.
+
+Good:
+“Anotei. Pode deixar.”
+“Feito.”
+“Corrigi.”
+“Desfeito.”
+“Não tenho isso salvo ainda. Quer me contar?”
+“Tem certeza? A consulta está marcada pra quinta, não quarta.”
+“Quer que eu salve isso na memória da casa?”
+“Esse caso tem 5 ações ligadas. Melhor revisar visualmente.”
+
+Bad:
+“Claro! Eu adoraria te ajudar com isso!”
+“No momento essa funcionalidade não está disponível.”
+“Parece que você está sobrecarregada.”
+“Como posso ajudar hoje?”
+“Gerencie suas tarefas familiares com inteligência artificial.”
+“Open the app to continue.”
+
+---
+
+## 9. Build or update key UI components
+
+Create or update the following components:
+
+### 1. WhatsAppConnectionScreen
+- explains that Vesta works through WhatsApp
+- shows phone verification flow
+- generates verification token
+- opens WhatsApp with token
+- shows verification status
+- supports mocked verification if backend is not implemented
+
+### 2. WhatsAppChatSimulator
+- visually resembles a WhatsApp conversation
+- supports user input
+- shows Vesta replies
+- includes quick-reply buttons
+- supports common household examples
+- supports deterministic mock parsing for corrections
+
+### 3. FirstForwardPrompt
+- encourages the user to send a real household message
+- includes examples:
+  - escola
+  - consulta
+  - boleto
+  - diarista
+  - condomínio
+  - festa
+  - manutenção da casa
+
+### 4. WAApprovalMessage
+- simple item approval
+- supports:
+  - Sim
+  - Editar
+  - Não
+- shows structured pending action
+
+### 5. ProgressiveProfilePrompt
+- asks contextual setup questions only after value is shown
+- never blocks first useful action
+
+### 6. AppEscalationCard
+- explains why app review is needed
+- deep-link style card
+- uses specific Portuguese copy
+
+### 7. FirstWeekActivationTimeline
+- visible mocked lifecycle showing day 0 to day 7 prompts
+
+### 8. MemoryConfirmationCard
+- confirms staged memory items
+- allows confirm, edit, dismiss
+- makes clear that Vesta does not silently save personal household facts
+
+### 9. DailyDigestPreview
+- shows WhatsApp-native morning digest
+- not a dashboard replacement
+
+### 10. AuditTrustPreview
+- shows what Vesta did in plain Portuguese
+- includes original message, extracted action, approval, actor, timestamp, and status
+
+### 11. RuleSuggestionCard
+- shows proposed rule based on repeated approvals
+- requires explicit approval
+- supports “Sempre perguntar”
+
+### 12. RecentActionsHandled
+- shows recent actions Vesta handled
+- reinforces value without making the app the cockpit
+
+---
+
+## 10. Data model readiness
+
+If database changes are needed, propose migrations but do not break existing data.
+
+If backend is not available, mock this with local state but structure code to migrate to Supabase/Postgres later.
+
+Prepare these tables or local state equivalents:
+
+### conversation_threads
+- id
+- household_id
+- user_id
+- thread_type
+- related_inbox_id
+- related_action_id
+- status
+- awaiting_response_for
+- last_message_at
+- expires_at
+- created_at
+
+### conversation_turns
+- id
+- thread_id
+- turn_index
+- speaker
+- content
+- intent
+- metadata
+- created_at
+
+### onboarding_progress
+- user_id
+- household_id
+- onboarding_started
+- whatsapp_verified
+- first_message_processed
+- first_item_approved
+- calendar_connected
+- partner_invited
+- setup_completed
+- last_step
+- created_at
+- updated_at
+
+### memory_staging
+- id
+- household_id
+- proposed_fact
+- source_context
+- confidence
+- status: pending / confirmed / dismissed / expired
+- expires_at
+- created_at
+- confirmed_at
+- confirmed_by
+
+### household_memory
+- id
+- household_id
+- fact_type
+- fact_value
+- source
+- created_by
+- created_at
+- updated_at
+- deleted_at
+
+### proposed_actions
+- id
+- household_id
+- source_thread_id
+- source_turn_id
+- action_type
+- title
+- description
+- due_date
+- due_time
+- assigned_to
+- confidence
+- status: proposed / approved / rejected / edited / completed
+- requires_app_review
+- escalation_reason
+- created_at
+- updated_at
+
+### approval_events
+- id
+- household_id
+- proposed_action_id
+- approved_by
+- approval_channel: whatsapp / app
+- decision: approved / rejected / edited
+- before_value
+- after_value
+- created_at
+
+### audit_log
+- id
+- household_id
+- actor
+- action
+- object_type
+- object_id
+- channel
+- plain_portuguese_summary
+- created_at
+
+Important:
+- Every AI-created action must be traceable to a user input.
+- Every calendar write, delegation, reminder, or memory save must be auditable.
+- Memory should never be silently saved without confirmation.
+- Rules that automate future behavior must require explicit approval.
+
+---
+
+## 11. Trust, privacy, and consent
+
+Add visible trust cues throughout the app and WhatsApp simulator.
+
+Core principles:
+- Vesta does not act without approval unless the user has created a rule.
+- Vesta asks before saving household memory.
+- Vesta shows what it did.
+- Vesta lets users undo recent actions.
+- Vesta distinguishes “one-time action” from “save as rule.”
+- Family members have roles and permissions.
+- Sensitive flows escalate to the app.
+
+Suggested copy:
+
+“Você aprova antes da Vesta agir.”
+
+“A Vesta só salva regras quando você confirma.”
+
+“Você pode ver e apagar o que a Vesta aprendeu.”
+
+“Pagamentos e compras passam por revisão.”
+
+“Tudo que a Vesta fez fica registrado.”
+
+Add an AuditTrustPreview component showing:
+- original message
+- what Vesta understood
+- what Vesta proposed
+- who approved
+- what was created
+- timestamp
+- undo option where safe
+
+---
+
+## 12. Acceptance criteria
+
+The update is successful when:
+
+1. A new user can reach WhatsApp connection within 30 seconds of signup.
+2. The user can process a first household message before completing a long profile.
+3. Activation is tracked as first_item_approved, not setup_completed.
+4. A simple item can be approved entirely inside the WhatsApp-style interface.
+5. The user can correct a pending item using natural language.
+6. The app clearly feels secondary to WhatsApp.
+7. The app only escalates complex, sensitive, low-confidence, or visual-review flows.
+8. The onboarding copy emphasizes:
+   “Manda um recado. A Vesta transforma em ação.”
+9. The long-term learning promise appears as:
+   “A casa aprende.”
+10. First-week prompts exist as a visible mocked lifecycle.
+11. Vesta’s tone is concise, capable, and Brazilian Portuguese-native.
+12. No generic chatbot homepage dominates the experience.
+13. No app-first inbox dominates the experience.
+14. Dashboard surfaces are reduced and reframed as review/configuration, not daily operation.
+15. Every AI-proposed action has approval, edit, reject, and audit behavior.
+16. Memory is staged and explicitly confirmed before being saved.
+17. The user can see why something escalated to the app.
+
+---
+
+## 13. Implementation priority
+
+Build in this order:
+
+1. WhatsApp-first onboarding
+2. WhatsApp connection screen with mocked or real verification
+3. WhatsApp chat simulator / command layer
+4. First useful action flow
+5. WA-native approval flow
+6. Natural-language edit mock logic
+7. Progressive profile enrichment
+8. App escalation cards
+9. First-week activation lifecycle
+10. Memory confirmation
+11. Audit/trust surfaces
+12. Rules suggestion flow
+13. Calendar connection after first value
+14. Cleanup dashboard so it no longer feels like the primary cockpit
+
+Do not overbuild the dashboard.
+Do not overbuild settings.
+Do not prioritize visual polish over the first-use WhatsApp-native loop.
+
+The first 60 seconds should prove the product:
+User sends a messy household message.
+Vesta extracts the action.
+Vesta asks the smallest necessary question.
+User approves.
+Vesta confirms what it handled.
+
+Final product feeling:
+“I forwarded a messy household message, and Vesta handled it.”
+
+Not:
+“I signed up for another family management app.”
+```
