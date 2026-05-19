@@ -1,16 +1,16 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq } from "drizzle-orm";
-import { db, onboardingStateTable, membersTable, householdsTable, usersTable } from "@workspace/db";
+import { db, onboardingStateTable, membersTable, householdsTable } from "@workspace/db";
 import { CompleteOnboardingBody } from "@workspace/api-zod";
 import { getHouseholdId } from "../lib/tenant";
+import { createToken, isTokenVerified } from "../lib/wa-token-store";
 
 const router: IRouter = Router();
 
 /**
  * GET /api/onboarding/state
  *
- * Returns (or creates) the onboarding state record for the current user.
- * requireAuth + requireHousehold middleware guarantee req.user.household_id is set.
+ * Returns (or creates) the onboarding state for the current user.
  */
 router.get("/onboarding/state", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -47,11 +47,73 @@ router.get("/onboarding/state", async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/onboarding/whatsapp-connect
+ *
+ * Generates a short verification token and returns the Twilio WhatsApp
+ * number so the frontend can open a deep link and display the token.
+ *
+ * The token lives in an in-memory store (wa-token-store) and expires in 10 min.
+ * When the user sends the token via WhatsApp, the inbound webhook calls
+ * markTokenVerified() so GET /whatsapp-status can confirm success.
+ */
+router.post("/onboarding/whatsapp-connect", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const userId = req.user.id;
+  const householdId = getHouseholdId(req);
+  const token = createToken(userId, householdId);
+
+  // Strip the "whatsapp:" prefix if present before returning number
+  const rawFrom = process.env.TWILIO_WHATSAPP_FROM ?? "";
+  const waNumber = rawFrom.replace(/^whatsapp:/i, "").replace(/\D/g, "");
+
+  req.log.info({ userId, token }, "WhatsApp onboarding token created");
+
+  res.json({
+    token,
+    whatsapp_number: waNumber || null,
+    configured: !!waNumber,
+  });
+});
+
+/**
+ * GET /api/onboarding/whatsapp-status
+ *
+ * Polled by the frontend every ~2 s after showing the token.
+ * Returns { verified: true } once the webhook has confirmed the token.
+ */
+router.get("/onboarding/whatsapp-status", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const verified = isTokenVerified(req.user.id);
+
+  // If verified, also persist it on the onboarding_state row so it survives
+  // server restarts and is visible from GET /onboarding/state.
+  if (verified) {
+    try {
+      await db
+        .update(onboardingStateTable)
+        .set({ whatsapp_verified: true, updated_at: new Date() })
+        .where(eq(onboardingStateTable.user_id, req.user.id));
+    } catch (err) {
+      req.log.warn({ err }, "Could not persist whatsapp_verified flag");
+    }
+  }
+
+  res.json({ verified });
+});
+
+/**
  * POST /api/onboarding/complete
  *
  * Marks onboarding as complete. Renames the household and creates the
- * primary member record. The household was already created atomically
- * at login time, so no household creation is needed here.
+ * primary member record.
  */
 router.post("/onboarding/complete", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -78,7 +140,6 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
 
     const householdId = getHouseholdId(req);
 
-    // Rename the household now that we know the user's preferred name
     if (display_name) {
       await db
         .update(householdsTable)
@@ -86,7 +147,6 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
         .where(eq(householdsTable.id, householdId));
     }
 
-    // Mark onboarding complete
     const updated = await db
       .update(onboardingStateTable)
       .set({
@@ -102,7 +162,6 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
       .where(eq(onboardingStateTable.user_id, userId));
 
     if (!updated.rowCount) {
-      // No row existed yet — insert it
       await db.insert(onboardingStateTable).values({
         user_id: userId,
         household_id: householdId,
@@ -115,10 +174,8 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
       });
     }
 
-    const memberName =
-      display_name ?? req.user.firstName ?? req.user.email ?? "Você";
+    const memberName = display_name ?? req.user.firstName ?? req.user.email ?? "Você";
 
-    // Create primary member if one doesn't exist yet for this household
     const [existing] = await db
       .select()
       .from(membersTable)

@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import { classifyAndSaveAction } from "../lib/classifier";
 import { sendWhatsApp, isTwilioConfigured } from "../lib/whatsapp";
 import { processWhatsAppMedia } from "../lib/media-analysis";
+import { looksLikeToken, markTokenVerified } from "../lib/wa-token-store";
 
 const router = Router();
 
@@ -23,15 +24,12 @@ async function validateTwilioSignature(req: Request): Promise<boolean> {
   const authToken = process.env.TWILIO_AUTH_TOKEN;
 
   if (!authToken) {
-    // In production a missing auth token is a misconfiguration — fail closed.
     if (process.env.NODE_ENV === "production") {
       req.log.error(
         "TWILIO_AUTH_TOKEN not set in production — rejecting webhook request",
       );
       return false;
     }
-    // In development, permit unauthenticated requests so curl-based local
-    // testing works, but log a prominent warning.
     req.log.warn(
       "TWILIO_AUTH_TOKEN not set — skipping signature check (dev only, will fail in production)",
     );
@@ -44,8 +42,6 @@ async function validateTwilioSignature(req: Request): Promise<boolean> {
     return false;
   }
 
-  // Reconstruct the full public URL Twilio signed.
-  // In production REPLIT_DOMAINS is set; fall back to forwarded host in other envs.
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
   const proto = req.headers["x-forwarded-proto"] ?? "https";
   const host = req.headers["x-forwarded-host"] ?? req.headers["host"] ?? "localhost";
@@ -53,7 +49,6 @@ async function validateTwilioSignature(req: Request): Promise<boolean> {
     ? `https://${domain}/api/webhook/whatsapp`
     : `${proto}://${host}/api/webhook/whatsapp`;
 
-  // Twilio SDK's validateRequest performs the HMAC-SHA1 comparison.
   const { validateRequest } = await import("twilio");
   const params = (req.body ?? {}) as Record<string, string>;
   return validateRequest(authToken, signature, webhookUrl, params);
@@ -64,22 +59,6 @@ async function validateTwilioSignature(req: Request): Promise<boolean> {
  *
  * Configure in Twilio Console → Messaging → Active Numbers → Webhook:
  *   POST https://<your-domain>/api/webhook/whatsapp
- *
- * Twilio sends application/x-www-form-urlencoded with these key fields:
- *   From        — sender number, e.g. "whatsapp:+5511999990001"
- *   Body        — message text
- *   ProfileName — WhatsApp display name of sender
- *   MediaUrl0   — URL of first media attachment (if any)
- *   NumMedia    — count of media attachments
- *   MessageSid  — unique Twilio message ID
- *
- * Security: requests are validated against the X-Twilio-Signature HMAC before
- * any database read or write is performed. Spoofed requests receive 403 and
- * are logged but do not reach the ingestion path.
- *
- * Household routing: the sender's phone number is matched against known
- * contacts and members to identify which household should receive the
- * message. Unknown senders are discarded to prevent cross-tenant pollution.
  */
 router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
   // ── 1. Authenticate the request before touching the DB ─────────────────────
@@ -118,17 +97,43 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       MessageSid?: string;
     };
 
-    // Require at least some content
-    if (!Body && !MediaUrl0) {
-      req.log.info(
-        { MessageSid },
-        "WhatsApp webhook: empty body and no media — skipping",
-      );
+    const bodyText = Body?.trim() ?? "";
+
+    // ── 3a. Onboarding token verification ─────────────────────────────────────
+    // If the message is just a VESTA-XXX token, it's a WhatsApp verification
+    // from the onboarding flow. Mark it verified and reply — don't create an
+    // inbox item.
+    if (looksLikeToken(bodyText)) {
+      const userId = markTokenVerified(bodyText);
+      const phoneRaw = From?.replace(/^whatsapp:/i, "").trim() ?? null;
+
+      if (userId) {
+        req.log.info({ userId, token: bodyText }, "WhatsApp onboarding token verified");
+        if (phoneRaw) {
+          void sendWhatsApp(
+            phoneRaw,
+            "✅ WhatsApp verificado! A Vesta está conectada. Me encaminhe qualquer mensagem da casa para começar.",
+          );
+        }
+      } else {
+        req.log.warn({ token: bodyText }, "WhatsApp token not found or expired");
+        if (phoneRaw) {
+          void sendWhatsApp(
+            phoneRaw,
+            "⚠️ Código não reconhecido ou expirado. Por favor, gere um novo código no app Vesta.",
+          );
+        }
+      }
       return;
     }
 
-    // Deduplicate: Twilio may retry on timeout; skip if we already ingested
-    // this MessageSid to prevent duplicate inbox items.
+    // Require at least some content for non-token messages
+    if (!bodyText && !MediaUrl0) {
+      req.log.info({ MessageSid }, "WhatsApp webhook: empty body and no media — skipping");
+      return;
+    }
+
+    // Deduplicate: Twilio may retry on timeout
     if (MessageSid) {
       const [existing] = await db
         .select({ id: inboxItemsTable.id })
@@ -137,10 +142,7 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         .limit(1);
 
       if (existing) {
-        req.log.info(
-          { MessageSid },
-          "Webhook: duplicate MessageSid — already ingested, skipping",
-        );
+        req.log.info({ MessageSid }, "Webhook: duplicate MessageSid — already ingested, skipping");
         return;
       }
     }
@@ -153,27 +155,17 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       return;
     }
 
-    // Normalise: strip all non-digit characters and compare the full number.
-    // Partial-digit matching (e.g. last 8 digits) is intentionally avoided
-    // because it allows numbers from different area codes or countries to
-    // collide, enabling an attacker to inject messages into another
-    // household's inbox.  Exact normalised matching is required.
+    // Normalise: strip all non-digit characters.
+    // Exact normalised matching only — partial matching risks cross-tenant collision.
     const normalized = (p: string) => p.replace(/\D/g, "");
     const phoneNorm = normalized(phoneRaw);
 
     // ── Resolve household from sender phone ──────────────────────────────────
-    // Security requirements:
-    //  1. Exact normalised match only — no partial/trailing-digit matching.
-    //  2. Deterministic duplicate policy: if the same number appears in more
-    //     than one household we MUST NOT silently route to whichever row
-    //     happens to come first.  That would be a cross-tenant trust flaw.
-    //     Policy: 0 matches → discard; 1 household → accept; >1 → quarantine.
     let householdId: number | null = null;
     let resolvedSenderName: string | null = ProfileName ?? null;
     let resolvedSenderIsContact = false;
     let resolvedContactConsentStatus: string | null = null;
 
-    // Collect ALL contacts whose normalised phone matches exactly.
     const allContacts = await db
       .select({
         id: contactsTable.id,
@@ -188,7 +180,6 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       (c) => c.phone && normalized(c.phone) === phoneNorm,
     );
 
-    // Collect ALL members whose normalised phone matches exactly.
     const allMembers = await db
       .select({
         name: membersTable.name,
@@ -201,22 +192,17 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       (m) => m.phone && normalized(m.phone) === phoneNorm,
     );
 
-    // Gather the distinct set of household IDs across both tables.
     const matchedHouseholdIds = new Set<number>([
       ...matchedContacts.map((c) => c.household_id),
       ...matchedMembers.map((m) => m.household_id),
     ]);
 
     if (matchedHouseholdIds.size === 0) {
-      // Unknown sender — discard (handled below).
+      // Unknown sender — discard
     } else if (matchedHouseholdIds.size === 1) {
-      // Exactly one household — safe to accept.
       householdId = [...matchedHouseholdIds][0];
 
-      // Prefer contact name over member name; fall back to WhatsApp ProfileName.
-      const contactMatch = matchedContacts.find(
-        (c) => c.household_id === householdId,
-      );
+      const contactMatch = matchedContacts.find((c) => c.household_id === householdId);
       if (contactMatch) {
         resolvedSenderName = contactMatch.name;
         resolvedSenderIsContact = true;
@@ -226,36 +212,20 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
           "Webhook: matched sender to contact",
         );
       } else {
-        const memberMatch = matchedMembers.find(
-          (m) => m.household_id === householdId,
-        );
+        const memberMatch = matchedMembers.find((m) => m.household_id === householdId);
         if (memberMatch) {
           resolvedSenderName = memberMatch.name;
-          req.log.info(
-            { member: memberMatch.name, householdId },
-            "Webhook: matched sender to member",
-          );
+          req.log.info({ member: memberMatch.name, householdId }, "Webhook: matched sender to member");
         }
       }
     } else {
-      // Phone number exists in multiple households — routing would be
-      // non-deterministic and could cause cross-tenant message misdelivery.
-      // Quarantine: discard the message and emit a high-severity alert so an
-      // operator can resolve the duplicate before messages are accepted.
       req.log.error(
-        {
-          phone: phoneRaw,
-          matchedHouseholdIds: [...matchedHouseholdIds],
-          MessageSid,
-        },
+        { phone: phoneRaw, matchedHouseholdIds: [...matchedHouseholdIds], MessageSid },
         "Webhook: phone number matched multiple households — discarding to prevent cross-tenant misdelivery",
       );
       return;
     }
 
-    // Discard messages from unrecognised senders to prevent cross-tenant
-    // pollution. The household admin must first add the sender's number as a
-    // contact before messages are ingested.
     if (!householdId) {
       req.log.warn(
         { phone: phoneRaw, ProfileName },
@@ -268,18 +238,14 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     const hasMedia = parseInt(NumMedia ?? "0", 10) > 0;
 
     let source: string = "whatsapp";
-    let rawContent: string = Body?.trim() ?? "";
+    let rawContent: string = bodyText;
 
     if (hasMedia && MediaUrl0 && MediaContentType0) {
       req.log.info(
         { contentType: MediaContentType0, MessageSid },
         "Webhook: processing media attachment",
       );
-      const processed = await processWhatsAppMedia(
-        MediaUrl0,
-        MediaContentType0,
-        Body,
-      );
+      const processed = await processWhatsAppMedia(MediaUrl0, MediaContentType0, bodyText || undefined);
       source = processed.source;
       rawContent = processed.rawContent;
     } else if (!rawContent) {
@@ -305,10 +271,7 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       "WhatsApp message ingested",
     );
 
-    // Fire acknowledgement back to sender only when consent permits.
-    // External contacts (from the contacts table) require consent_status === "granted"
-    // before any outbound WhatsApp message is sent (LGPD requirement).
-    // Household members are not subject to the same LGPD consent gate.
+    // LGPD: only ACK when consent permits
     const ackAllowed = !resolvedSenderIsContact || resolvedContactConsentStatus === "granted";
     if (ackAllowed) {
       void sendWhatsApp(
@@ -316,22 +279,13 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         "✓ Mensagem recebida! Vou analisar e avisar você em breve.",
       ).then((result) => {
         if (!result.ok) {
-          req.log.warn(
-            { error: result.error, phone: phoneRaw },
-            "ACK send failed",
-          );
+          req.log.warn({ error: result.error, phone: phoneRaw }, "ACK send failed");
         }
       });
-    } else {
-      req.log.info(
-        { phone: phoneRaw, consent_status: resolvedContactConsentStatus },
-        "Webhook: skipping ACK — contact has not granted WhatsApp consent",
-      );
     }
 
-    // Run classifier asynchronously so response was already sent
+    // Run AI classifier asynchronously
     await classifyAndSaveAction(item.id);
-
     req.log.info({ inboxItemId: item.id }, "WhatsApp message classified");
   } catch (err) {
     req.log.error({ err }, "WhatsApp webhook processing failed");
@@ -342,25 +296,20 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
 /**
  * GET /api/webhook/whatsapp — returns webhook info for the settings UI.
  */
-router.get(
-  "/webhook/whatsapp/info",
-  async (req: Request, res: Response) => {
-    const domains = (process.env.REPLIT_DOMAINS ?? "")
-      .split(",")
-      .filter(Boolean);
-    const primaryDomain = domains[0] ?? null;
+router.get("/webhook/whatsapp/info", async (req: Request, res: Response) => {
+  const domains = (process.env.REPLIT_DOMAINS ?? "").split(",").filter(Boolean);
+  const primaryDomain = domains[0] ?? null;
 
-    res.json({
-      webhook_url: primaryDomain
-        ? `https://${primaryDomain}/api/webhook/whatsapp`
-        : null,
-      method: "POST",
-      description:
-        "Configure este URL no console do Twilio como webhook de entrada para seu número WhatsApp Business.",
-      status: primaryDomain ? "configured" : "needs_domain",
-      twilioConfigured: isTwilioConfigured(),
-    });
-  },
-);
+  res.json({
+    webhook_url: primaryDomain
+      ? `https://${primaryDomain}/api/webhook/whatsapp`
+      : null,
+    method: "POST",
+    description:
+      "Configure este URL no console do Twilio como webhook de entrada para seu número WhatsApp Business.",
+    status: primaryDomain ? "configured" : "needs_domain",
+    twilioConfigured: isTwilioConfigured(),
+  });
+});
 
 export default router;
