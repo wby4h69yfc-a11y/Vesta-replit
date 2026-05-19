@@ -18,6 +18,7 @@ import onboardingRouter from "./onboarding";
 import googleRouter from "./google";
 import briefingRouter from "./briefing";
 import adminRouter from "./admin";
+import devRouter from "./dev";
 
 const router: IRouter = Router();
 
@@ -30,6 +31,16 @@ router.use(authRouter);      // GET /login, GET /callback, GET /logout, GET /aut
 router.use(authOtpRouter);   // POST /auth/otp/send, POST /auth/otp/verify
 router.use(authSocialRouter); // GET /auth/google, GET /auth/google/callback, POST /auth/apple/callback
 router.use(webhookRouter);   // POST /webhook/whatsapp (authenticated via Twilio HMAC)
+
+// ── Dev-only routes (auth required, no household check) ───────────────────────
+// Only registered when NODE_ENV !== "production". Useful for resetting state
+// during development without touching the DB directly.
+if (process.env.NODE_ENV !== "production") {
+  const devProtected: IRouter = Router();
+  devProtected.use(requireAuth);
+  devProtected.use(devRouter); // POST /dev/reset-onboarding, POST /dev/complete-onboarding, DELETE /dev/session
+  router.use(devProtected);
+}
 
 // ── Protected routes (session required + household assigned) ───────────────────
 // requireAuth:      returns 401 for requests without a valid session.
