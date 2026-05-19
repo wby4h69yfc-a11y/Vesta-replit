@@ -1,3 +1,4 @@
+import { openai } from "@workspace/integrations-openai-ai-server";
 import { db } from "@workspace/db";
 import { inboxItemsTable, suggestedActionsTable, contactsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
@@ -9,10 +10,16 @@ export type ClassificationResult = {
   approval_level: string;
   confidence: number;
   title: string;
+  datetime: string | null;
+  suggested_owner: string | null;
   workflow_tags: string[];
   cascade_check_needed: boolean;
 };
 
+/* ──────────────────────────────────────────────
+   Keyword-based fallback classifier
+   (used when OpenAI is unavailable or fails)
+────────────────────────────────────────────── */
 const KEYWORD_RULES: Array<{
   patterns: RegExp[];
   category: string;
@@ -22,55 +29,55 @@ const KEYWORD_RULES: Array<{
   workflow_tags?: string[];
 }> = [
   {
-    patterns: [/escola|colégio|creche|aula|reunião de pais|matrícula|boletim|professor|coordenadot|educação/i],
+    patterns: [/escola|colégio|creche|aula|reunião de pais|matrícula|boletim|professor|coordenador|educação/i],
     category: "escola",
     approval_level: "one_tap",
-    confidence: 0.88,
+    confidence: 0.78,
   },
   {
     patterns: [/consulta|médico|médica|pediatr|dentista|vacina|saúde|exame|receita|clínica|hospital|unimed|plano de saúde/i],
     category: "saude",
     type: "event",
     approval_level: "explicit",
-    confidence: 0.85,
+    confidence: 0.80,
   },
   {
     patterns: [/diarista|faxina|limpeza|maria|empregada|doméstica/i],
     category: "casa",
     approval_level: "one_tap",
-    confidence: 0.90,
+    confidence: 0.85,
     workflow_tags: ["diarista"],
   },
   {
     patterns: [/festa|aniversário|churrasco|churras|comemoração|celebração|convite/i],
     category: "social",
     approval_level: "one_tap",
-    confidence: 0.82,
+    confidence: 0.78,
   },
   {
     patterns: [/buscar|busca|levar|pegar|pickup|transporte|carona|conduzir/i],
     category: "logistica",
     approval_level: "one_tap",
-    confidence: 0.77,
+    confidence: 0.72,
   },
   {
     patterns: [/compra|feira|mercado|supermercado|lista de compras|mantimento/i],
     category: "refeicoes",
     approval_level: "one_tap",
-    confidence: 0.80,
+    confidence: 0.75,
   },
   {
     patterns: [/encanador|eletricista|técnico|conserto|manutenção|reparo|obra|instalação/i],
     category: "servicos",
     approval_level: "explicit",
-    confidence: 0.78,
+    confidence: 0.73,
     workflow_tags: ["servicos"],
   },
   {
     patterns: [/condomínio|boleto|aluguel|conta|pagamento|pix|transferência|cobrar/i],
     category: "casa",
     approval_level: "explicit",
-    confidence: 0.76,
+    confidence: 0.72,
     workflow_tags: ["payment_admin"],
   },
 ];
@@ -79,16 +86,15 @@ const TYPE_RULES: Array<{ patterns: RegExp[]; type: string; approval_level?: str
   { patterns: [/confirmad|confirmado|agendad|agendado|marcad/i], type: "event", confidence_boost: 0.05 },
   { patterns: [/lembr|não esquecer|não esquece/i], type: "reminder" },
   { patterns: [/informando|comunicamos|aviso|circular|nota de/i], type: "fyi", approval_level: "soft", confidence_boost: 0.08 },
-  { patterns: [/preciso|precisa|precisamos|por favor|poderia|consegue|consegui/i], type: "task" },
+  { patterns: [/preciso|precisa|precisamos|por favor|poderia|consegue/i], type: "task" },
 ];
 
-export function classifyText(text: string, senderName?: string | null): ClassificationResult {
+export function classifyText(text: string): ClassificationResult {
   const lowerText = text.toLowerCase();
 
-  // Match category
   let category = "outros";
   let approval_level = "one_tap";
-  let confidence = 0.60;
+  let confidence = 0.55;
   let workflow_tags: string[] = [];
   let cascade_check_needed = false;
 
@@ -102,7 +108,6 @@ export function classifyText(text: string, senderName?: string | null): Classifi
     }
   }
 
-  // Match type
   let type = "task";
   for (const rule of TYPE_RULES) {
     if (rule.patterns.some((p) => p.test(lowerText))) {
@@ -113,38 +118,95 @@ export function classifyText(text: string, senderName?: string | null): Classifi
     }
   }
 
-  // Boost confidence for explicit event words
-  if (/\d{1,2}h|\d{1,2}:\d{2}|amanhã|segunda|terça|quarta|quinta|sexta|sábado|domingo|\d{1,2}\/\d{1,2}/.test(lowerText)) {
+  // Datetime detection → upgrade to event
+  const dateMatch = lowerText.match(/\d{1,2}h|\d{1,2}:\d{2}|amanhã|segunda|terça|quarta|quinta|sexta|sábado|domingo|\d{1,2}\/\d{1,2}/);
+  if (dateMatch) {
     type = "event";
     confidence = Math.min(0.98, confidence + 0.04);
   }
 
-  // Payment detection
   if (/r\$|reais|pagament|pix|boleto|transferência/.test(lowerText)) {
     workflow_tags = [...new Set([...workflow_tags, "payment_admin"])];
     cascade_check_needed = true;
     approval_level = "explicit";
   }
 
-  // Cascade: multiple people or things mentioned
-  if (/guilherme|larissa|pedro|ana|criança|filho|filha/.test(lowerText) && type === "event") {
-    cascade_check_needed = true;
-  }
-
-  // Title: first line, trimmed to 80 chars
   const title = text.split(/\n/)[0]?.substring(0, 80) ?? text.substring(0, 80);
+  const datetime = dateMatch ? dateMatch[0] : null;
 
   return {
-    category,
-    type,
-    approval_level,
-    confidence,
-    title,
-    workflow_tags,
-    cascade_check_needed,
+    category, type, approval_level, confidence,
+    title, datetime, suggested_owner: null,
+    workflow_tags, cascade_check_needed,
   };
 }
 
+/* ──────────────────────────────────────────────
+   LLM-based classifier (GPT-5-mini)
+   Returns null on any failure → caller falls back to keywords
+────────────────────────────────────────────── */
+const SYSTEM_PROMPT = `Você é um assistente que extrai informações de mensagens domésticas brasileiras recebidas via WhatsApp.
+
+Dado o texto de uma mensagem, retorne um JSON com exatamente estes campos:
+{
+  "title": string,         // Título conciso da ação (máx 80 chars, em português)
+  "category": string,      // Um de: escola | saude | casa | social | logistica | refeicoes | servicos | outros
+  "type": string,          // Um de: event | task | reminder | fyi | payment
+  "datetime": string|null, // Data/hora mencionada em texto simples (ex: "quinta-feira 19h", "dia 15/06"), ou null
+  "suggested_owner": string|null, // Nome de pessoa mencionada para realizar a ação, ou null
+  "approval_level": string, // Um de: soft | one_tap | explicit
+  "confidence": number,    // 0.0 a 1.0
+  "workflow_tags": string[], // Array de tags relevantes, pode ser vazio
+  "cascade_check_needed": boolean // true se envolve pagamento, múltiplas pessoas ou evento recorrente
+}
+
+Regras:
+- approval_level "soft" = só aviso, não requer ação
+- approval_level "one_tap" = confirmação rápida necessária
+- approval_level "explicit" = revisão cuidadosa necessária (consulta médica, pagamento, serviço)
+- cascade_check_needed = true para pagamentos, múltiplas crianças/pessoas, ou eventos com custo
+- Responda APENAS com o JSON, sem markdown, sem explicações.`;
+
+async function classifyWithAI(text: string): Promise<ClassificationResult | null> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-5-mini",
+      max_completion_tokens: 400,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: text.substring(0, 1500) },
+      ],
+    });
+
+    const raw = response.choices[0]?.message?.content?.trim();
+    if (!raw) return null;
+
+    // Strip markdown code fences if present
+    const json = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+    const parsed = JSON.parse(json) as Partial<ClassificationResult>;
+
+    // Validate required fields
+    if (!parsed.category || !parsed.type || !parsed.title) return null;
+
+    return {
+      title:               (parsed.title ?? text.substring(0, 80)).substring(0, 80),
+      category:            parsed.category ?? "outros",
+      type:                parsed.type ?? "task",
+      datetime:            parsed.datetime ?? null,
+      suggested_owner:     parsed.suggested_owner ?? null,
+      approval_level:      parsed.approval_level ?? "one_tap",
+      confidence:          typeof parsed.confidence === "number" ? Math.min(1, Math.max(0, parsed.confidence)) : 0.85,
+      workflow_tags:       Array.isArray(parsed.workflow_tags) ? parsed.workflow_tags : [],
+      cascade_check_needed: parsed.cascade_check_needed ?? false,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/* ──────────────────────────────────────────────
+   Main pipeline: AI → keyword fallback → DB save
+────────────────────────────────────────────── */
 export async function classifyAndSaveAction(inboxItemId: number): Promise<void> {
   const [item] = await db
     .select()
@@ -153,10 +215,10 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
 
   if (!item) throw new Error(`Inbox item ${inboxItemId} not found`);
 
-  const result = classifyText(item.raw_content, item.sender_name);
+  // Try AI first, fall back to keywords on failure
+  const result = (await classifyWithAI(item.raw_content)) ?? classifyText(item.raw_content);
 
-  // Look up contact for better title — scoped to the inbox item's household
-  // to prevent cross-tenant name leakage.
+  // Look up contact for better display name — scoped to the inbox item's household
   let senderDisplayName = item.sender_name;
   if (item.sender_name) {
     const contacts = await db
@@ -168,9 +230,7 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
           eq(contactsTable.name, item.sender_name),
         ),
       );
-    if (contacts.length > 0) {
-      senderDisplayName = contacts[0].name;
-    }
+    if (contacts.length > 0) senderDisplayName = contacts[0].name;
   }
 
   const actionTitle = senderDisplayName
@@ -178,16 +238,32 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
     : result.title;
 
   await db.insert(suggestedActionsTable).values({
-    inbox_item_id: inboxItemId,
-    household_id: item.household_id,
-    category: result.category,
-    type: result.type,
-    title: actionTitle.substring(0, 120),
-    approval_level: result.approval_level,
-    confidence: result.confidence,
-    status: "pending",
-    cascade_check_needed: result.cascade_check_needed,
-    workflow_tags: result.workflow_tags,
+    inbox_item_id:       inboxItemId,
+    household_id:        item.household_id,
+    category:            result.category,
+    type:                result.type,
+    title:               actionTitle.substring(0, 120),
+    datetime:            result.datetime,
+    suggested_owner:     result.suggested_owner,
+    approval_level:      result.approval_level,
+    confidence:          result.confidence,
+    status:              "pending",
+    cascade_check_needed:result.cascade_check_needed,
+    workflow_tags:       result.workflow_tags,
+  }).onConflictDoUpdate({
+    target: suggestedActionsTable.inbox_item_id,
+    set: {
+      category:            result.category,
+      type:                result.type,
+      title:               actionTitle.substring(0, 120),
+      datetime:            result.datetime,
+      suggested_owner:     result.suggested_owner,
+      approval_level:      result.approval_level,
+      confidence:          result.confidence,
+      cascade_check_needed:result.cascade_check_needed,
+      workflow_tags:       result.workflow_tags,
+      updated_at:          new Date(),
+    },
   });
 
   await db
@@ -195,7 +271,7 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
     .set({ status: "ready_for_review" })
     .where(eq(inboxItemsTable.id, inboxItemId));
 
-  // Notify household admin when the action requires explicit approval
+  // Notify household admin for explicit-approval items
   if (result.approval_level === "explicit") {
     const adminPhone = await resolveHouseholdAdminPhone(item.household_id);
     if (adminPhone) {

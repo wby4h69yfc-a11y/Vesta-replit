@@ -164,22 +164,54 @@ function Step1Account({ onNext, onBack, data }: StepProps) {
 ──────────────────────────────────────────── */
 function Step2WhatsApp({ onNext, onBack, data }: StepProps) {
   const [phase, setPhase] = useState<"explain" | "token" | "verified">("explain");
-  const token = useRef(`VESTA-${Math.floor(100 + Math.random() * 900)}`).current;
+  const [token, setToken] = useState("");
+  const [waNumber, setWaNumber] = useState("");
+  const [waConfigured, setWaConfigured] = useState(false);
   const [polling, setPolling] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  function handleConnect() {
-    setPhase("token");
-    // Mock: after 3s auto-verify so the demo works without real Twilio
-    setPolling(true);
-    setTimeout(() => {
-      setPolling(false);
-      setPhase("verified");
-    }, 3000);
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  async function handleConnect() {
+    try {
+      const res = await fetch("/api/onboarding/whatsapp-connect", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed");
+      const data = await res.json() as { token: string; whatsapp_number: string | null; configured: boolean };
+      setToken(data.token);
+      setWaNumber(data.whatsapp_number ?? "");
+      setWaConfigured(data.configured);
+      setPhase("token");
+      setPolling(true);
+
+      // Poll status every 2.5s
+      pollRef.current = setInterval(async () => {
+        const r = await fetch("/api/onboarding/whatsapp-status", { credentials: "include" });
+        if (r.ok) {
+          const j = await r.json() as { verified: boolean };
+          if (j.verified) {
+            clearInterval(pollRef.current!);
+            setPolling(false);
+            setPhase("verified");
+          }
+        }
+      }, 2500);
+    } catch {
+      // Fallback: show token with static Twilio sandbox number
+      setToken(`VESTA-${Math.floor(100 + Math.random() * 900)}`);
+      setWaConfigured(false);
+      setPhase("token");
+    }
   }
 
   function openWA() {
-    const msg = encodeURIComponent(`${token}`);
-    window.open(`https://wa.me/5511999999999?text=${msg}`, "_blank");
+    const num = waNumber || "14155238886"; // Twilio sandbox fallback
+    const msg = encodeURIComponent(token);
+    window.open(`https://wa.me/${num}?text=${msg}`, "_blank");
   }
 
   return (
@@ -335,7 +367,33 @@ function Step4Enrich({ onNext, onBack, data }: StepProps) {
   const [partnerInvited, setPartnerInvited] = useState(false);
   const [partnerPhone, setPartnerPhone] = useState("");
   const [showPartnerInput, setShowPartnerInput] = useState(false);
+  const calPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const name = (data.name as string) || "";
+
+  // Check if Google Calendar is already connected on mount
+  useEffect(() => {
+    fetch("/api/google/status", { credentials: "include" })
+      .then((r) => r.json())
+      .then((j: { connected: boolean }) => { if (j.connected) setCalConnected(true); })
+      .catch(() => {});
+    return () => { if (calPollRef.current) clearInterval(calPollRef.current); };
+  }, []);
+
+  function connectGoogle() {
+    window.open("/api/google/connect", "_blank");
+    // Poll for connection in background
+    calPollRef.current = setInterval(() => {
+      fetch("/api/google/status", { credentials: "include" })
+        .then((r) => r.json())
+        .then((j: { connected: boolean }) => {
+          if (j.connected) {
+            setCalConnected(true);
+            clearInterval(calPollRef.current!);
+          }
+        })
+        .catch(() => {});
+    }, 2000);
+  }
 
   return (
     <div className="space-y-5">
@@ -361,10 +419,10 @@ function Step4Enrich({ onNext, onBack, data }: StepProps) {
           {calConnected && <Check className="h-5 w-5 shrink-0" style={{ color: V.primary }} />}
         </div>
         {!calConnected ? (
-          <button onClick={() => setCalConnected(true)}
+          <button onClick={connectGoogle}
             className="w-full py-2.5 rounded-xl text-sm font-semibold border-2 transition-colors"
             style={{ borderColor: "#4285F4", color: "#4285F4" }}>
-            Conectar
+            Conectar (abre nova aba)
           </button>
         ) : (
           <div className="text-center text-xs font-semibold py-1" style={{ color: "#1E40AF" }}>Google Agenda conectado ✓</div>
