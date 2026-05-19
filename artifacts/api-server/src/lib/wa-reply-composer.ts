@@ -72,3 +72,99 @@ export function replyConsentRequired(): string {
     "Para receber mensagens da Vesta, o administrador da casa precisa autorizar seu contato primeiro."
   );
 }
+
+// ── Action proposal & approval replies ───────────────────────────────────────
+
+const CATEGORY_EMOJI: Record<string, string> = {
+  escola: "📚",
+  saude: "🏥",
+  financeiro: "💰",
+  diarista: "🧹",
+  compras: "🛒",
+  lazer: "🎉",
+  outros: "📋",
+};
+
+const TYPE_LABEL: Record<string, string> = {
+  event: "Evento",
+  task: "Tarefa",
+  reminder: "Lembrete",
+  purchase: "Compra",
+};
+
+function catEmoji(category: string | null): string {
+  return CATEGORY_EMOJI[category ?? ""] ?? "📋";
+}
+
+function typeLabel(type: string | null): string {
+  return TYPE_LABEL[type ?? ""] ?? "Item";
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Sent to the sender right after their message is classified.
+ * Shows what Vesta understood and asks for a one-tap confirmation.
+ * Keep it short — this appears as a chat message, not an email.
+ */
+export function replyActionProposal(
+  title: string,
+  type: string | null,
+  category: string | null,
+  datetime: string | null,
+): string {
+  const emoji = catEmoji(category);
+  const label = typeLabel(type);
+  const cat = category ? capitalize(category) : null;
+  const meta = cat ? `${label} · ${cat}` : label;
+
+  const lines: string[] = [
+    `${emoji} *${title}*`,
+    meta,
+  ];
+
+  if (datetime) {
+    lines.push(datetime);
+  }
+
+  lines.push(
+    "",
+    "*sim* confirmar  ·  *não* descartar",
+    "ou *editar: [nova versão]* para corrigir",
+  );
+
+  return lines.join("\n");
+}
+
+/**
+ * Sent when the user replies "sim" and the action is approved.
+ */
+export function replyApproved(title: string): string {
+  const short = title.length > 60 ? title.substring(0, 57) + "…" : title;
+  return `✅ Confirmado!\n\n*${short}*\n\nAdicionado ao seu Vesta.`;
+}
+
+/**
+ * Sent when the user replies "não" and the action is dismissed.
+ */
+export function replyDismissed(): string {
+  return "🗑️ Descartado. Me avise se quiser registrar de outro jeito.";
+}
+
+/**
+ * Sent when the user replies with an edit and the action is corrected.
+ */
+export function replyEdited(newTitle: string): string {
+  const short = newTitle.length > 60 ? newTitle.substring(0, 57) + "…" : newTitle;
+  return `✅ Atualizado e confirmado!\n\n*${short}*`;
+}
+
+/**
+ * Sent when the user says "desfazer" within the 30-minute undo window.
+ */
+export function replyUndone(title: string): string {
+  const short = title.length > 60 ? title.substring(0, 57) + "…" : title;
+  return `↩️ Desfeito!\n\n*${short}* foi removido.`;
+}
