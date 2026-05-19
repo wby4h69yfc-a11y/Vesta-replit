@@ -59,19 +59,16 @@ function Step0Welcome({ onNext }: StepProps) {
             Encaminhe mensagens da escola, consultas, boletos, lembretes — pelo WhatsApp. A Vesta organiza tudo.
           </p>
         </div>
-        {/* mini chat preview */}
-        <div className="px-4 pb-4 space-y-2">
+        {/* value prop list */}
+        <div className="px-4 pb-5 space-y-2">
           {[
-            { from: "user", text: "Reunião da escola quinta 19h" },
-            { from: "vesta", text: "Anotei: Reunião da escola — quinta 19h. Quem vai?" },
-          ].map((m, i) => (
-            <div key={i} className={`flex ${m.from === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`rounded-2xl px-3 py-2 max-w-[80%] text-xs leading-relaxed ${
-                m.from === "user" ? "rounded-tr-none" : "rounded-tl-none"
-              }`} style={{ background: m.from === "user" ? "#D9FDD3" : "white", color: V.ink }}>
-                {m.text}
-              </div>
-            </div>
+            "📩  Encaminhe mensagens do jeito que chegam",
+            "✅  Aprove em um toque, direto no WhatsApp",
+            "📅  Vai direto pro calendário da família",
+          ].map((line) => (
+            <p key={line} className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.80)" }}>
+              {line}
+            </p>
           ))}
         </div>
       </div>
