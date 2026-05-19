@@ -42,12 +42,20 @@ async function validateTwilioSignature(req: Request): Promise<boolean> {
     return false;
   }
 
-  const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
-  const proto = req.headers["x-forwarded-proto"] ?? "https";
-  const host = req.headers["x-forwarded-host"] ?? req.headers["host"] ?? "localhost";
-  const webhookUrl = domain
-    ? `https://${domain}/api/webhook/whatsapp`
-    : `${proto}://${host}/api/webhook/whatsapp`;
+  // Reconstruct the exact URL Twilio signed. Twilio signs with the URL it
+  // actually POSTed to — the externally-visible domain, not any internal address.
+  // We read x-forwarded-proto / x-forwarded-host set by Replit's reverse proxy
+  // rather than REPLIT_DOMAINS (which is the *production* domain and would
+  // mismatch when testing against the dev preview URL).
+  const proto = (req.headers["x-forwarded-proto"] as string | undefined)
+    ?.split(",")[0]?.trim() ?? "https";
+  const host = (req.headers["x-forwarded-host"] as string | undefined)
+    ?.split(",")[0]?.trim()
+    ?? (req.headers["host"] as string | undefined)
+    ?? process.env.REPLIT_DEV_DOMAIN
+    ?? process.env.REPLIT_DOMAINS?.split(",")[0]
+    ?? "localhost";
+  const webhookUrl = `${proto}://${host}/api/webhook/whatsapp`;
 
   const { validateRequest } = await import("twilio");
   const params = (req.body ?? {}) as Record<string, string>;
