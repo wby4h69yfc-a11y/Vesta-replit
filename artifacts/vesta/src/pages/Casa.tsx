@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   Users, ShieldCheck, ChevronRight, Plus, Trash2,
   Home, Baby, Heart, Lock, Bell, Key, HelpCircle, LogOut,
@@ -12,7 +12,8 @@ import {
   useGetHousehold,
   useListRules, useCreateRule, useToggleRule, useDeleteRule,
   useListPatterns, useAcceptPattern, useDismissPattern,
-  useListContacts,
+  useListContacts, useUpdateContact,
+  useListAuditLog,
   getListRulesQueryKey, getListPatternsQueryKey, getListContactsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -852,27 +853,8 @@ function RegrasTab() {
 }
 
 /* ── AuditTrustPreview ────────────────────────────────────────────────────── */
-type AuditEntry = {
-  id: number;
-  action: string;
-  actor: string;
-  action_type: string;
-  category?: string | null;
-  description: string;
-  timestamp: string;
-};
-
 function AuditTrustPreview() {
-  const [entries, setEntries] = useState<AuditEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/audit?limit=10", { credentials: "include" })
-      .then((r) => r.json())
-      .then((d: AuditEntry[]) => setEntries(d))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: entries = [], isLoading: loading } = useListAuditLog({ limit: 10 });
 
   const approved  = entries.filter((e) => e.action_type === "approved").length;
   const dismissed = entries.filter((e) => e.action_type === "dismissed").length;
@@ -969,21 +951,15 @@ function PrivacyDashboard() {
   const { data: contacts } = useListContacts();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  async function revokeConsent(id: number) {
-    try {
-      const r = await fetch(`/api/contacts/${id}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ consent_status: "revoked" }),
-      });
-      if (!r.ok) throw new Error();
-      await qc.invalidateQueries({ queryKey: getListContactsQueryKey() });
-      toast({ description: "Consentimento revogado." });
-    } catch {
-      toast({ description: "Erro ao revogar consentimento.", variant: "destructive" });
-    }
-  }
+  const revokeConsent = useUpdateContact({
+    mutation: {
+      onSuccess: () => {
+        void qc.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        toast({ description: "Consentimento revogado." });
+      },
+      onError: () => toast({ description: "Erro ao revogar consentimento.", variant: "destructive" }),
+    },
+  });
 
   const externalContacts = (contacts ?? []) as Contact[];
   const consentedContacts = externalContacts.filter((c) =>
@@ -1029,8 +1005,9 @@ function PrivacyDashboard() {
                   </span>
                   {status === "consented" && (
                     <button
-                      onClick={() => void revokeConsent(contact.id)}
-                      className="text-[10px] px-2 py-1 rounded-lg transition-colors"
+                      onClick={() => revokeConsent.mutate({ id: contact.id, data: { consent_status: "revoked" } })}
+                      disabled={revokeConsent.isPending}
+                      className="text-[10px] px-2 py-1 rounded-lg transition-colors disabled:opacity-50"
                       style={{ background: "#FEE2E2", color: "#DC2626" }}>
                       Revogar
                     </button>

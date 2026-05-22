@@ -32,6 +32,8 @@ tags:
     description: Pattern observations and suggestions
   - name: briefing
     description: Daily briefing operations
+  - name: memory
+    description: Household memory staging and audit log
 
 paths:
   /auth/user:
@@ -1011,6 +1013,85 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  # ── Memory staging ────────────────────────────────────────────────
+  /memory/staging:
+    get:
+      operationId: listMemoryStaging
+      tags: [memory]
+      summary: List pending memory staging items awaiting household confirmation
+      responses:
+        "200":
+          description: Pending staging items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MemoryStagingItem"
+
+  /memory/staging/{id}/confirm:
+    post:
+      operationId: confirmMemoryStaging
+      tags: [memory]
+      summary: Confirm a memory staging item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryStagingItem"
+        "404":
+          description: Not found
+
+  /memory/staging/{id}/dismiss:
+    post:
+      operationId: dismissMemoryStaging
+      tags: [memory]
+      summary: Dismiss a memory staging item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryStagingItem"
+        "404":
+          description: Not found
+
+  /audit:
+    get:
+      operationId: listAuditLog
+      tags: [memory]
+      summary: List recent household audit log entries
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLogEntry"
+
   # ── Briefing ──────────────────────────────────────────────────────
   /briefing/send:
     post:
@@ -1196,6 +1277,15 @@ components:
             type: string
         notes:
           type: ["string", "null"]
+        consent_status:
+          type: ["string", "null"]
+          enum: [not_required, pending, consented, revoked]
+        consent_granted_at:
+          type: ["string", "null"]
+          format: date-time
+        consent_withdrawn_at:
+          type: ["string", "null"]
+          format: date-time
         created_at:
           type: string
           format: date-time
@@ -1233,6 +1323,9 @@ components:
             type: string
         notes:
           type: string
+        consent_status:
+          type: string
+          enum: [not_required, pending, consented, revoked]
 
     # ── Inbox ────────────────────────────────────────────────────
     InboxItem:
@@ -1777,3 +1870,56 @@ components:
           type: integer
         tasksCount:
           type: integer
+
+    # ── Memory ────────────────────────────────────────────────────
+    MemoryStagingItem:
+      type: object
+      required: [id, target_table, proposed_record, context_summary, status, created_at, expires_at]
+      properties:
+        id:
+          type: integer
+        target_table:
+          type: string
+          enum: [household_places, household_routines, household_preferences]
+        proposed_record:
+          type: object
+          additionalProperties: true
+        extracted_from_inbox_id:
+          type: ["integer", "null"]
+        context_summary:
+          type: string
+        status:
+          type: string
+          enum: [pending, confirmed, dismissed, expired]
+        surfaced_to_user_at:
+          type: ["string", "null"]
+          format: date-time
+        responded_at:
+          type: ["string", "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    AuditLogEntry:
+      type: object
+      required: [id, action, actor, action_type, description, timestamp]
+      properties:
+        id:
+          type: integer
+        action:
+          type: string
+        actor:
+          type: string
+        action_type:
+          type: string
+        category:
+          type: ["string", "null"]
+        description:
+          type: string
+        timestamp:
+          type: string
+          format: date-time

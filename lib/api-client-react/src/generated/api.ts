@@ -20,6 +20,7 @@ import type {
   ActionApproval,
   ActionEdit,
   ActivityItem,
+  AuditLogEntry,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
   BriefingSendResponse,
@@ -40,6 +41,7 @@ import type {
   InboxItemDetail,
   InboxItemInput,
   ListActionsParams,
+  ListAuditLogParams,
   ListContactsParams,
   ListEventsParams,
   ListInboxItemsParams,
@@ -47,6 +49,7 @@ import type {
   ListTasksParams,
   LogoutSuccess,
   Member,
+  MemoryStagingItem,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
   OnboardingCompleteInput,
@@ -4285,6 +4288,343 @@ export const useCompleteOnboarding = <
 > => {
   return useMutation(getCompleteOnboardingMutationOptions(options));
 };
+
+/**
+ * @summary List pending memory staging items awaiting household confirmation
+ */
+export const getListMemoryStagingUrl = () => {
+  return `/api/memory/staging`;
+};
+
+export const listMemoryStaging = async (
+  options?: RequestInit,
+): Promise<MemoryStagingItem[]> => {
+  return customFetch<MemoryStagingItem[]>(getListMemoryStagingUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListMemoryStagingQueryKey = () => {
+  return [`/api/memory/staging`] as const;
+};
+
+export const getListMemoryStagingQueryOptions = <
+  TData = Awaited<ReturnType<typeof listMemoryStaging>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listMemoryStaging>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListMemoryStagingQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listMemoryStaging>>
+  > = ({ signal }) => listMemoryStaging({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listMemoryStaging>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListMemoryStagingQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listMemoryStaging>>
+>;
+export type ListMemoryStagingQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List pending memory staging items awaiting household confirmation
+ */
+
+export function useListMemoryStaging<
+  TData = Awaited<ReturnType<typeof listMemoryStaging>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listMemoryStaging>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListMemoryStagingQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Confirm a memory staging item
+ */
+export const getConfirmMemoryStagingUrl = (id: number) => {
+  return `/api/memory/staging/${id}/confirm`;
+};
+
+export const confirmMemoryStaging = async (
+  id: number,
+  options?: RequestInit,
+): Promise<MemoryStagingItem> => {
+  return customFetch<MemoryStagingItem>(getConfirmMemoryStagingUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getConfirmMemoryStagingMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmMemoryStaging>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof confirmMemoryStaging>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["confirmMemoryStaging"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof confirmMemoryStaging>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return confirmMemoryStaging(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ConfirmMemoryStagingMutationResult = NonNullable<
+  Awaited<ReturnType<typeof confirmMemoryStaging>>
+>;
+
+export type ConfirmMemoryStagingMutationError = ErrorType<void>;
+
+/**
+ * @summary Confirm a memory staging item
+ */
+export const useConfirmMemoryStaging = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmMemoryStaging>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof confirmMemoryStaging>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getConfirmMemoryStagingMutationOptions(options));
+};
+
+/**
+ * @summary Dismiss a memory staging item
+ */
+export const getDismissMemoryStagingUrl = (id: number) => {
+  return `/api/memory/staging/${id}/dismiss`;
+};
+
+export const dismissMemoryStaging = async (
+  id: number,
+  options?: RequestInit,
+): Promise<MemoryStagingItem> => {
+  return customFetch<MemoryStagingItem>(getDismissMemoryStagingUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getDismissMemoryStagingMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof dismissMemoryStaging>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof dismissMemoryStaging>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["dismissMemoryStaging"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof dismissMemoryStaging>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return dismissMemoryStaging(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DismissMemoryStagingMutationResult = NonNullable<
+  Awaited<ReturnType<typeof dismissMemoryStaging>>
+>;
+
+export type DismissMemoryStagingMutationError = ErrorType<void>;
+
+/**
+ * @summary Dismiss a memory staging item
+ */
+export const useDismissMemoryStaging = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof dismissMemoryStaging>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof dismissMemoryStaging>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDismissMemoryStagingMutationOptions(options));
+};
+
+/**
+ * @summary List recent household audit log entries
+ */
+export const getListAuditLogUrl = (params?: ListAuditLogParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/audit?${stringifiedParams}`
+    : `/api/audit`;
+};
+
+export const listAuditLog = async (
+  params?: ListAuditLogParams,
+  options?: RequestInit,
+): Promise<AuditLogEntry[]> => {
+  return customFetch<AuditLogEntry[]>(getListAuditLogUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAuditLogQueryKey = (params?: ListAuditLogParams) => {
+  return [`/api/audit`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAuditLogQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAuditLog>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAuditLogParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAuditLog>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAuditLogQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAuditLog>>> = ({
+    signal,
+  }) => listAuditLog(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAuditLog>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAuditLogQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAuditLog>>
+>;
+export type ListAuditLogQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List recent household audit log entries
+ */
+
+export function useListAuditLog<
+  TData = Awaited<ReturnType<typeof listAuditLog>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAuditLogParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAuditLog>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAuditLogQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Send the daily household briefing via WhatsApp to the admin

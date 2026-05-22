@@ -728,6 +728,11 @@ export const ListContactsResponseItem = zod.object({
   ]),
   aliases: zod.array(zod.string()).optional(),
   notes: zod.string().nullish(),
+  consent_status: zod
+    .enum(["not_required", "pending", "consented", "revoked"])
+    .nullish(),
+  consent_granted_at: zod.coerce.date().nullish(),
+  consent_withdrawn_at: zod.coerce.date().nullish(),
   created_at: zod.coerce.date().optional(),
 });
 export const ListContactsResponse = zod.array(ListContactsResponseItem);
@@ -767,6 +772,9 @@ export const UpdateContactBody = zod.object({
   category: zod.string().optional(),
   aliases: zod.array(zod.string()).optional(),
   notes: zod.string().optional(),
+  consent_status: zod
+    .enum(["not_required", "pending", "consented", "revoked"])
+    .optional(),
 });
 
 export const UpdateContactResponse = zod.object({
@@ -787,6 +795,11 @@ export const UpdateContactResponse = zod.object({
   ]),
   aliases: zod.array(zod.string()).optional(),
   notes: zod.string().nullish(),
+  consent_status: zod
+    .enum(["not_required", "pending", "consented", "revoked"])
+    .nullish(),
+  consent_granted_at: zod.coerce.date().nullish(),
+  consent_withdrawn_at: zod.coerce.date().nullish(),
   created_at: zod.coerce.date().optional(),
 });
 
@@ -1151,6 +1164,97 @@ export const CompleteOnboardingBody = zod.object({
 export const CompleteOnboardingResponse = zod.object({
   success: zod.boolean(),
 });
+
+/**
+ * @summary List pending memory staging items awaiting household confirmation
+ */
+export const ListMemoryStagingResponseItem = zod.object({
+  id: zod.number(),
+  target_table: zod.enum([
+    "household_places",
+    "household_routines",
+    "household_preferences",
+  ]),
+  proposed_record: zod.record(zod.string(), zod.unknown()),
+  extracted_from_inbox_id: zod.number().nullish(),
+  context_summary: zod.string(),
+  status: zod.enum(["pending", "confirmed", "dismissed", "expired"]),
+  surfaced_to_user_at: zod.coerce.date().nullish(),
+  responded_at: zod.coerce.date().nullish(),
+  created_at: zod.coerce.date(),
+  expires_at: zod.coerce.date(),
+});
+export const ListMemoryStagingResponse = zod.array(
+  ListMemoryStagingResponseItem,
+);
+
+/**
+ * @summary Confirm a memory staging item
+ */
+export const ConfirmMemoryStagingParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ConfirmMemoryStagingResponse = zod.object({
+  id: zod.number(),
+  target_table: zod.enum([
+    "household_places",
+    "household_routines",
+    "household_preferences",
+  ]),
+  proposed_record: zod.record(zod.string(), zod.unknown()),
+  extracted_from_inbox_id: zod.number().nullish(),
+  context_summary: zod.string(),
+  status: zod.enum(["pending", "confirmed", "dismissed", "expired"]),
+  surfaced_to_user_at: zod.coerce.date().nullish(),
+  responded_at: zod.coerce.date().nullish(),
+  created_at: zod.coerce.date(),
+  expires_at: zod.coerce.date(),
+});
+
+/**
+ * @summary Dismiss a memory staging item
+ */
+export const DismissMemoryStagingParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DismissMemoryStagingResponse = zod.object({
+  id: zod.number(),
+  target_table: zod.enum([
+    "household_places",
+    "household_routines",
+    "household_preferences",
+  ]),
+  proposed_record: zod.record(zod.string(), zod.unknown()),
+  extracted_from_inbox_id: zod.number().nullish(),
+  context_summary: zod.string(),
+  status: zod.enum(["pending", "confirmed", "dismissed", "expired"]),
+  surfaced_to_user_at: zod.coerce.date().nullish(),
+  responded_at: zod.coerce.date().nullish(),
+  created_at: zod.coerce.date(),
+  expires_at: zod.coerce.date(),
+});
+
+/**
+ * @summary List recent household audit log entries
+ */
+export const listAuditLogQueryLimitDefault = 50;
+
+export const ListAuditLogQueryParams = zod.object({
+  limit: zod.coerce.number().default(listAuditLogQueryLimitDefault),
+});
+
+export const ListAuditLogResponseItem = zod.object({
+  id: zod.number(),
+  action: zod.string(),
+  actor: zod.string(),
+  action_type: zod.string(),
+  category: zod.string().nullish(),
+  description: zod.string(),
+  timestamp: zod.coerce.date(),
+});
+export const ListAuditLogResponse = zod.array(ListAuditLogResponseItem);
 
 /**
  * @summary Send the daily household briefing via WhatsApp to the admin

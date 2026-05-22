@@ -120,7 +120,14 @@ router.patch("/contacts/:id", async (req, res) => {
   try {
     const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
-    const { name, phone, category, aliases, notes } = req.body;
+    const { name, phone, category, aliases, notes, consent_status } = req.body as {
+      name?: string;
+      phone?: string;
+      category?: string;
+      aliases?: string[];
+      notes?: string;
+      consent_status?: "not_required" | "pending" | "consented" | "revoked";
+    };
 
     const [contact] = await db
       .select()
@@ -137,6 +144,16 @@ router.patch("/contacts/:id", async (req, res) => {
       }
     }
 
+    // Derive consent timestamps from status transitions.
+    const consentGrantedAt =
+      consent_status === "consented" && contact.consent_status !== "consented"
+        ? new Date()
+        : contact.consent_granted_at;
+    const consentWithdrawnAt =
+      consent_status === "revoked" && contact.consent_status !== "revoked"
+        ? new Date()
+        : contact.consent_withdrawn_at;
+
     const [updated] = await db
       .update(contactsTable)
       .set({
@@ -145,6 +162,11 @@ router.patch("/contacts/:id", async (req, res) => {
         category: category ?? contact.category,
         aliases: aliases ?? contact.aliases,
         notes: notes !== undefined ? notes : contact.notes,
+        ...(consent_status !== undefined && {
+          consent_status,
+          consent_granted_at: consentGrantedAt,
+          consent_withdrawn_at: consentWithdrawnAt,
+        }),
       })
       .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)))
       .returning();
