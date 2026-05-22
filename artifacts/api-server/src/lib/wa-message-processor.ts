@@ -17,7 +17,7 @@ import {
   membersTable,
   suggestedActionsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { classifyAndSaveAction } from "./classifier";
 import { processWhatsAppMedia } from "./media-analysis";
 import { looksLikeToken, markTokenVerified } from "./wa-token-store";
@@ -70,6 +70,107 @@ function normalisePhone(p: string): string {
 }
 
 /**
+ * Resolves the single owning household for a normalised phone number.
+ *
+ * Resolution priority (most → least authoritative):
+ *   1. Member match — members are household-owned; a single-member match wins
+ *      outright. If multiple households each have a member with this phone
+ *      (extremely rare, e.g. someone re-registers), use the earliest created_at.
+ *   2. Contact match — external contacts can be added by any household.
+ *      If exactly one household registered this phone as a contact, it wins.
+ *      If multiple households registered the same contact phone, the earliest
+ *      created_at claim wins (tie-breaker removes the DoS incentive: a later
+ *      registration cannot displace the original household's delivery).
+ *
+ * Returns `null` when no match exists at all.
+ */
+async function resolveHousehold(
+  phoneNorm: string,
+  log: Logger,
+  phoneRaw: string,
+): Promise<{ householdId: number; matchedMembers: MatchedMember[]; matchedContacts: MatchedContact[] } | null> {
+  const allContacts = await db
+    .select({
+      id: contactsTable.id,
+      name: contactsTable.name,
+      phone: contactsTable.phone,
+      household_id: contactsTable.household_id,
+      consent_status: contactsTable.consent_status,
+      created_at: contactsTable.created_at,
+    })
+    .from(contactsTable);
+
+  const allMembers = await db
+    .select({
+      name: membersTable.name,
+      phone: membersTable.phone,
+      household_id: membersTable.household_id,
+      created_at: membersTable.created_at,
+    })
+    .from(membersTable);
+
+  const matchedContacts = allContacts.filter(
+    (c) => c.phone && normalisePhone(c.phone) === phoneNorm,
+  );
+  const matchedMembers = allMembers.filter(
+    (m) => m.phone && normalisePhone(m.phone) === phoneNorm,
+  );
+
+  // ── Priority 1: member matches ─────────────────────────────────────────────
+  if (matchedMembers.length > 0) {
+    const memberHouseholds = new Set(matchedMembers.map((m) => m.household_id));
+    if (memberHouseholds.size === 1) {
+      return { householdId: [...memberHouseholds][0], matchedMembers, matchedContacts };
+    }
+    // Multiple households have a member with this phone — use oldest registration
+    const sorted = [...matchedMembers].sort(
+      (a, b) => a.created_at.getTime() - b.created_at.getTime(),
+    );
+    log.warn(
+      { phone: phoneRaw, households: [...memberHouseholds], sid: undefined },
+      "Phone matched multiple member households — routing to oldest claim",
+    );
+    return { householdId: sorted[0].household_id, matchedMembers, matchedContacts };
+  }
+
+  // ── Priority 2: contact matches ────────────────────────────────────────────
+  if (matchedContacts.length === 0) {
+    return null;
+  }
+
+  const contactHouseholds = new Set(matchedContacts.map((c) => c.household_id));
+  if (contactHouseholds.size === 1) {
+    return { householdId: [...contactHouseholds][0], matchedMembers, matchedContacts };
+  }
+
+  // Multiple households registered the same contact phone.
+  // Route to the earliest claim so a later registration cannot create a DoS.
+  const sorted = [...matchedContacts].sort(
+    (a, b) => a.created_at.getTime() - b.created_at.getTime(),
+  );
+  log.warn(
+    { phone: phoneRaw, households: [...contactHouseholds] },
+    "Phone matched multiple contact households — routing to oldest claim to prevent cross-tenant DoS",
+  );
+  return { householdId: sorted[0].household_id, matchedMembers, matchedContacts };
+}
+
+type MatchedMember = {
+  name: string;
+  phone: string | null;
+  household_id: number;
+  created_at: Date;
+};
+type MatchedContact = {
+  id: number;
+  name: string;
+  phone: string | null;
+  household_id: number;
+  consent_status: string | null;
+  created_at: Date;
+};
+
+/**
  * Processes one inbound WhatsApp event end-to-end.
  * Returns a typed outcome so the caller (webhook handler) decides
  * what reply to send — keeps reply side effects out of this function.
@@ -117,60 +218,24 @@ export async function processInboundWAMessage(
   }
 
   // ── 4. Resolve household from sender phone ─────────────────────────────────
-  // Exact normalised match only — partial matching risks cross-tenant collision.
-  const allContacts = await db
-    .select({
-      id: contactsTable.id,
-      name: contactsTable.name,
-      phone: contactsTable.phone,
-      household_id: contactsTable.household_id,
-      consent_status: contactsTable.consent_status,
-    })
-    .from(contactsTable);
+  // Uses priority-based resolution: members > contacts, oldest claim wins on ties.
+  const resolved = await resolveHousehold(phoneNorm, log, phoneRaw);
 
-  const allMembers = await db
-    .select({
-      name: membersTable.name,
-      phone: membersTable.phone,
-      household_id: membersTable.household_id,
-    })
-    .from(membersTable);
-
-  const matchedContacts = allContacts.filter(
-    (c) => c.phone && normalisePhone(c.phone) === phoneNorm,
-  );
-  const matchedMembers = allMembers.filter(
-    (m) => m.phone && normalisePhone(m.phone) === phoneNorm,
-  );
-
-  const matchedHouseholdIds = new Set<number>([
-    ...matchedContacts.map((c) => c.household_id),
-    ...matchedMembers.map((m) => m.household_id),
-  ]);
-
-  if (matchedHouseholdIds.size === 0) {
+  if (!resolved) {
     log.warn({ phone: phoneRaw }, "Unknown sender — discarding");
     return { kind: "unknown_sender", phone: phoneRaw };
   }
 
-  if (matchedHouseholdIds.size > 1) {
-    log.error(
-      {
-        phone: phoneRaw,
-        households: [...matchedHouseholdIds],
-        sid: payload.messageSid,
-      },
-      "Phone matched multiple households — discarding to prevent cross-tenant misdelivery",
-    );
-    return { kind: "multi_household", phone: phoneRaw };
-  }
-
-  const householdId = [...matchedHouseholdIds][0];
+  const { householdId, matchedMembers, matchedContacts } = resolved;
 
   // ── 4.5. WhatsApp-native approval / dismiss / edit / undo ─────────────────
-  // Short replies like "sim", "não", "editar: X", "desfazer" are checked
-  // before the full pipeline so they never create duplicate inbox items.
-  if (bodyText) {
+  // Only household MEMBERS may send approval commands. External contacts,
+  // even those with consent, cannot mutate household actions via WhatsApp.
+  // This prevents a third-party contact from approving, editing, or undoing
+  // actions simply because their phone happens to be registered in the household.
+  const senderIsMember = matchedMembers.some((m) => m.household_id === householdId);
+
+  if (bodyText && senderIsMember) {
     const approvalOutcome = await handleApprovalResponse(bodyText, householdId, log);
     if (approvalOutcome) {
       return { ...approvalOutcome, phone: phoneRaw };
