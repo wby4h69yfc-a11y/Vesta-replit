@@ -1,12 +1,16 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Plus, MessageCircle, Mail, Camera, PenLine, RefreshCw, Brain, CheckCircle2, X } from "lucide-react";
 import {
   useListInboxItems,
   useListActions,
   useCreateInboxItem,
   useClassifyInboxItem,
+  useListMemoryStaging,
+  useConfirmMemoryStaging,
+  useDismissMemoryStaging,
   getListInboxItemsQueryKey,
   getListActionsQueryKey,
+  getListMemoryStagingQueryKey,
   type SuggestedAction,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -49,14 +53,6 @@ const FILTERS = [
 ];
 
 /* ── MemoryConfirmationCard ────────────────────────────────────────────────── */
-type StagingItem = {
-  id: number;
-  target_table: string;
-  context_summary: string;
-  proposed_record: Record<string, unknown>;
-  status: string;
-};
-
 const TABLE_LABELS: Record<string, string> = {
   household_places:      "Lugar",
   household_routines:    "Rotina",
@@ -70,40 +66,31 @@ const TABLE_ICONS: Record<string, string> = {
 };
 
 function MemoryConfirmationSection() {
-  const [items, setItems] = useState<StagingItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const { toast } = useToast();
+  const { data: items = [], isLoading } = useListMemoryStaging();
 
-  const load = useCallback(async () => {
-    try {
-      const r = await fetch("/api/memory/staging", { credentials: "include" });
-      if (r.ok) {
-        const data = await r.json() as StagingItem[];
-        setItems(data);
-      }
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const confirm = useConfirmMemoryStaging({
+    mutation: {
+      onSuccess: () => {
+        void qc.invalidateQueries({ queryKey: getListMemoryStagingQueryKey() });
+        toast({ description: "Confirmado e salvo na memória." });
+      },
+      onError: () => toast({ description: "Erro ao confirmar. Tente novamente.", variant: "destructive" }),
+    },
+  });
 
-  useEffect(() => { void load(); }, [load]);
+  const dismiss = useDismissMemoryStaging({
+    mutation: {
+      onSuccess: () => {
+        void qc.invalidateQueries({ queryKey: getListMemoryStagingQueryKey() });
+        toast({ description: "Ignorado." });
+      },
+      onError: () => toast({ description: "Erro ao ignorar. Tente novamente.", variant: "destructive" }),
+    },
+  });
 
-  async function respond(id: number, action: "confirm" | "dismiss") {
-    try {
-      await fetch(`/api/memory/staging/${id}/${action}`, {
-        method: "POST",
-        credentials: "include",
-      });
-      setItems((prev) => prev.filter((i) => i.id !== id));
-      toast({ description: action === "confirm" ? "Confirmado e salvo na memória." : "Ignorado." });
-    } catch {
-      toast({ description: "Erro ao responder. Tente novamente.", variant: "destructive" });
-    }
-  }
-
-  if (loading || items.length === 0) return null;
+  if (isLoading || items.length === 0) return null;
 
   return (
     <section>
@@ -146,16 +133,18 @@ function MemoryConfirmationSection() {
 
               <div className="flex border-t" style={{ borderColor: "rgba(14,59,46,0.08)" }}>
                 <button
-                  onClick={() => void respond(item.id, "dismiss")}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm transition-colors hover:bg-red-50"
+                  onClick={() => dismiss.mutate({ id: item.id })}
+                  disabled={dismiss.isPending || confirm.isPending}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm transition-colors hover:bg-red-50 disabled:opacity-50"
                   style={{ color: V.muted }}>
                   <X className="h-4 w-4" />
                   Ignorar
                 </button>
                 <div className="w-px" style={{ background: "rgba(14,59,46,0.08)" }} />
                 <button
-                  onClick={() => void respond(item.id, "confirm")}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold transition-colors hover:bg-green-50"
+                  onClick={() => confirm.mutate({ id: item.id })}
+                  disabled={confirm.isPending || dismiss.isPending}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold transition-colors hover:bg-green-50 disabled:opacity-50"
                   style={{ color: V.primary }}>
                   <CheckCircle2 className="h-4 w-4" />
                   Confirmar

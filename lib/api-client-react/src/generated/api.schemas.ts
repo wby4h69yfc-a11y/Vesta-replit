@@ -117,6 +117,20 @@ export const ContactCategory = {
   outros: "outros",
 } as const;
 
+/**
+ * @nullable
+ */
+export type ContactConsentStatus =
+  | (typeof ContactConsentStatus)[keyof typeof ContactConsentStatus]
+  | null;
+
+export const ContactConsentStatus = {
+  not_required: "not_required",
+  pending: "pending",
+  consented: "consented",
+  revoked: "revoked",
+} as const;
+
 export interface Contact {
   id: number;
   name: string;
@@ -126,6 +140,12 @@ export interface Contact {
   aliases?: string[];
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  consent_status?: ContactConsentStatus;
+  /** @nullable */
+  consent_granted_at?: string | null;
+  /** @nullable */
+  consent_withdrawn_at?: string | null;
   created_at?: string;
 }
 
@@ -153,12 +173,23 @@ export interface ContactInput {
   notes?: string;
 }
 
+export type ContactUpdateConsentStatus =
+  (typeof ContactUpdateConsentStatus)[keyof typeof ContactUpdateConsentStatus];
+
+export const ContactUpdateConsentStatus = {
+  not_required: "not_required",
+  pending: "pending",
+  consented: "consented",
+  revoked: "revoked",
+} as const;
+
 export interface ContactUpdate {
   name?: string;
   phone?: string;
   category?: string;
   aliases?: string[];
   notes?: string;
+  consent_status?: ContactUpdateConsentStatus;
 }
 
 export type InboxItemSource =
@@ -660,6 +691,54 @@ export interface BriefingSendResponse {
   tasksCount?: number;
 }
 
+export type MemoryStagingItemTargetTable =
+  (typeof MemoryStagingItemTargetTable)[keyof typeof MemoryStagingItemTargetTable];
+
+export const MemoryStagingItemTargetTable = {
+  household_places: "household_places",
+  household_routines: "household_routines",
+  household_preferences: "household_preferences",
+} as const;
+
+export type MemoryStagingItemProposedRecord = { [key: string]: unknown };
+
+export type MemoryStagingItemStatus =
+  (typeof MemoryStagingItemStatus)[keyof typeof MemoryStagingItemStatus];
+
+export const MemoryStagingItemStatus = {
+  pending: "pending",
+  confirmed: "confirmed",
+  dismissed: "dismissed",
+  expired: "expired",
+} as const;
+
+export interface MemoryStagingItem {
+  id: number;
+  target_table: MemoryStagingItemTargetTable;
+  proposed_record: MemoryStagingItemProposedRecord;
+  /** @nullable */
+  extracted_from_inbox_id?: number | null;
+  context_summary: string;
+  status: MemoryStagingItemStatus;
+  /** @nullable */
+  surfaced_to_user_at?: string | null;
+  /** @nullable */
+  responded_at?: string | null;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface AuditLogEntry {
+  id: number;
+  action: string;
+  actor: string;
+  action_type: string;
+  /** @nullable */
+  category?: string | null;
+  description: string;
+  timestamp: string;
+}
+
 /**
  * Opaque session token — `Bearer <sid>`.
  */
@@ -754,3 +833,7 @@ export const ListPatternsStatus = {
   rule_created: "rule_created",
   dismissed: "dismissed",
 } as const;
+
+export type ListAuditLogParams = {
+  limit?: number;
+};
