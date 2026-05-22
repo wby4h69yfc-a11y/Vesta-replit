@@ -17,7 +17,7 @@ import {
   membersTable,
   suggestedActionsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { classifyAndSaveAction } from "./classifier";
 import { processWhatsAppMedia } from "./media-analysis";
 import { looksLikeToken, markTokenVerified } from "./wa-token-store";
@@ -69,6 +69,123 @@ function normalisePhone(p: string): string {
   return p.replace(/\D/g, "");
 }
 
+type MatchedMember = {
+  name: string;
+  phone: string | null;
+  household_id: number;
+  role: string;
+  created_at: Date;
+};
+type MatchedContact = {
+  id: number;
+  name: string;
+  phone: string | null;
+  household_id: number;
+  consent_status: string | null;
+  created_at: Date;
+};
+
+type ResolvedHousehold = {
+  householdId: number;
+  matchedMembers: MatchedMember[];
+  matchedContacts: MatchedContact[];
+};
+
+/**
+ * Resolves the single owning household for a normalised phone number.
+ *
+ * Resolution rules (strict, fail-closed):
+ *
+ * 1. Member matches take absolute priority over contact matches.
+ *    Members are household-owned (created by admins); a contact registration
+ *    in another household cannot override a member-based ownership claim.
+ *    - Exactly one household has a member with this phone → route there.
+ *    - Multiple member households → unresolvable (fail-closed, discard).
+ *      Routing ambiguous member ownership risks cross-tenant misdelivery, so
+ *      we prefer safe rejection regardless of tier.
+ *
+ * 2. No member matches → fall back to contact matches.
+ *    - Exactly one household has a contact with this phone → route there.
+ *    - Multiple contact households → unresolvable (fail-closed, discard).
+ *
+ * The data entry layer (POST /contacts, PATCH /contacts/:id, POST /contacts/bulk)
+ * enforces that phone numbers must be unique across all households. Together,
+ * those two controls prevent new collisions from being created in the first
+ * place, so the fail-closed path here should only be reached for legacy data
+ * that predates the uniqueness constraint.
+ *
+ * Returns null when no match exists or when resolution is ambiguous.
+ */
+async function resolveHousehold(
+  phoneNorm: string,
+  log: Logger,
+  phoneRaw: string,
+): Promise<ResolvedHousehold | null> {
+  const allContacts = await db
+    .select({
+      id: contactsTable.id,
+      name: contactsTable.name,
+      phone: contactsTable.phone,
+      household_id: contactsTable.household_id,
+      consent_status: contactsTable.consent_status,
+      created_at: contactsTable.created_at,
+    })
+    .from(contactsTable);
+
+  const allMembers = await db
+    .select({
+      name: membersTable.name,
+      phone: membersTable.phone,
+      household_id: membersTable.household_id,
+      role: membersTable.role,
+      created_at: membersTable.created_at,
+    })
+    .from(membersTable);
+
+  const matchedContacts: MatchedContact[] = allContacts.filter(
+    (c) => c.phone && normalisePhone(c.phone) === phoneNorm,
+  );
+  const matchedMembers: MatchedMember[] = allMembers.filter(
+    (m) => m.phone && normalisePhone(m.phone) === phoneNorm,
+  );
+
+  // ── Priority 1: member matches — authoritative, wins over any contact match ─
+  if (matchedMembers.length > 0) {
+    const memberHouseholdIds = new Set(matchedMembers.map((m) => m.household_id));
+
+    if (memberHouseholdIds.size === 1) {
+      // Unambiguous member ownership → route regardless of contact matches elsewhere.
+      return { householdId: [...memberHouseholdIds][0], matchedMembers, matchedContacts };
+    }
+
+    // Multiple households each claim this phone via a member record.
+    // Fail-closed: no routing guess, no tie-breaker.
+    log.warn(
+      { phone: phoneRaw, households: [...memberHouseholdIds] },
+      "Phone matched multiple member households — discarding to prevent cross-tenant misdelivery",
+    );
+    return null;
+  }
+
+  // ── Priority 2: contact-only matches ─────────────────────────────────────
+  if (matchedContacts.length === 0) {
+    return null; // truly unknown sender
+  }
+
+  const contactHouseholdIds = new Set(matchedContacts.map((c) => c.household_id));
+
+  if (contactHouseholdIds.size === 1) {
+    return { householdId: [...contactHouseholdIds][0], matchedMembers, matchedContacts };
+  }
+
+  // Multiple households have this phone as a contact; fail-closed.
+  log.warn(
+    { phone: phoneRaw, households: [...contactHouseholdIds] },
+    "Phone matched multiple contact households — discarding to prevent cross-tenant misdelivery",
+  );
+  return null;
+}
+
 /**
  * Processes one inbound WhatsApp event end-to-end.
  * Returns a typed outcome so the caller (webhook handler) decides
@@ -117,60 +234,35 @@ export async function processInboundWAMessage(
   }
 
   // ── 4. Resolve household from sender phone ─────────────────────────────────
-  // Exact normalised match only — partial matching risks cross-tenant collision.
-  const allContacts = await db
-    .select({
-      id: contactsTable.id,
-      name: contactsTable.name,
-      phone: contactsTable.phone,
-      household_id: contactsTable.household_id,
-      consent_status: contactsTable.consent_status,
-    })
-    .from(contactsTable);
+  // Member registrations take absolute priority over contact registrations.
+  // All multi-household ambiguity is rejected (fail-closed) — no tie-breaking.
+  // The contacts data entry layer enforces cross-household phone uniqueness so
+  // that new collisions cannot be created by authenticated users.
+  const resolved = await resolveHousehold(phoneNorm, log, phoneRaw);
 
-  const allMembers = await db
-    .select({
-      name: membersTable.name,
-      phone: membersTable.phone,
-      household_id: membersTable.household_id,
-    })
-    .from(membersTable);
-
-  const matchedContacts = allContacts.filter(
-    (c) => c.phone && normalisePhone(c.phone) === phoneNorm,
-  );
-  const matchedMembers = allMembers.filter(
-    (m) => m.phone && normalisePhone(m.phone) === phoneNorm,
-  );
-
-  const matchedHouseholdIds = new Set<number>([
-    ...matchedContacts.map((c) => c.household_id),
-    ...matchedMembers.map((m) => m.household_id),
-  ]);
-
-  if (matchedHouseholdIds.size === 0) {
-    log.warn({ phone: phoneRaw }, "Unknown sender — discarding");
-    return { kind: "unknown_sender", phone: phoneRaw };
-  }
-
-  if (matchedHouseholdIds.size > 1) {
-    log.error(
-      {
-        phone: phoneRaw,
-        households: [...matchedHouseholdIds],
-        sid: payload.messageSid,
-      },
-      "Phone matched multiple households — discarding to prevent cross-tenant misdelivery",
-    );
+  if (!resolved) {
+    log.warn({ phone: phoneRaw }, "Unable to resolve sender to a unique household — discarding");
     return { kind: "multi_household", phone: phoneRaw };
   }
 
-  const householdId = [...matchedHouseholdIds][0];
+  const { householdId, matchedMembers, matchedContacts } = resolved;
 
   // ── 4.5. WhatsApp-native approval / dismiss / edit / undo ─────────────────
-  // Short replies like "sim", "não", "editar: X", "desfazer" are checked
-  // before the full pipeline so they never create duplicate inbox items.
-  if (bodyText) {
+  // Security: only household ADMINS (role === "admin") may trigger approval
+  // commands via WhatsApp. This enforces two boundaries:
+  //   a) External contacts — even those with consent — cannot mutate pending
+  //      household actions. They caused the inbox item but are not authorised
+  //      to approve, dismiss, edit, or undo it.
+  //   b) Non-admin household members share the household but are not designated
+  //      decision-makers; restricting to admin prevents low-privilege members
+  //      from approving financial, medical, or scheduling actions unilaterally.
+  // This check runs before the consent check so consent status is irrelevant
+  // to the authorization decision.
+  const senderIsAdmin = matchedMembers.some(
+    (m) => m.household_id === householdId && m.role === "admin",
+  );
+
+  if (bodyText && senderIsAdmin) {
     const approvalOutcome = await handleApprovalResponse(bodyText, householdId, log);
     if (approvalOutcome) {
       return { ...approvalOutcome, phone: phoneRaw };
