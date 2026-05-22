@@ -9,6 +9,7 @@ Production assumptions for this scan:
 - `artifacts/mockup-sandbox` is dev-only and should be ignored unless production reachability is later demonstrated.
 - Replit deployment provides TLS in production.
 - `NODE_ENV=production` in production.
+- The current deployment type is `autoscale`, so security-sensitive rate limits, replay protections, and verification state must not rely on a single in-process memory store.
 - The current deployment is `private`, so Replit blocks direct public-internet access to endpoints. Anonymous internet abuse of nominally public routes is therefore reduced in the current deployment, but vulnerabilities reachable by deployment-authorized users, insider users, or trusted third-party callbacks remain in scope.
 
 ## Assets
@@ -78,6 +79,7 @@ Required guarantees:
 - Expensive external sync and classification paths MUST only be triggerable by authorized users or verified providers.
 - Request bodies and loops over imported data MUST remain bounded enough to prevent trivial resource exhaustion.
 - Re-triggerable outbound messaging and sync endpoints MUST enforce idempotency and/or rate limits so one authenticated user cannot spam household admins or repeatedly import the same third-party data.
+- On autoscaled production deployments, security-sensitive throttles and temporary verification state MUST use shared durable storage or another cross-instance coordination mechanism rather than per-process memory.
 
 ### Elevation of Privilege
 
