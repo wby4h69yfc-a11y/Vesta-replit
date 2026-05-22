@@ -69,26 +69,58 @@ function normalisePhone(p: string): string {
   return p.replace(/\D/g, "");
 }
 
+type MatchedMember = {
+  name: string;
+  phone: string | null;
+  household_id: number;
+  role: string;
+  created_at: Date;
+};
+type MatchedContact = {
+  id: number;
+  name: string;
+  phone: string | null;
+  household_id: number;
+  consent_status: string | null;
+  created_at: Date;
+};
+
+type ResolvedHousehold = {
+  householdId: number;
+  matchedMembers: MatchedMember[];
+  matchedContacts: MatchedContact[];
+};
+
 /**
  * Resolves the single owning household for a normalised phone number.
  *
- * Resolution priority (most → least authoritative):
- *   1. Member match — members are household-owned; a single-member match wins
- *      outright. If multiple households each have a member with this phone
- *      (extremely rare, e.g. someone re-registers), use the earliest created_at.
- *   2. Contact match — external contacts can be added by any household.
- *      If exactly one household registered this phone as a contact, it wins.
- *      If multiple households registered the same contact phone, the earliest
- *      created_at claim wins (tie-breaker removes the DoS incentive: a later
- *      registration cannot displace the original household's delivery).
+ * Resolution rules:
  *
- * Returns `null` when no match exists at all.
+ * 1. Member matches take absolute priority over contact matches.
+ *    Members are household-owned records (added by admins); contacts are
+ *    externally-sourced and can be added with arbitrary phone numbers by any
+ *    authenticated user. A contact registration in Household B CANNOT displace
+ *    or block a member registration in Household A.
+ *
+ *    - Exactly one household has a member with this phone → route there.
+ *    - Multiple member households (rare edge case) → use oldest created_at as
+ *      a deterministic tie-breaker and warn.
+ *
+ * 2. If no member matches exist, fall back to contact matches.
+ *    - Exactly one household has a contact with this phone → route there.
+ *    - Multiple contact households → return null (unresolvable, discard).
+ *      Routing ambiguous contact phones risks cross-tenant misdelivery, so we
+ *      prefer safe rejection over uncertain delivery. The collision is logged
+ *      as a warning so operators can investigate.
+ *
+ * Returns null when no match exists or when contact-only resolution is
+ * ambiguous (caller should return unknown_sender / multi_household).
  */
 async function resolveHousehold(
   phoneNorm: string,
   log: Logger,
   phoneRaw: string,
-): Promise<{ householdId: number; matchedMembers: MatchedMember[]; matchedContacts: MatchedContact[] } | null> {
+): Promise<ResolvedHousehold | null> {
   const allContacts = await db
     .select({
       id: contactsTable.id,
@@ -105,70 +137,59 @@ async function resolveHousehold(
       name: membersTable.name,
       phone: membersTable.phone,
       household_id: membersTable.household_id,
+      role: membersTable.role,
       created_at: membersTable.created_at,
     })
     .from(membersTable);
 
-  const matchedContacts = allContacts.filter(
+  const matchedContacts: MatchedContact[] = allContacts.filter(
     (c) => c.phone && normalisePhone(c.phone) === phoneNorm,
   );
-  const matchedMembers = allMembers.filter(
+  const matchedMembers: MatchedMember[] = allMembers.filter(
     (m) => m.phone && normalisePhone(m.phone) === phoneNorm,
   );
 
-  // ── Priority 1: member matches ─────────────────────────────────────────────
+  // ── Priority 1: member matches — authoritative, always wins over contacts ──
   if (matchedMembers.length > 0) {
-    const memberHouseholds = new Set(matchedMembers.map((m) => m.household_id));
-    if (memberHouseholds.size === 1) {
-      return { householdId: [...memberHouseholds][0], matchedMembers, matchedContacts };
+    const memberHouseholdIds = new Set(matchedMembers.map((m) => m.household_id));
+
+    if (memberHouseholdIds.size === 1) {
+      return { householdId: [...memberHouseholdIds][0], matchedMembers, matchedContacts };
     }
-    // Multiple households have a member with this phone — use oldest registration
+
+    // Multiple households each have a member with this phone (extremely rare —
+    // e.g. re-used number after household restructuring). Use oldest registration
+    // as a deterministic, stable tie-breaker.
     const sorted = [...matchedMembers].sort(
       (a, b) => a.created_at.getTime() - b.created_at.getTime(),
     );
     log.warn(
-      { phone: phoneRaw, households: [...memberHouseholds], sid: undefined },
-      "Phone matched multiple member households — routing to oldest claim",
+      { phone: phoneRaw, households: [...memberHouseholdIds] },
+      "Phone matched multiple member households — routing to oldest registration",
     );
     return { householdId: sorted[0].household_id, matchedMembers, matchedContacts };
   }
 
-  // ── Priority 2: contact matches ────────────────────────────────────────────
+  // ── Priority 2: contact-only matches ──────────────────────────────────────
   if (matchedContacts.length === 0) {
-    return null;
+    return null; // truly unknown sender
   }
 
-  const contactHouseholds = new Set(matchedContacts.map((c) => c.household_id));
-  if (contactHouseholds.size === 1) {
-    return { householdId: [...contactHouseholds][0], matchedMembers, matchedContacts };
+  const contactHouseholdIds = new Set(matchedContacts.map((c) => c.household_id));
+
+  if (contactHouseholdIds.size === 1) {
+    return { householdId: [...contactHouseholdIds][0], matchedMembers, matchedContacts };
   }
 
-  // Multiple households registered the same contact phone.
-  // Route to the earliest claim so a later registration cannot create a DoS.
-  const sorted = [...matchedContacts].sort(
-    (a, b) => a.created_at.getTime() - b.created_at.getTime(),
-  );
+  // Multiple households registered the same contact phone with no member-based
+  // ownership. Routing arbitrarily risks misdelivering sensitive messages to the
+  // wrong household. Discard and warn so operators can investigate the collision.
   log.warn(
-    { phone: phoneRaw, households: [...contactHouseholds] },
-    "Phone matched multiple contact households — routing to oldest claim to prevent cross-tenant DoS",
+    { phone: phoneRaw, households: [...contactHouseholdIds] },
+    "Phone matched multiple contact households with no member ownership — discarding to prevent cross-tenant misdelivery",
   );
-  return { householdId: sorted[0].household_id, matchedMembers, matchedContacts };
+  return null; // caller will return multi_household
 }
-
-type MatchedMember = {
-  name: string;
-  phone: string | null;
-  household_id: number;
-  created_at: Date;
-};
-type MatchedContact = {
-  id: number;
-  name: string;
-  phone: string | null;
-  household_id: number;
-  consent_status: string | null;
-  created_at: Date;
-};
 
 /**
  * Processes one inbound WhatsApp event end-to-end.
@@ -218,24 +239,39 @@ export async function processInboundWAMessage(
   }
 
   // ── 4. Resolve household from sender phone ─────────────────────────────────
-  // Uses priority-based resolution: members > contacts, oldest claim wins on ties.
+  // Member registrations take absolute priority over contact registrations so
+  // that a contact entry in a different household cannot hijack or block
+  // delivery to the legitimate member's household.
+  // Contact-only collisions across households are discarded (no routing guess).
   const resolved = await resolveHousehold(phoneNorm, log, phoneRaw);
 
   if (!resolved) {
-    log.warn({ phone: phoneRaw }, "Unknown sender — discarding");
-    return { kind: "unknown_sender", phone: phoneRaw };
+    // Distinguish "never seen before" from "ambiguous across households" only
+    // in logging — the external behaviour is the same: no reply, no delivery.
+    log.warn({ phone: phoneRaw }, "Unable to resolve sender to a single household — discarding");
+    // Return multi_household so the webhook switch falls into its no-reply branch.
+    return { kind: "multi_household", phone: phoneRaw };
   }
 
   const { householdId, matchedMembers, matchedContacts } = resolved;
 
   // ── 4.5. WhatsApp-native approval / dismiss / edit / undo ─────────────────
-  // Only household MEMBERS may send approval commands. External contacts,
-  // even those with consent, cannot mutate household actions via WhatsApp.
-  // This prevents a third-party contact from approving, editing, or undoing
-  // actions simply because their phone happens to be registered in the household.
-  const senderIsMember = matchedMembers.some((m) => m.household_id === householdId);
+  // Security: only household admins may send approval commands via WhatsApp.
+  //
+  // Rationale:
+  //   • Contacts (external senders) must never control household actions —
+  //     they triggered the inbox item but are not authorised to approve it.
+  //   • Non-admin members can view the household but admins are the designated
+  //     decision-makers; restricting to admin role prevents a shared-device or
+  //     low-privilege member from approving financial, medical, or scheduling
+  //     actions without the admin's knowledge.
+  //   • This check is intentionally enforced before the consent check below so
+  //     that an external contact with consent still cannot issue commands.
+  const senderIsAdmin = matchedMembers.some(
+    (m) => m.household_id === householdId && m.role === "admin",
+  );
 
-  if (bodyText && senderIsMember) {
+  if (bodyText && senderIsAdmin) {
     const approvalOutcome = await handleApprovalResponse(bodyText, householdId, log);
     if (approvalOutcome) {
       return { ...approvalOutcome, phone: phoneRaw };
