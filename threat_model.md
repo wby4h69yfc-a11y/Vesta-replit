@@ -31,7 +31,7 @@ Production assumptions for this scan:
 ## Scan Anchors
 
 - **Production entry points:** `artifacts/api-server/src/index.ts`, `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/*.ts`, `artifacts/vesta/src/App.tsx`.
-- **Highest-risk code areas:** `artifacts/api-server/src/routes/` (authz and public routes), `artifacts/api-server/src/routes/webhook.ts`, `artifacts/api-server/src/routes/auth*.ts`, `artifacts/api-server/src/routes/google.ts`, `artifacts/api-server/src/lib/classifier.ts`, `lib/db/src/schema/*`.
+- **Highest-risk code areas:** `artifacts/api-server/src/routes/` (authz and public routes), `artifacts/api-server/src/routes/webhook.ts`, `artifacts/api-server/src/routes/auth*.ts`, `artifacts/api-server/src/routes/google.ts`, `artifacts/api-server/src/lib/wa-message-processor.ts`, `artifacts/api-server/src/lib/wa-approval-handler.ts`, `artifacts/api-server/src/lib/classifier.ts`, `lib/db/src/schema/*`.
 - **Public vs authenticated surfaces:** business routes are currently mounted behind a protected router that applies `requireAuth` and `requireHousehold`; the nominally public surfaces that still need careful review are auth routes, OTP routes, social-login callbacks, and the Twilio webhook, but the current `private` deployment means exploitation should be judged based on deployment-authorized access rather than anonymous public reachability.
 - **Dev-only surface usually ignored:** `artifacts/mockup-sandbox/**`.
 
@@ -56,6 +56,7 @@ Required guarantees:
 - Business objects MUST be written with the correct household/user scope rather than relying on implicit defaults.
 - External inbound data MUST be authenticated before it can create inbox items, tasks, events, or suggested actions.
 - Webhook sender identity MUST be matched using exact normalized identifiers rather than lossy partial-phone comparisons that can collide across households.
+- WhatsApp approval or undo commands MUST be bound to both an authorized sender and a specific action, not just to the household as a whole.
 - External-provider identifiers used for sync or deduplication (for example Google event IDs) MUST be scoped to the owning household or account, not treated as globally tenant-agnostic keys.
 
 ### Information Disclosure
