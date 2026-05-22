@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { calendarEventsTable, householdsTable, tasksTable } from "@workspace/db";
+import { calendarEventsTable, householdsTable, onboardingStateTable, tasksTable } from "@workspace/db";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "../lib/whatsapp";
 import { getHouseholdId } from "../lib/tenant";
@@ -89,6 +89,26 @@ router.post("/briefing/send", async (req: Request, res: Response) => {
           eq(tasksTable.status, "pending"),
         ),
       );
+
+    // Defense-in-depth: require that WhatsApp was verified through the token
+    // flow before delivering household data to any phone number.
+    const [onboardingState] = await db
+      .select({ whatsapp_verified: onboardingStateTable.whatsapp_verified })
+      .from(onboardingStateTable)
+      .where(eq(onboardingStateTable.household_id, hid))
+      .limit(1);
+
+    if (!onboardingState?.whatsapp_verified) {
+      // Roll back the cooldown claim so the user can retry after verifying.
+      await db
+        .update(householdsTable)
+        .set({ last_briefing_sent_at: claimed[0].prev ?? null })
+        .where(eq(householdsTable.id, hid));
+      res.status(400).json({
+        error: "WhatsApp não verificado. Complete a verificação do número antes de enviar o resumo.",
+      });
+      return;
+    }
 
     let adminPhone: string | null = await resolveHouseholdAdminPhone(hid);
     if (!adminPhone) {
