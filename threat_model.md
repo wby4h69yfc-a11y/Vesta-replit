@@ -9,6 +9,7 @@ Production assumptions for this scan:
 - `artifacts/mockup-sandbox` is dev-only and should be ignored unless production reachability is later demonstrated.
 - Replit deployment provides TLS in production.
 - `NODE_ENV=production` in production.
+- The current deployment is `private`, so Replit blocks direct public-internet access to endpoints. Anonymous internet abuse of nominally public routes is therefore reduced in the current deployment, but vulnerabilities reachable by deployment-authorized users, insider users, or trusted third-party callbacks remain in scope.
 
 ## Assets
 
@@ -23,15 +24,15 @@ Production assumptions for this scan:
 - **Browser/mobile client → API** — all frontend and mobile requests cross this boundary. The client is untrusted; authentication and authorization must be enforced server-side.
 - **API → PostgreSQL** — API code has broad database access. Any missing authorization or tenant scoping at the route layer becomes direct data exposure or tampering.
 - **API → external identity providers** — OIDC, Google, and Apple callbacks cross a trust boundary and must validate tokens, state, and callback context.
-- **API → Twilio / public webhook callers** — `/api/webhook/whatsapp` is intentionally internet-reachable and must authenticate the sender before treating inbound data as trusted.
+- **API → Twilio / public webhook callers** — `/api/webhook/whatsapp` is designed as a public callback surface and must authenticate the sender before treating inbound data as trusted. In the current private deployment, public reachability is reduced by platform visibility controls, but the endpoint still represents a trust boundary whenever external delivery is enabled.
 - **Authenticated user → household data** — household resources must be scoped to the correct authenticated user and household membership. Cross-household reads and writes are high impact.
 - **Internal production surface → dev-only artifacts** — `artifacts/mockup-sandbox` is excluded from production threat analysis unless later wired into deployed routes.
 
 ## Scan Anchors
 
 - **Production entry points:** `artifacts/api-server/src/index.ts`, `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/*.ts`, `artifacts/vesta/src/App.tsx`.
-- **Highest-risk code areas:** `artifacts/api-server/src/routes/` (authz and public routes), `artifacts/api-server/src/routes/webhook.ts`, `artifacts/api-server/src/routes/auth*.ts`, `artifacts/api-server/src/routes/google.ts`, `artifacts/api-server/src/lib/classifier.ts`, `lib/db/src/schema/*`.
-- **Public vs authenticated surfaces:** business routes are currently mounted behind a protected router that applies `requireAuth` and `requireHousehold`; the main public surfaces that still need careful review are auth routes, OTP routes, social-login callbacks, Google integration callbacks, and the Twilio webhook.
+- **Highest-risk code areas:** `artifacts/api-server/src/routes/` (authz and public routes), `artifacts/api-server/src/routes/webhook.ts`, `artifacts/api-server/src/routes/auth*.ts`, `artifacts/api-server/src/routes/google.ts`, `artifacts/api-server/src/lib/wa-message-processor.ts`, `artifacts/api-server/src/lib/wa-approval-handler.ts`, `artifacts/api-server/src/lib/classifier.ts`, `lib/db/src/schema/*`.
+- **Public vs authenticated surfaces:** business routes are currently mounted behind a protected router that applies `requireAuth` and `requireHousehold`; the nominally public surfaces that still need careful review are auth routes, OTP routes, social-login callbacks, and the Twilio webhook, but the current `private` deployment means exploitation should be judged based on deployment-authorized access rather than anonymous public reachability.
 - **Dev-only surface usually ignored:** `artifacts/mockup-sandbox/**`.
 
 ## Threat Categories
@@ -55,6 +56,7 @@ Required guarantees:
 - Business objects MUST be written with the correct household/user scope rather than relying on implicit defaults.
 - External inbound data MUST be authenticated before it can create inbox items, tasks, events, or suggested actions.
 - Webhook sender identity MUST be matched using exact normalized identifiers rather than lossy partial-phone comparisons that can collide across households.
+- WhatsApp approval or undo commands MUST be bound to both an authorized sender and a specific action, not just to the household as a whole.
 - External-provider identifiers used for sync or deduplication (for example Google event IDs) MUST be scoped to the owning household or account, not treated as globally tenant-agnostic keys.
 
 ### Information Disclosure

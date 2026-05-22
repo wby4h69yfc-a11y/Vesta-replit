@@ -8,6 +8,12 @@ import { authMiddleware } from "./middlewares/authMiddleware";
 
 const app: Express = express();
 
+// Trust Replit's reverse proxy so req.ip resolves to the real client IP
+// (read from X-Forwarded-For) rather than the shared proxy address.
+// Without this, all OTP rate-limit buckets collapse to one proxy IP and
+// any single user can exhaust the shared limit for every other user.
+app.set("trust proxy", 1);
+
 // ── CORS ─────────────────────────────────────────────────────────────────────
 // Only allow requests from the app's own published domains and the dev preview
 // domain. Reflecting origin: true would let any site make credentialed

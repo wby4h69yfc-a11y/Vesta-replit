@@ -14,13 +14,21 @@ const router: IRouter = Router();
 /**
  * Admin auth guard: any authenticated user in development.
  * In production, restrict to emails listed in ADMIN_EMAILS (comma-separated).
+ * Fails closed: if ADMIN_EMAILS is unset in production, no one is granted access.
  */
 function isAdmin(req: Request): boolean {
   if (!req.isAuthenticated() || !req.user) return false;
-  const adminEmails = process.env.ADMIN_EMAILS;
-  if (!adminEmails || process.env.NODE_ENV !== "production") return true;
-  const list = adminEmails.split(",").map((e) => e.trim().toLowerCase());
-  return list.includes((req.user.email ?? "").toLowerCase());
+  if (process.env.NODE_ENV !== "production") return true;
+  const adminEmails = process.env.ADMIN_EMAILS?.trim();
+  if (!adminEmails) return false;
+  const list = adminEmails
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => e.length > 0);
+  if (list.length === 0) return false;
+  const userEmail = (req.user.email ?? "").trim().toLowerCase();
+  if (!userEmail) return false;
+  return list.includes(userEmail);
 }
 
 /**

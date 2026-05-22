@@ -1,6 +1,6 @@
 import { logger } from "./logger";
 import { db } from "@workspace/db";
-import { membersTable } from "@workspace/db";
+import { membersTable, onboardingStateTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
 export type SendResult =
@@ -20,13 +20,32 @@ export function isTwilioConfigured(): boolean {
 }
 
 /**
- * Resolves the primary admin phone for a household.
- * Queries membersTable WHERE household_id = $1 AND role = 'admin'.
- * Returns null (no send) if no admin member with a phone is found.
+ * Resolves the primary admin phone for a household, but ONLY when the
+ * household has completed WhatsApp verification through the token flow.
+ *
+ * Returning null (instead of an unverified phone) ensures that every
+ * outbound send path — briefing, classifier notifications, and webhook
+ * replies to explicit-approval items — cannot deliver household data to
+ * an unproven destination.
  */
 export async function resolveHouseholdAdminPhone(
   householdId: number,
 ): Promise<string | null> {
+  // Gate on server-recorded verification, not any client-supplied claim.
+  const [state] = await db
+    .select({ whatsapp_verified: onboardingStateTable.whatsapp_verified })
+    .from(onboardingStateTable)
+    .where(eq(onboardingStateTable.household_id, householdId))
+    .limit(1);
+
+  if (!state?.whatsapp_verified) {
+    logger.warn(
+      { householdId },
+      "resolveHouseholdAdminPhone: WhatsApp not verified — skipping notify",
+    );
+    return null;
+  }
+
   const adminMembers = await db
     .select()
     .from(membersTable)
