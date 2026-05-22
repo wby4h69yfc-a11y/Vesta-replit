@@ -84,9 +84,11 @@ export async function processInboundWAMessage(
 
   // ── 1. Onboarding token intercept ─────────────────────────────────────────
   if (looksLikeToken(bodyText)) {
-    const userId = markTokenVerified(bodyText);
+    // Pass the sender's phone so the store can bind verification to the number
+    // that actually sent the token — used by /onboarding/complete.
+    const userId = markTokenVerified(bodyText, phoneRaw);
     if (userId) {
-      log.info({ userId, token: bodyText }, "WhatsApp onboarding token verified");
+      log.info({ userId, token: bodyText, phone: phoneRaw }, "WhatsApp onboarding token verified");
       return { kind: "token_verified", userId, phone: phoneRaw };
     }
     log.warn({ token: bodyText }, "WhatsApp token not found or expired");

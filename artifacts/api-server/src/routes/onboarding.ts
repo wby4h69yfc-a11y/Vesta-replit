@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, onboardingStateTable, membersTable, householdsTable } from "@workspace/db";
 import { CompleteOnboardingBody } from "@workspace/api-zod";
 import { getHouseholdId } from "../lib/tenant";
-import { createToken, isTokenVerified } from "../lib/wa-token-store";
+import { createToken, isTokenVerified, getVerifiedPhone } from "../lib/wa-token-store";
 
 const router: IRouter = Router();
 
@@ -133,12 +133,18 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
       display_name,
       composition,
       pain_points,
-      whatsapp_phone,
-      whatsapp_verified,
       calendar_connected,
+      // whatsapp_phone and whatsapp_verified are intentionally ignored —
+      // they are client-controlled fields that cannot be trusted.
+      // We derive the verified status and phone number from the server-side
+      // token store, which records the number that actually sent the token.
     } = parsed.data;
 
     const householdId = getHouseholdId(req);
+
+    // Server-side verification: check the token store, not the request body.
+    const serverVerified = isTokenVerified(userId);
+    const serverPhone = serverVerified ? getVerifiedPhone(userId) : null;
 
     if (display_name) {
       await db
@@ -155,7 +161,7 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
         household_id: householdId,
         composition: composition ?? null,
         pain_points: pain_points ?? [],
-        whatsapp_verified: whatsapp_verified ?? false,
+        whatsapp_verified: serverVerified,
         calendar_connected: calendar_connected ?? false,
         updated_at: new Date(),
       })
@@ -169,7 +175,7 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
         current_step: 7,
         composition: composition ?? null,
         pain_points: pain_points ?? [],
-        whatsapp_verified: whatsapp_verified ?? false,
+        whatsapp_verified: serverVerified,
         calendar_connected: calendar_connected ?? false,
       });
     }
@@ -189,7 +195,8 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
         display_name: memberName,
         role: "admin",
         relationship_type: "adult",
-        phone: whatsapp_phone ?? null,
+        // Only store the phone if the token flow confirmed ownership of the number.
+        phone: serverPhone ?? null,
       });
     }
 
