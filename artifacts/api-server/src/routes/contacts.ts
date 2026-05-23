@@ -1,65 +1,11 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { contactsTable, inboxItemsTable, membersTable } from "@workspace/db";
-import { eq, and, sql, ne } from "drizzle-orm";
+import { contactsTable, inboxItemsTable } from "@workspace/db";
+import { eq, and, sql } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
 
-/**
- * Checks whether a normalised phone number is already claimed by any contact
- * or member in a household OTHER than `currentHouseholdId`.
- *
- * Used to prevent cross-household phone collisions that would cause inbound
- * WhatsApp messages to be silently discarded (DoS via duplicate registration).
- *
- * We intentionally do not reveal which other household holds the number — the
- * caller receives only a boolean so no cross-tenant information is leaked.
- *
- * `excludeContactId` is set when updating an existing contact so the check
- * does not flag the row being updated as a conflict with itself.
- */
-async function phoneExistsInAnotherHousehold(
-  phoneNorm: string,
-  currentHouseholdId: number,
-  excludeContactId?: number,
-): Promise<boolean> {
-  // Check contacts in other households
-  const contactConditions = [
-    sql`regexp_replace(${contactsTable.phone}, '[^0-9]', '', 'g') = ${phoneNorm}`,
-    ne(contactsTable.household_id, currentHouseholdId),
-  ];
-  if (excludeContactId !== undefined) {
-    contactConditions.push(ne(contactsTable.id, excludeContactId));
-  }
-  const [contactConflict] = await db
-    .select({ id: contactsTable.id })
-    .from(contactsTable)
-    .where(and(...contactConditions))
-    .limit(1);
-
-  if (contactConflict) return true;
-
-  // Check members in other households (member phones are equally authoritative
-  // as routing anchors, so a member in another household blocks the claim)
-  const [memberConflict] = await db
-    .select({ id: membersTable.id })
-    .from(membersTable)
-    .where(
-      and(
-        sql`regexp_replace(${membersTable.phone}, '[^0-9]', '', 'g') = ${phoneNorm}`,
-        ne(membersTable.household_id, currentHouseholdId),
-      ),
-    )
-    .limit(1);
-
-  return !!memberConflict;
-}
-
-/** Normalise a phone string to digits only (mirrors wa-message-processor). */
-function normalisePhone(p: string): string {
-  return p.replace(/\D/g, "");
-}
 
 router.get("/contacts", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -90,18 +36,6 @@ router.post("/contacts", async (req, res) => {
     const { name, phone, category, aliases, notes } = req.body;
 
     if (!name || !category) return res.status(400).json({ error: "name and category are required" });
-
-    // Guard: reject phone numbers already claimed by another household.
-    // This prevents a malicious or accidental duplicate registration that would
-    // cause the WhatsApp ingestion pipeline to discard all messages from that
-    // number (cross-tenant denial-of-service via sender ambiguity).
-    if (phone) {
-      const phoneNorm = normalisePhone(phone);
-      if (phoneNorm && await phoneExistsInAnotherHousehold(phoneNorm, hid)) {
-        req.log.warn({ hid, phone: phoneNorm }, "Contact creation rejected — phone already claimed by another household");
-        return res.status(409).json({ error: "Número de telefone já está em uso" });
-      }
-    }
 
     const [contact] = await db
       .insert(contactsTable)
@@ -134,15 +68,6 @@ router.patch("/contacts/:id", async (req, res) => {
       .from(contactsTable)
       .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)));
     if (!contact) return res.status(404).json({ error: "Not found" });
-
-    // Guard: reject phone number updates that would collide with another household.
-    if (phone !== undefined && phone !== null && phone !== contact.phone) {
-      const phoneNorm = normalisePhone(phone);
-      if (phoneNorm && await phoneExistsInAnotherHousehold(phoneNorm, hid, id)) {
-        req.log.warn({ hid, id, phone: phoneNorm }, "Contact update rejected — phone already claimed by another household");
-        return res.status(409).json({ error: "Número de telefone já está em uso" });
-      }
-    }
 
     // Derive consent timestamps from status transitions.
     const consentGrantedAt =
@@ -234,34 +159,16 @@ router.post("/contacts/bulk", async (req, res) => {
       return res.status(400).json({ error: "contacts array is required" });
     }
 
-    // Guard: strip phone from any entry whose number is already claimed by
-    // another household rather than rejecting the entire batch. This allows
-    // bulk import to succeed while still preventing cross-household collisions.
-    const safeValues = await Promise.all(
-      contacts.map(async (c) => {
-        let safePhone: string | null = c.phone ?? null;
-        if (safePhone) {
-          const phoneNorm = normalisePhone(safePhone);
-          if (phoneNorm && await phoneExistsInAnotherHousehold(phoneNorm, hid)) {
-            req.log.warn(
-              { hid, phone: phoneNorm, name: c.name },
-              "Bulk contact import: phone already claimed by another household — importing without phone",
-            );
-            safePhone = null;
-          }
-        }
-        return {
-          name: c.name,
-          phone: safePhone,
-          category: c.category ?? "outros",
-          aliases: [] as string[],
-          notes: c.notes ?? null,
-          household_id: hid,
-        };
-      }),
-    );
+    const values = contacts.map((c) => ({
+      name: c.name,
+      phone: c.phone ?? null,
+      category: c.category ?? "outros",
+      aliases: [] as string[],
+      notes: c.notes ?? null,
+      household_id: hid,
+    }));
 
-    const created = await db.insert(contactsTable).values(safeValues).returning();
+    const created = await db.insert(contactsTable).values(values).returning();
     res.status(201).json(created);
   } catch (err) {
     req.log.error({ err }, "Failed to bulk create contacts");

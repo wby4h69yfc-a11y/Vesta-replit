@@ -7,7 +7,7 @@ import {
   calendarEventsTable,
   inboxItemsTable,
 } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   getSessionId,
   getSession,
@@ -489,6 +489,8 @@ router.post("/google/gmail/sync", async (req: Request, res: Response) => {
   }
 
   // Determine which Gmail IDs are already stored to avoid redundant API calls.
+  // Scope the check to the current household so one household's sync cannot
+  // suppress imports for another household that shares the same Gmail account.
   const listedIds = messageList.map((m) => m.id).filter((id): id is string => !!id);
 
   let alreadyKnownIds = new Set<string>();
@@ -497,7 +499,10 @@ router.post("/google/gmail/sync", async (req: Request, res: Response) => {
       .select({ gmail_message_id: inboxItemsTable.gmail_message_id })
       .from(inboxItemsTable)
       .where(
-        inArray(inboxItemsTable.gmail_message_id, listedIds),
+        and(
+          eq(inboxItemsTable.household_id, hid),
+          inArray(inboxItemsTable.gmail_message_id, listedIds),
+        ),
       );
     alreadyKnownIds = new Set(
       existing
