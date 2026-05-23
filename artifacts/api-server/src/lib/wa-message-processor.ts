@@ -178,12 +178,23 @@ async function resolveHousehold(
     return { householdId: [...contactHouseholdIds][0], matchedMembers, matchedContacts };
   }
 
-  // Multiple households have this phone as a contact; fail-closed.
-  log.warn(
-    { phone: phoneRaw, households: [...contactHouseholdIds] },
-    "Phone matched multiple contact households — discarding to prevent cross-tenant misdelivery",
+  // Multiple households claim this phone as a contact.  Rather than fail-
+  // closed (which would let a second registration suppress delivery for the
+  // original household), route to the household whose contact record was
+  // created first.  First-registered wins; subsequent registrations of the
+  // same phone are effectively inert from a routing perspective.
+  const oldest = matchedContacts.reduce((a, b) =>
+    (a.created_at ?? 0) <= (b.created_at ?? 0) ? a : b,
   );
-  return null;
+  log.warn(
+    { phone: phoneRaw, households: [...contactHouseholdIds], routed_to: oldest.household_id },
+    "Phone matched multiple contact households — routing to first-registered household",
+  );
+  return {
+    householdId: oldest.household_id,
+    matchedMembers,
+    matchedContacts,
+  };
 }
 
 /**
