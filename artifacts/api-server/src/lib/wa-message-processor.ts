@@ -178,23 +178,12 @@ async function resolveHousehold(
     return { householdId: [...contactHouseholdIds][0], matchedMembers, matchedContacts };
   }
 
-  // Multiple households claim this phone as a contact.  Rather than fail-
-  // closed (which would let a second registration suppress delivery for the
-  // original household), route to the household whose contact record was
-  // created first.  First-registered wins; subsequent registrations of the
-  // same phone are effectively inert from a routing perspective.
-  const oldest = matchedContacts.reduce((a, b) =>
-    (a.created_at ?? 0) <= (b.created_at ?? 0) ? a : b,
-  );
+  // Multiple households have this phone as a contact; fail-closed.
   log.warn(
-    { phone: phoneRaw, households: [...contactHouseholdIds], routed_to: oldest.household_id },
-    "Phone matched multiple contact households — routing to first-registered household",
+    { phone: phoneRaw, households: [...contactHouseholdIds] },
+    "Phone matched multiple contact households — discarding to prevent cross-tenant misdelivery",
   );
-  return {
-    householdId: oldest.household_id,
-    matchedMembers,
-    matchedContacts,
-  };
+  return null;
 }
 
 /**
@@ -247,8 +236,9 @@ export async function processInboundWAMessage(
   // ── 4. Resolve household from sender phone ─────────────────────────────────
   // Member registrations take absolute priority over contact registrations.
   // All multi-household ambiguity is rejected (fail-closed) — no tie-breaking.
-  // The contacts data entry layer enforces cross-household phone uniqueness so
-  // that new collisions cannot be created by authenticated users.
+  // Duplicate phone registrations across households are possible (the contacts
+  // API does not enforce cross-household uniqueness to avoid leaking tenant
+  // presence). If a collision occurs, ingestion is discarded (multi_household).
   const resolved = await resolveHousehold(phoneNorm, log, phoneRaw);
 
   if (!resolved) {
