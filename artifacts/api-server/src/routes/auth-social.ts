@@ -3,7 +3,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { google } from "googleapis";
 import jwt from "jsonwebtoken";
 import { db, usersTable, householdsTable } from "@workspace/db";
-import { eq, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   createSession,
   getSessionId,
@@ -126,14 +126,13 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     return;
   }
 
-  // Find by google_id, then by email, else create
-  const conditions = [eq(usersTable.googleId, googleUserId)];
-  if (googleEmail) conditions.push(eq(usersTable.email, googleEmail));
-
+  // Find by google_id only — never fall back to email matching.
+  // Email is not a reliable proof that two identities belong to the same person;
+  // linking by email alone would allow account takeover via a matching social identity.
   const [existing] = await db
     .select()
     .from(usersTable)
-    .where(or(...conditions))
+    .where(eq(usersTable.googleId, googleUserId))
     .limit(1);
 
   let userId: string;
@@ -320,14 +319,13 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
     }
   }
 
-  // Find by apple_id, then email, else create
-  const conditions = [eq(usersTable.appleId, appleUserId)];
-  if (appleEmail) conditions.push(eq(usersTable.email, appleEmail));
-
+  // Find by apple_id only — never fall back to email matching.
+  // Email is not a reliable proof that two identities belong to the same person;
+  // linking by email alone would allow account takeover via a matching social identity.
   const [existing] = await db
     .select()
     .from(usersTable)
-    .where(or(...conditions))
+    .where(eq(usersTable.appleId, appleUserId))
     .limit(1);
 
   let userId: string;
