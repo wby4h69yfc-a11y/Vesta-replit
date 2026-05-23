@@ -1,11 +1,67 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { contactsTable, inboxItemsTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { contactsTable, inboxItemsTable, membersTable } from "@workspace/db";
+import { eq, and, ne, sql } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
 
+/**
+ * Returns true if the normalised phone number is already registered in any
+ * contact or member record belonging to a household OTHER than
+ * `currentHouseholdId`.
+ *
+ * This check is required to keep the WhatsApp ingestion pipeline working
+ * correctly: `resolveHousehold` in wa-message-processor.ts fails-closed (drops
+ * the inbound message as "multi_household") whenever the same phone appears in
+ * more than one household.  Allowing duplicate registrations would silently
+ * break message delivery for the household that registered first.
+ *
+ * The result is NEVER exposed to callers as a differential HTTP signal — call
+ * sites must silently strip the phone rather than returning a 409, so no
+ * cross-tenant presence information leaks through the API.
+ *
+ * `excludeContactId` is set on PATCH so the check ignores the row being
+ * updated (it should not conflict with itself).
+ */
+async function phoneClaimedByAnotherHousehold(
+  phoneNorm: string,
+  currentHouseholdId: number,
+  excludeContactId?: number,
+): Promise<boolean> {
+  const contactConditions = [
+    sql`regexp_replace(${contactsTable.phone}, '[^0-9]', '', 'g') = ${phoneNorm}`,
+    ne(contactsTable.household_id, currentHouseholdId),
+  ];
+  if (excludeContactId !== undefined) {
+    contactConditions.push(ne(contactsTable.id, excludeContactId));
+  }
+  const [contactConflict] = await db
+    .select({ id: contactsTable.id })
+    .from(contactsTable)
+    .where(and(...contactConditions))
+    .limit(1);
+
+  if (contactConflict) return true;
+
+  const [memberConflict] = await db
+    .select({ id: membersTable.id })
+    .from(membersTable)
+    .where(
+      and(
+        sql`regexp_replace(${membersTable.phone}, '[^0-9]', '', 'g') = ${phoneNorm}`,
+        ne(membersTable.household_id, currentHouseholdId),
+      ),
+    )
+    .limit(1);
+
+  return !!memberConflict;
+}
+
+/** Normalise a phone string to digits only (mirrors wa-message-processor). */
+function normalisePhone(p: string): string {
+  return p.replace(/\D/g, "");
+}
 
 router.get("/contacts", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -37,9 +93,22 @@ router.post("/contacts", async (req, res) => {
 
     if (!name || !category) return res.status(400).json({ error: "name and category are required" });
 
+    // Silently drop the phone when it is already registered in another
+    // household to prevent WhatsApp routing ambiguity (multi_household).
+    // We do NOT return a 409 here — that would expose cross-tenant presence
+    // information to the caller.
+    let safePhone: string | null = phone ?? null;
+    if (safePhone) {
+      const phoneNorm = normalisePhone(safePhone);
+      if (phoneNorm && await phoneClaimedByAnotherHousehold(phoneNorm, hid)) {
+        req.log.warn({ hid, phone: phoneNorm }, "Contact creation: phone claimed by another household — storing without phone");
+        safePhone = null;
+      }
+    }
+
     const [contact] = await db
       .insert(contactsTable)
-      .values({ household_id: hid, name, phone: phone ?? null, category, aliases: aliases ?? [], notes: notes ?? null })
+      .values({ household_id: hid, name, phone: safePhone, category, aliases: aliases ?? [], notes: notes ?? null })
       .returning();
 
     res.status(201).json(contact);
@@ -69,6 +138,18 @@ router.patch("/contacts/:id", async (req, res) => {
       .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)));
     if (!contact) return res.status(404).json({ error: "Not found" });
 
+    // Silently drop a phone update that would collide with another household's
+    // registered phone to prevent WhatsApp routing ambiguity.
+    // We do NOT return 409 — that would expose cross-tenant presence to the caller.
+    let safePhone: string | undefined = phone;
+    if (safePhone !== undefined && safePhone !== null && safePhone !== contact.phone) {
+      const phoneNorm = normalisePhone(safePhone);
+      if (phoneNorm && await phoneClaimedByAnotherHousehold(phoneNorm, hid, id)) {
+        req.log.warn({ hid, id, phone: phoneNorm }, "Contact update: phone claimed by another household — keeping existing phone");
+        safePhone = undefined; // treat as if no phone change was requested
+      }
+    }
+
     // Derive consent timestamps from status transitions.
     const consentGrantedAt =
       consent_status === "consented" && contact.consent_status !== "consented"
@@ -83,7 +164,7 @@ router.patch("/contacts/:id", async (req, res) => {
       .update(contactsTable)
       .set({
         name: name ?? contact.name,
-        phone: phone !== undefined ? phone : contact.phone,
+        phone: safePhone !== undefined ? safePhone : contact.phone,
         category: category ?? contact.category,
         aliases: aliases ?? contact.aliases,
         notes: notes !== undefined ? notes : contact.notes,
@@ -159,14 +240,22 @@ router.post("/contacts/bulk", async (req, res) => {
       return res.status(400).json({ error: "contacts array is required" });
     }
 
-    const values = contacts.map((c) => ({
-      name: c.name,
-      phone: c.phone ?? null,
-      category: c.category ?? "outros",
-      aliases: [] as string[],
-      notes: c.notes ?? null,
-      household_id: hid,
-    }));
+    // Silently strip any phone that is already registered in another household.
+    // This prevents WhatsApp routing ambiguity without leaking cross-tenant
+    // presence information through the API response.
+    const values = await Promise.all(
+      contacts.map(async (c) => {
+        let safePhone: string | null = c.phone ?? null;
+        if (safePhone) {
+          const phoneNorm = safePhone.replace(/\D/g, "");
+          if (phoneNorm && await phoneClaimedByAnotherHousehold(phoneNorm, hid)) {
+            req.log.warn({ hid, phone: phoneNorm, name: c.name }, "Bulk contact import: phone claimed by another household — importing without phone");
+            safePhone = null;
+          }
+        }
+        return { name: c.name, phone: safePhone, category: c.category ?? "outros", aliases: [] as string[], notes: c.notes ?? null, household_id: hid };
+      }),
+    );
 
     const created = await db.insert(contactsTable).values(values).returning();
     res.status(201).json(created);
