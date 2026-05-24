@@ -236,8 +236,9 @@ export async function processInboundWAMessage(
   // ── 4. Resolve household from sender phone ─────────────────────────────────
   // Member registrations take absolute priority over contact registrations.
   // All multi-household ambiguity is rejected (fail-closed) — no tie-breaking.
-  // The contacts data entry layer enforces cross-household phone uniqueness so
-  // that new collisions cannot be created by authenticated users.
+  // Duplicate phone registrations across households are possible (the contacts
+  // API does not enforce cross-household uniqueness to avoid leaking tenant
+  // presence). If a collision occurs, ingestion is discarded (multi_household).
   const resolved = await resolveHousehold(phoneNorm, log, phoneRaw);
 
   if (!resolved) {
