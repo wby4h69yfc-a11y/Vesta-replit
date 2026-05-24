@@ -191,6 +191,7 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       case "multi_household":
       case "duplicate":
       case "empty_message":
+      case "media_rate_limited":
         // No reply — do not confirm to unknown/spam senders that the number is active
         break;
     }
