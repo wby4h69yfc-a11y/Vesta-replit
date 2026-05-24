@@ -6,8 +6,26 @@ import {
 import { logger } from "./logger";
 
 /**
+ * Maximum size allowed for a single Twilio media download.
+ * WhatsApp caps voice notes at ~16 MB and images at ~5 MB in practice, so
+ * 20 MB gives a safe margin while blocking maliciously large payloads that
+ * would exhaust server memory or trigger excessive AI spend.
+ */
+const MAX_MEDIA_BYTES = 20 * 1024 * 1024; // 20 MB
+
+/**
+ * Hard timeout for a single Twilio media fetch.
+ * Prevents a stalled/slow download from tying up the event loop indefinitely.
+ */
+const DOWNLOAD_TIMEOUT_MS = 30_000; // 30 seconds
+
+/**
  * Download a Twilio-hosted media file using Basic auth
  * (Twilio requires AccountSID:AuthToken credentials to fetch its media URLs).
+ *
+ * Enforces a 20 MB size cap (checked via Content-Length before reading and
+ * re-verified after) and a 30-second fetch timeout to prevent resource
+ * exhaustion from oversized or stalled downloads.
  */
 async function downloadTwilioMedia(
   url: string,
@@ -21,17 +39,44 @@ async function downloadTwilioMedia(
     headers["Authorization"] = `Basic ${creds}`;
   }
 
-  const res = await fetch(url, { headers });
-  if (!res.ok) {
-    throw new Error(
-      `Failed to download Twilio media: ${res.status} ${res.statusText}`,
-    );
-  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
 
-  const contentType =
-    res.headers.get("content-type") ?? "application/octet-stream";
-  const arrayBuffer = await res.arrayBuffer();
-  return { buffer: Buffer.from(arrayBuffer), contentType };
+  try {
+    const res = await fetch(url, { headers, signal: controller.signal });
+    if (!res.ok) {
+      throw new Error(
+        `Failed to download Twilio media: ${res.status} ${res.statusText}`,
+      );
+    }
+
+    // Reject before reading the body when Content-Length is present and over limit.
+    // This avoids allocating memory for payloads we will discard anyway.
+    const contentLengthHeader = res.headers.get("content-length");
+    if (contentLengthHeader !== null) {
+      const declared = parseInt(contentLengthHeader, 10);
+      if (!isNaN(declared) && declared > MAX_MEDIA_BYTES) {
+        throw new Error(
+          `Twilio media rejected: Content-Length ${declared} bytes exceeds limit of ${MAX_MEDIA_BYTES} bytes`,
+        );
+      }
+    }
+
+    const contentType =
+      res.headers.get("content-type") ?? "application/octet-stream";
+    const arrayBuffer = await res.arrayBuffer();
+
+    // Re-check actual size in case Content-Length was absent or lying.
+    if (arrayBuffer.byteLength > MAX_MEDIA_BYTES) {
+      throw new Error(
+        `Twilio media rejected: actual size ${arrayBuffer.byteLength} bytes exceeds limit of ${MAX_MEDIA_BYTES} bytes`,
+      );
+    }
+
+    return { buffer: Buffer.from(arrayBuffer), contentType };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 /**

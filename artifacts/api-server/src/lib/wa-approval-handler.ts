@@ -3,7 +3,7 @@
  *
  * Called after household resolution, before the full classification pipeline.
  * Checks if the inbound message is a short approval/rejection/edit/undo response
- * to the most recent pending Vesta suggested action for that household.
+ * to the pending Vesta suggested action that was shown to this specific sender.
  *
  * Returns a typed outcome, or null to signal the caller should continue with
  * the normal inbox → classify pipeline.
@@ -17,6 +17,11 @@
  *   undo     — desfazer, cancela isso, errei, foi erro, engano, undo
  *
  * Undo window: 30 minutes from approval.
+ *
+ * Security: approvals/dismissals/edits are bound to the specific action that was
+ * proposed to this sender's phone number via the wa-prompt-store. This prevents
+ * a race-condition hijack where a concurrent message creates a newer pending
+ * action that would otherwise be selected as "most recent" for the household.
  */
 
 import type { Logger } from "pino";
@@ -29,6 +34,7 @@ import {
   auditLogTable,
 } from "@workspace/db";
 import { eq, and, desc, gte } from "drizzle-orm";
+import { getPromptedActionId, clearPrompt } from "./wa-prompt-store";
 
 export type ApprovalHandlerOutcome =
   | { kind: "approved_via_wa"; actionId: number; actionTitle: string; householdId: number }
@@ -59,12 +65,16 @@ interface ActionRow {
 
 /**
  * Attempts to interpret `body` as an approval/dismissal/edit/undo command for
- * the given household. Returns a typed outcome or undefined if the message
- * should be treated as a new inbound message.
+ * the given household and sender. Returns a typed outcome or undefined if the
+ * message should be treated as a new inbound message.
+ *
+ * `senderPhone` is used to look up the specific action that was proposed to this
+ * sender, preventing race-condition approval hijacks.
  */
 export async function handleApprovalResponse(
   body: string,
   householdId: number,
+  senderPhone: string,
   log: Logger,
 ): Promise<ApprovalHandlerOutcome | undefined> {
   const trimmed = body.trim();
@@ -80,30 +90,49 @@ export async function handleApprovalResponse(
 
   if (!isApprove && !isDismiss && !editMatch) return undefined;
 
-  // ── find most recent pending action for this household ────────────────────
-  const [action] = await db
-    .select({
-      id: suggestedActionsTable.id,
-      inbox_item_id: suggestedActionsTable.inbox_item_id,
-      household_id: suggestedActionsTable.household_id,
-      title: suggestedActionsTable.title,
-      type: suggestedActionsTable.type,
-      category: suggestedActionsTable.category,
-      datetime: suggestedActionsTable.datetime,
-      notes: suggestedActionsTable.notes,
-      workflow_tags: suggestedActionsTable.workflow_tags,
-    })
-    .from(suggestedActionsTable)
-    .where(
-      and(
-        eq(suggestedActionsTable.household_id, householdId),
-        eq(suggestedActionsTable.status, "pending"),
-      ),
-    )
-    .orderBy(desc(suggestedActionsTable.created_at))
-    .limit(1);
+  // ── find the specific action that was proposed to this sender ─────────────
+  // We look up the action ID from the prompt store first (bound when the
+  // proposal was sent to this phone). This prevents "most recent" selection
+  // from being hijacked by a concurrent message that created a newer action.
+  const promptedActionId = getPromptedActionId(senderPhone, householdId);
 
-  if (!action) return undefined; // No pending action — treat body as a new message
+  let action: ActionRow | undefined;
+
+  if (promptedActionId !== null) {
+    const [found] = await db
+      .select({
+        id: suggestedActionsTable.id,
+        inbox_item_id: suggestedActionsTable.inbox_item_id,
+        household_id: suggestedActionsTable.household_id,
+        title: suggestedActionsTable.title,
+        type: suggestedActionsTable.type,
+        category: suggestedActionsTable.category,
+        datetime: suggestedActionsTable.datetime,
+        notes: suggestedActionsTable.notes,
+        workflow_tags: suggestedActionsTable.workflow_tags,
+      })
+      .from(suggestedActionsTable)
+      .where(
+        and(
+          eq(suggestedActionsTable.id, promptedActionId),
+          eq(suggestedActionsTable.household_id, householdId),
+          eq(suggestedActionsTable.status, "pending"),
+        ),
+      )
+      .limit(1);
+    action = found;
+  }
+
+  if (!action) {
+    // No valid prompt binding for this sender — do not fall back to "most
+    // recent" for the whole household, as that would re-introduce the race
+    // condition. Treat as a regular message instead.
+    log.info(
+      { senderPhone, householdId, promptedActionId },
+      "No bound pending action for sender — treating as new message",
+    );
+    return undefined;
+  }
 
   if (isApprove) {
     await createEventOrTask(action, householdId);
@@ -112,6 +141,7 @@ export async function handleApprovalResponse(
       description: `Aprovado via WhatsApp: ${action.title}`,
       category: action.category,
     });
+    clearPrompt(senderPhone);
     log.info({ actionId: action.id, title: action.title }, "Action approved via WhatsApp");
     return {
       kind: "approved_via_wa",
@@ -127,6 +157,7 @@ export async function handleApprovalResponse(
       description: `Descartado via WhatsApp: ${action.title}`,
       category: action.category,
     });
+    clearPrompt(senderPhone);
     log.info({ actionId: action.id, title: action.title }, "Action dismissed via WhatsApp");
     return { kind: "dismissed_via_wa", actionId: action.id, householdId };
   }
@@ -156,6 +187,7 @@ export async function handleApprovalResponse(
       description: `Editado via WhatsApp: ${newTitle}`,
     });
 
+    clearPrompt(senderPhone);
     log.info({ actionId: action.id, newTitle }, "Action edited and approved via WhatsApp");
     return { kind: "edited_via_wa", actionId: action.id, newTitle, householdId };
   }

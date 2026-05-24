@@ -22,6 +22,7 @@ import { classifyAndSaveAction } from "./classifier";
 import { processWhatsAppMedia } from "./media-analysis";
 import { looksLikeToken, markTokenVerified } from "./wa-token-store";
 import { handleApprovalResponse } from "./wa-approval-handler";
+import { recordPrompt } from "./wa-prompt-store";
 
 /** Payload shape normalised by the webhook handler before calling us. */
 export interface InboundWAMessage {
@@ -46,6 +47,7 @@ export type ProcessOutcome =
   | { kind: "duplicate"; messageSid: string }
   | { kind: "unknown_sender"; phone: string }
   | { kind: "multi_household"; phone: string }
+  | { kind: "media_rate_limited"; phone: string }
   | { kind: "approved_via_wa"; actionId: number; actionTitle: string; householdId: number; phone: string }
   | { kind: "dismissed_via_wa"; actionId: number; householdId: number; phone: string }
   | { kind: "edited_via_wa"; actionId: number; newTitle: string; householdId: number; phone: string }
@@ -67,6 +69,35 @@ export type ProcessOutcome =
 /** Strip all non-digit chars for exact phone matching. */
 function normalisePhone(p: string): string {
   return p.replace(/\D/g, "");
+}
+
+// ── Per-sender media rate limiting ────────────────────────────────────────────
+// Limits unbounded media download + AI processing to at most MEDIA_RATE_LIMIT
+// messages per MEDIA_RATE_WINDOW_MS per sender, preventing resource exhaustion
+// by any single recognized WhatsApp number.
+
+const MEDIA_RATE_LIMIT = 10;
+const MEDIA_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+interface RateLimitEntry {
+  count: number;
+  windowStart: number;
+}
+
+const mediaRateLimitStore = new Map<string, RateLimitEntry>();
+
+function checkMediaRateLimit(phoneNorm: string): boolean {
+  const now = Date.now();
+  const entry = mediaRateLimitStore.get(phoneNorm);
+  if (!entry || now - entry.windowStart > MEDIA_RATE_WINDOW_MS) {
+    mediaRateLimitStore.set(phoneNorm, { count: 1, windowStart: now });
+    return true;
+  }
+  if (entry.count >= MEDIA_RATE_LIMIT) {
+    return false;
+  }
+  entry.count++;
+  return true;
 }
 
 type MatchedMember = {
@@ -236,8 +267,9 @@ export async function processInboundWAMessage(
   // ── 4. Resolve household from sender phone ─────────────────────────────────
   // Member registrations take absolute priority over contact registrations.
   // All multi-household ambiguity is rejected (fail-closed) — no tie-breaking.
-  // The contacts data entry layer enforces cross-household phone uniqueness so
-  // that new collisions cannot be created by authenticated users.
+  // Duplicate phone registrations across households are possible (the contacts
+  // API does not enforce cross-household uniqueness to avoid leaking tenant
+  // presence). If a collision occurs, ingestion is discarded (multi_household).
   const resolved = await resolveHousehold(phoneNorm, log, phoneRaw);
 
   if (!resolved) {
@@ -258,12 +290,17 @@ export async function processInboundWAMessage(
   //      from approving financial, medical, or scheduling actions unilaterally.
   // This check runs before the consent check so consent status is irrelevant
   // to the authorization decision.
+  //
+  // Security: senderPhone is passed so the handler can look up the exact action
+  // that was proposed to this sender (via wa-prompt-store), rather than picking
+  // the most-recently-created pending action for the whole household. This closes
+  // the race-condition approval hijack window.
   const senderIsAdmin = matchedMembers.some(
     (m) => m.household_id === householdId && m.role === "admin",
   );
 
   if (bodyText && senderIsAdmin) {
-    const approvalOutcome = await handleApprovalResponse(bodyText, householdId, log);
+    const approvalOutcome = await handleApprovalResponse(bodyText, householdId, phoneRaw, log);
     if (approvalOutcome) {
       return { ...approvalOutcome, phone: phoneRaw };
     }
@@ -292,10 +329,20 @@ export async function processInboundWAMessage(
   }
 
   // ── 5. Media processing ────────────────────────────────────────────────────
+  // Rate-limit media downloads per sender to prevent resource exhaustion via
+  // repeated large attachments driving memory allocation and paid AI API calls.
   let source = "whatsapp";
   let rawContent = bodyText;
 
   if (hasMedia && payload.mediaUrl && payload.mediaContentType) {
+    if (!checkMediaRateLimit(phoneNorm)) {
+      log.warn(
+        { phone: phoneRaw, householdId },
+        "Media rate limit exceeded for sender — skipping media processing",
+      );
+      return { kind: "media_rate_limited", phone: phoneRaw };
+    }
+
     log.info(
       { contentType: payload.mediaContentType, sid: payload.messageSid },
       "Processing media attachment",
@@ -337,6 +384,7 @@ export async function processInboundWAMessage(
   // Read back the saved action to inform the caller's reply (proposal message)
   const [savedAction] = await db
     .select({
+      id: suggestedActionsTable.id,
       approval_level: suggestedActionsTable.approval_level,
       title: suggestedActionsTable.title,
       type: suggestedActionsTable.type,
@@ -346,6 +394,18 @@ export async function processInboundWAMessage(
     .from(suggestedActionsTable)
     .where(eq(suggestedActionsTable.inbox_item_id, item.id))
     .limit(1);
+
+  // ── 8. Bind the proposed action to this sender's phone ────────────────────
+  // Record the (phone → actionId) mapping now so that when the admin/sender
+  // replies "sim"/"não", the approval handler operates on this exact action
+  // rather than the most-recent pending action for the household.
+  if (savedAction?.id && savedAction.title) {
+    recordPrompt(phoneRaw, savedAction.id, householdId);
+    log.info(
+      { phone: phoneRaw, actionId: savedAction.id },
+      "Bound proposed action to sender phone",
+    );
+  }
 
   return {
     kind: "ingested",
