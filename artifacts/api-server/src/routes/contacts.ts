@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { contactsTable, inboxItemsTable } from "@workspace/db";
+import { contactsTable, inboxItemsTable, householdsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
+import { sendWhatsApp } from "../lib/whatsapp";
+import { replyConsentRequest } from "../lib/wa-reply-composer";
 
 const router = Router();
 
@@ -98,6 +100,72 @@ router.patch("/contacts/:id", async (req, res) => {
     res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to update contact");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/contacts/:id/request-consent", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const hid = getHouseholdId(req);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid contact id" });
+
+    const [contact] = await db
+      .select()
+      .from(contactsTable)
+      .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)));
+
+    if (!contact) return res.status(404).json({ error: "Not found" });
+
+    if (!contact.phone) {
+      return res.status(400).json({ error: "Contact has no phone number" });
+    }
+
+    if (contact.consent_status === "consented") {
+      return res.status(409).json({ error: "Contact has already consented" });
+    }
+
+    // Rate limit: one request per 24 hours per contact
+    if (contact.last_consent_requested_at) {
+      const hoursSince =
+        (Date.now() - new Date(contact.last_consent_requested_at).getTime()) / (1000 * 60 * 60);
+      if (hoursSince < 24) {
+        const nextAllowedAt = new Date(
+          new Date(contact.last_consent_requested_at).getTime() + 24 * 60 * 60 * 1000,
+        );
+        return res.status(429).json({
+          error: "Consent request rate limited — one per 24h per contact",
+          next_allowed_at: nextAllowedAt.toISOString(),
+        });
+      }
+    }
+
+    // Resolve household name for the consent message
+    const [household] = await db
+      .select({ name: householdsTable.name })
+      .from(householdsTable)
+      .where(eq(householdsTable.id, hid));
+
+    const message = replyConsentRequest(household?.name ?? null);
+    const sendResult = await sendWhatsApp(contact.phone, message);
+
+    if (!sendResult.ok) {
+      req.log.warn({ contactId: id, error: sendResult.error }, "WhatsApp consent request failed");
+    }
+
+    const [updated] = await db
+      .update(contactsTable)
+      .set({
+        last_consent_requested_at: new Date(),
+        consent_status: contact.consent_status === "consented" ? "consented" : "pending",
+      })
+      .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)))
+      .returning();
+
+    res.json({ contact: updated, whatsapp_sent: sendResult.ok });
+  } catch (err) {
+    req.log.error({ err }, "Failed to request consent");
     res.status(500).json({ error: "Internal server error" });
   }
 });

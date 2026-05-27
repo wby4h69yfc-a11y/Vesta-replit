@@ -288,50 +288,19 @@ export interface Contact {
   consent_granted_at?: string | null;
   /** @nullable */
   consent_withdrawn_at?: string | null;
+  /** @nullable */
+  last_consent_requested_at?: string | null;
   created_at?: string;
 }
 
-export type ContactInputCategory =
-  (typeof ContactInputCategory)[keyof typeof ContactInputCategory];
-
-export const ContactInputCategory = {
-  escola: "escola",
-  saude: "saude",
-  casa: "casa",
-  diarista: "diarista",
-  portaria: "portaria",
-  sindico: "sindico",
-  social: "social",
-  servicos: "servicos",
-  familia: "familia",
-  outros: "outros",
-} as const;
-
-export interface ContactInput {
-  name: string;
-  phone?: string;
-  category: ContactInputCategory;
-  aliases?: string[];
-  notes?: string;
+export interface ConsentRequestResponse {
+  contact: Contact;
+  whatsapp_sent: boolean;
 }
 
-export type ContactUpdateConsentStatus =
-  (typeof ContactUpdateConsentStatus)[keyof typeof ContactUpdateConsentStatus];
-
-export const ContactUpdateConsentStatus = {
-  not_required: "not_required",
-  pending: "pending",
-  consented: "consented",
-  revoked: "revoked",
-} as const;
-
-export interface ContactUpdate {
-  name?: string;
-  phone?: string;
-  category?: string;
-  aliases?: string[];
-  notes?: string;
-  consent_status?: ContactUpdateConsentStatus;
+export interface ConsentRateLimitError {
+  error: string;
+  next_allowed_at: string;
 }
 
 export type InboxItemSource =
@@ -433,105 +402,6 @@ export interface SuggestedAction {
   created_at?: string;
 }
 
-export interface InboxItemDetail {
-  id: number;
-  source: string;
-  raw_content: string;
-  /** @nullable */
-  media_url?: string | null;
-  status: string;
-  /** @nullable */
-  sender_name?: string | null;
-  created_at: string;
-  actions: SuggestedAction[];
-}
-
-export type InboxItemInputSource =
-  (typeof InboxItemInputSource)[keyof typeof InboxItemInputSource];
-
-export const InboxItemInputSource = {
-  manual: "manual",
-  whatsapp: "whatsapp",
-  email: "email",
-  photo: "photo",
-} as const;
-
-export interface InboxItemInput {
-  raw_content: string;
-  source: InboxItemInputSource;
-  sender_name?: string;
-}
-
-export interface ActionApproval {
-  notes?: string;
-}
-
-export interface ActionEdit {
-  title?: string;
-  category?: string;
-  type?: string;
-  datetime?: string;
-  suggested_owner?: string;
-  notes?: string;
-}
-
-export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
-
-export const TaskStatus = {
-  pending: "pending",
-  in_progress: "in_progress",
-  done: "done",
-  cancelled: "cancelled",
-} as const;
-
-export interface Task {
-  id: number;
-  title: string;
-  /** @nullable */
-  owner_id?: number | null;
-  /** @nullable */
-  owner_name?: string | null;
-  /** @nullable */
-  due_at?: string | null;
-  status: TaskStatus;
-  /** @nullable */
-  category?: string | null;
-  /** @nullable */
-  linked_event_id?: number | null;
-  workflow_tags?: string[];
-  created_at: string;
-  /** @nullable */
-  completed_at?: string | null;
-}
-
-export interface TaskInput {
-  title: string;
-  owner_id?: number;
-  due_at?: string;
-  category?: string;
-  workflow_tags?: string[];
-}
-
-export type TaskUpdateStatus =
-  (typeof TaskUpdateStatus)[keyof typeof TaskUpdateStatus];
-
-export const TaskUpdateStatus = {
-  pending: "pending",
-  in_progress: "in_progress",
-  done: "done",
-  cancelled: "cancelled",
-} as const;
-
-export interface TaskUpdate {
-  title?: string;
-  /** @nullable */
-  owner_id?: number | null;
-  /** @nullable */
-  due_at?: string | null;
-  status?: TaskUpdateStatus;
-  category?: string;
-}
-
 export type CalendarEventCategory =
   (typeof CalendarEventCategory)[keyof typeof CalendarEventCategory];
 
@@ -582,37 +452,33 @@ export interface CalendarEvent {
   created_at: string;
 }
 
-export type CalendarEventInputCategory =
-  (typeof CalendarEventInputCategory)[keyof typeof CalendarEventInputCategory];
+export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
 
-export const CalendarEventInputCategory = {
-  escola: "escola",
-  saude: "saude",
-  casa: "casa",
-  social: "social",
-  logistica: "logistica",
-  refeicoes: "refeicoes",
-  servicos: "servicos",
-  outros: "outros",
+export const TaskStatus = {
+  pending: "pending",
+  in_progress: "in_progress",
+  done: "done",
+  cancelled: "cancelled",
 } as const;
 
-export interface CalendarEventInput {
+export interface Task {
+  id: number;
   title: string;
-  start_at: string;
-  end_at?: string;
-  all_day?: boolean;
-  category: CalendarEventInputCategory;
-  members?: string[];
-  notes?: string;
-}
-
-export interface CalendarEventUpdate {
-  title?: string;
-  start_at?: string;
-  end_at?: string;
-  all_day?: boolean;
-  category?: string;
-  notes?: string;
+  /** @nullable */
+  owner_id?: number | null;
+  /** @nullable */
+  owner_name?: string | null;
+  /** @nullable */
+  due_at?: string | null;
+  status: TaskStatus;
+  /** @nullable */
+  category?: string | null;
+  /** @nullable */
+  linked_event_id?: number | null;
+  workflow_tags?: string[];
+  created_at: string;
+  /** @nullable */
+  completed_at?: string | null;
 }
 
 export type RuleCategory = (typeof RuleCategory)[keyof typeof RuleCategory];
@@ -661,40 +527,6 @@ export interface Rule {
   created_at?: string;
 }
 
-export type RuleInputApprovalLevel =
-  (typeof RuleInputApprovalLevel)[keyof typeof RuleInputApprovalLevel];
-
-export const RuleInputApprovalLevel = {
-  soft: "soft",
-  one_tap: "one_tap",
-  explicit: "explicit",
-} as const;
-
-export interface RuleInput {
-  name: string;
-  category: string;
-  trigger_desc: string;
-  action_desc: string;
-  approval_level: RuleInputApprovalLevel;
-}
-
-export type RuleUpdateApprovalLevel =
-  (typeof RuleUpdateApprovalLevel)[keyof typeof RuleUpdateApprovalLevel];
-
-export const RuleUpdateApprovalLevel = {
-  soft: "soft",
-  one_tap: "one_tap",
-  explicit: "explicit",
-} as const;
-
-export interface RuleUpdate {
-  name?: string;
-  trigger_desc?: string;
-  action_desc?: string;
-  approval_level?: RuleUpdateApprovalLevel;
-  active?: boolean;
-}
-
 export type PatternObservationType =
   (typeof PatternObservationType)[keyof typeof PatternObservationType];
 
@@ -728,6 +560,250 @@ export interface PatternObservation {
   /** @nullable */
   evidence?: string | null;
   created_at?: string;
+}
+
+export type MemoryStagingItemTargetTable =
+  (typeof MemoryStagingItemTargetTable)[keyof typeof MemoryStagingItemTargetTable];
+
+export const MemoryStagingItemTargetTable = {
+  household_places: "household_places",
+  household_routines: "household_routines",
+  household_preferences: "household_preferences",
+} as const;
+
+export type MemoryStagingItemStatus =
+  (typeof MemoryStagingItemStatus)[keyof typeof MemoryStagingItemStatus];
+
+export const MemoryStagingItemStatus = {
+  pending: "pending",
+  confirmed: "confirmed",
+  dismissed: "dismissed",
+  expired: "expired",
+} as const;
+
+export type MemoryStagingItemProposedRecord = { [key: string]: unknown };
+
+export interface MemoryStagingItem {
+  id: number;
+  target_table: MemoryStagingItemTargetTable;
+  proposed_record: MemoryStagingItemProposedRecord;
+  /** @nullable */
+  extracted_from_inbox_id?: number | null;
+  context_summary: string;
+  status: MemoryStagingItemStatus;
+  /** @nullable */
+  surfaced_to_user_at?: string | null;
+  /** @nullable */
+  responded_at?: string | null;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface AuditLogEntry {
+  id: number;
+  action: string;
+  actor: string;
+  action_type: string;
+  /** @nullable */
+  category?: string | null;
+  description: string;
+  timestamp: string;
+}
+
+export interface PrivacyExport {
+  exported_at: string;
+  user_id: string;
+  household?: Household | null;
+  members?: Member[];
+  contacts?: Contact[];
+  inbox_items?: InboxItem[];
+  suggested_actions?: SuggestedAction[];
+  events?: CalendarEvent[];
+  tasks?: Task[];
+  rules?: Rule[];
+  patterns?: PatternObservation[];
+  memory_staging?: MemoryStagingItem[];
+  audit_log?: AuditLogEntry[];
+}
+
+export type ContactInputCategory =
+  (typeof ContactInputCategory)[keyof typeof ContactInputCategory];
+
+export const ContactInputCategory = {
+  escola: "escola",
+  saude: "saude",
+  casa: "casa",
+  diarista: "diarista",
+  portaria: "portaria",
+  sindico: "sindico",
+  social: "social",
+  servicos: "servicos",
+  familia: "familia",
+  outros: "outros",
+} as const;
+
+export interface ContactInput {
+  name: string;
+  phone?: string;
+  category: ContactInputCategory;
+  aliases?: string[];
+  notes?: string;
+}
+
+export type ContactUpdateConsentStatus =
+  (typeof ContactUpdateConsentStatus)[keyof typeof ContactUpdateConsentStatus];
+
+export const ContactUpdateConsentStatus = {
+  not_required: "not_required",
+  pending: "pending",
+  consented: "consented",
+  revoked: "revoked",
+} as const;
+
+export interface ContactUpdate {
+  name?: string;
+  phone?: string;
+  category?: string;
+  aliases?: string[];
+  notes?: string;
+  consent_status?: ContactUpdateConsentStatus;
+}
+
+export interface InboxItemDetail {
+  id: number;
+  source: string;
+  raw_content: string;
+  /** @nullable */
+  media_url?: string | null;
+  status: string;
+  /** @nullable */
+  sender_name?: string | null;
+  created_at: string;
+  actions: SuggestedAction[];
+}
+
+export type InboxItemInputSource =
+  (typeof InboxItemInputSource)[keyof typeof InboxItemInputSource];
+
+export const InboxItemInputSource = {
+  manual: "manual",
+  whatsapp: "whatsapp",
+  email: "email",
+  photo: "photo",
+} as const;
+
+export interface InboxItemInput {
+  raw_content: string;
+  source: InboxItemInputSource;
+  sender_name?: string;
+}
+
+export interface ActionApproval {
+  notes?: string;
+}
+
+export interface ActionEdit {
+  title?: string;
+  category?: string;
+  type?: string;
+  datetime?: string;
+  suggested_owner?: string;
+  notes?: string;
+}
+
+export interface TaskInput {
+  title: string;
+  owner_id?: number;
+  due_at?: string;
+  category?: string;
+  workflow_tags?: string[];
+}
+
+export type TaskUpdateStatus =
+  (typeof TaskUpdateStatus)[keyof typeof TaskUpdateStatus];
+
+export const TaskUpdateStatus = {
+  pending: "pending",
+  in_progress: "in_progress",
+  done: "done",
+  cancelled: "cancelled",
+} as const;
+
+export interface TaskUpdate {
+  title?: string;
+  /** @nullable */
+  owner_id?: number | null;
+  /** @nullable */
+  due_at?: string | null;
+  status?: TaskUpdateStatus;
+  category?: string;
+}
+
+export type CalendarEventInputCategory =
+  (typeof CalendarEventInputCategory)[keyof typeof CalendarEventInputCategory];
+
+export const CalendarEventInputCategory = {
+  escola: "escola",
+  saude: "saude",
+  casa: "casa",
+  social: "social",
+  logistica: "logistica",
+  refeicoes: "refeicoes",
+  servicos: "servicos",
+  outros: "outros",
+} as const;
+
+export interface CalendarEventInput {
+  title: string;
+  start_at: string;
+  end_at?: string;
+  all_day?: boolean;
+  category: CalendarEventInputCategory;
+  members?: string[];
+  notes?: string;
+}
+
+export interface CalendarEventUpdate {
+  title?: string;
+  start_at?: string;
+  end_at?: string;
+  all_day?: boolean;
+  category?: string;
+  notes?: string;
+}
+
+export type RuleInputApprovalLevel =
+  (typeof RuleInputApprovalLevel)[keyof typeof RuleInputApprovalLevel];
+
+export const RuleInputApprovalLevel = {
+  soft: "soft",
+  one_tap: "one_tap",
+  explicit: "explicit",
+} as const;
+
+export interface RuleInput {
+  name: string;
+  category: string;
+  trigger_desc: string;
+  action_desc: string;
+  approval_level: RuleInputApprovalLevel;
+}
+
+export type RuleUpdateApprovalLevel =
+  (typeof RuleUpdateApprovalLevel)[keyof typeof RuleUpdateApprovalLevel];
+
+export const RuleUpdateApprovalLevel = {
+  soft: "soft",
+  one_tap: "one_tap",
+  explicit: "explicit",
+} as const;
+
+export interface RuleUpdate {
+  name?: string;
+  trigger_desc?: string;
+  action_desc?: string;
+  approval_level?: RuleUpdateApprovalLevel;
+  active?: boolean;
 }
 
 export interface DashboardSummary {
@@ -831,54 +907,6 @@ export interface BriefingSendResponse {
   sid?: string;
   eventsCount?: number;
   tasksCount?: number;
-}
-
-export type MemoryStagingItemTargetTable =
-  (typeof MemoryStagingItemTargetTable)[keyof typeof MemoryStagingItemTargetTable];
-
-export const MemoryStagingItemTargetTable = {
-  household_places: "household_places",
-  household_routines: "household_routines",
-  household_preferences: "household_preferences",
-} as const;
-
-export type MemoryStagingItemProposedRecord = { [key: string]: unknown };
-
-export type MemoryStagingItemStatus =
-  (typeof MemoryStagingItemStatus)[keyof typeof MemoryStagingItemStatus];
-
-export const MemoryStagingItemStatus = {
-  pending: "pending",
-  confirmed: "confirmed",
-  dismissed: "dismissed",
-  expired: "expired",
-} as const;
-
-export interface MemoryStagingItem {
-  id: number;
-  target_table: MemoryStagingItemTargetTable;
-  proposed_record: MemoryStagingItemProposedRecord;
-  /** @nullable */
-  extracted_from_inbox_id?: number | null;
-  context_summary: string;
-  status: MemoryStagingItemStatus;
-  /** @nullable */
-  surfaced_to_user_at?: string | null;
-  /** @nullable */
-  responded_at?: string | null;
-  created_at: string;
-  expires_at: string;
-}
-
-export interface AuditLogEntry {
-  id: number;
-  action: string;
-  actor: string;
-  action_type: string;
-  /** @nullable */
-  category?: string | null;
-  description: string;
-  timestamp: string;
 }
 
 /**

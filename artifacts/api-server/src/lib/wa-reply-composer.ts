@@ -73,6 +73,20 @@ export function replyConsentRequired(): string {
   );
 }
 
+/**
+ * Sent proactively to a diarista or external contact asking for explicit
+ * LGPD consent to receive WhatsApp messages from Vesta.
+ */
+export function replyConsentRequest(householdName?: string | null): string {
+  const from = householdName ? `a família *${householdName}*` : "uma família";
+  return (
+    `Olá! ${from} usa o aplicativo *Vesta* para organizar a rotina da casa e gostaria de enviar mensagens por WhatsApp.\n\n` +
+    `Responda *SIM* para autorizar o recebimento de mensagens ou *NÃO* para recusar. ` +
+    `Você pode revogar essa autorização a qualquer momento respondendo *REVOGAR*.\n\n` +
+    `_Esta mensagem é enviada em conformidade com a LGPD (Lei 13.709/2018)._`
+  );
+}
+
 // ── Action proposal & approval replies ───────────────────────────────────────
 
 const CATEGORY_EMOJI: Record<string, string> = {

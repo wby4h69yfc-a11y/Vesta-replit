@@ -733,6 +733,7 @@ export const ListContactsResponseItem = zod.object({
     .nullish(),
   consent_granted_at: zod.coerce.date().nullish(),
   consent_withdrawn_at: zod.coerce.date().nullish(),
+  last_consent_requested_at: zod.coerce.date().nullish(),
   created_at: zod.coerce.date().optional(),
 });
 export const ListContactsResponse = zod.array(ListContactsResponseItem);
@@ -800,6 +801,7 @@ export const UpdateContactResponse = zod.object({
     .nullish(),
   consent_granted_at: zod.coerce.date().nullish(),
   consent_withdrawn_at: zod.coerce.date().nullish(),
+  last_consent_requested_at: zod.coerce.date().nullish(),
   created_at: zod.coerce.date().optional(),
 });
 
@@ -808,6 +810,312 @@ export const UpdateContactResponse = zod.object({
  */
 export const DeleteContactParams = zod.object({
   id: zod.coerce.number(),
+});
+
+/**
+ * @summary Send a WhatsApp consent request to a contact (LGPD)
+ */
+export const RequestContactConsentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RequestContactConsentResponse = zod.object({
+  contact: zod.object({
+    id: zod.number(),
+    name: zod.string(),
+    phone: zod.string().nullish(),
+    category: zod.enum([
+      "escola",
+      "saude",
+      "casa",
+      "diarista",
+      "portaria",
+      "sindico",
+      "social",
+      "servicos",
+      "familia",
+      "outros",
+    ]),
+    aliases: zod.array(zod.string()).optional(),
+    notes: zod.string().nullish(),
+    consent_status: zod
+      .enum(["not_required", "pending", "consented", "revoked"])
+      .nullish(),
+    consent_granted_at: zod.coerce.date().nullish(),
+    consent_withdrawn_at: zod.coerce.date().nullish(),
+    last_consent_requested_at: zod.coerce.date().nullish(),
+    created_at: zod.coerce.date().optional(),
+  }),
+  whatsapp_sent: zod.boolean(),
+});
+
+/**
+ * @summary Export all household data as JSON (LGPD Art. 18 V)
+ */
+export const exportPrivacyDataResponseHouseholdOneBriefingHourMin = 0;
+export const exportPrivacyDataResponseHouseholdOneBriefingHourMax = 23;
+
+export const ExportPrivacyDataResponse = zod.object({
+  exported_at: zod.coerce.date(),
+  user_id: zod.string(),
+  household: zod
+    .object({
+      id: zod.number(),
+      name: zod.string(),
+      location: zod.string().nullish(),
+      plan: zod.enum(["free", "premium"]),
+      concierge_eligible: zod.boolean().optional(),
+      briefing_hour: zod
+        .number()
+        .min(exportPrivacyDataResponseHouseholdOneBriefingHourMin)
+        .max(exportPrivacyDataResponseHouseholdOneBriefingHourMax)
+        .optional()
+        .describe(
+          "Hour (0-23 UTC) at which the daily briefing is sent automatically.",
+        ),
+      created_at: zod.coerce.date().optional(),
+    })
+    .nullish(),
+  members: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        household_id: zod.number().optional(),
+        user_id: zod.string().nullish(),
+        name: zod.string(),
+        display_name: zod.string().nullish(),
+        role: zod.enum(["admin", "member", "restricted"]),
+        relationship_type: zod.enum(["adult", "child", "other"]).optional(),
+        phone: zod.string().nullish(),
+        avatar_url: zod.string().nullish(),
+        colour: zod.string().nullish(),
+        birth_year: zod.number().nullish(),
+        school: zod.string().nullish(),
+        grade: zod.string().nullish(),
+        primary_doctor: zod.string().nullish(),
+        schedule: zod.string().nullish(),
+        medical_plan: zod.string().nullish(),
+        created_at: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  contacts: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        name: zod.string(),
+        phone: zod.string().nullish(),
+        category: zod.enum([
+          "escola",
+          "saude",
+          "casa",
+          "diarista",
+          "portaria",
+          "sindico",
+          "social",
+          "servicos",
+          "familia",
+          "outros",
+        ]),
+        aliases: zod.array(zod.string()).optional(),
+        notes: zod.string().nullish(),
+        consent_status: zod
+          .enum(["not_required", "pending", "consented", "revoked"])
+          .nullish(),
+        consent_granted_at: zod.coerce.date().nullish(),
+        consent_withdrawn_at: zod.coerce.date().nullish(),
+        last_consent_requested_at: zod.coerce.date().nullish(),
+        created_at: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  inbox_items: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        source: zod.enum(["whatsapp", "email", "manual", "photo"]),
+        raw_content: zod.string(),
+        media_url: zod.string().nullish(),
+        status: zod.enum([
+          "received",
+          "classifying",
+          "ready_for_review",
+          "approved",
+          "dismissed",
+          "failed",
+          "manual_review",
+        ]),
+        sender_name: zod.string().nullish(),
+        created_at: zod.coerce.date(),
+        actions_count: zod.number().optional(),
+      }),
+    )
+    .optional(),
+  suggested_actions: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        inbox_item_id: zod.number(),
+        category: zod.enum([
+          "escola",
+          "saude",
+          "casa",
+          "social",
+          "logistica",
+          "refeicoes",
+          "servicos",
+          "outros",
+        ]),
+        type: zod.enum(["event", "task", "reminder", "fyi"]),
+        title: zod.string(),
+        datetime: zod.string().nullish(),
+        suggested_owner: zod.string().nullish(),
+        approval_level: zod.enum(["soft", "one_tap", "explicit"]),
+        confidence: zod.number(),
+        status: zod.enum(["pending", "approved", "dismissed", "auto_handled"]),
+        notes: zod.string().nullish(),
+        cascade_check_needed: zod.boolean().optional(),
+        workflow_tags: zod.array(zod.string()).optional(),
+        created_at: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  events: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        title: zod.string(),
+        start_at: zod.coerce.date(),
+        end_at: zod.coerce.date().nullish(),
+        all_day: zod.boolean().optional(),
+        category: zod.enum([
+          "escola",
+          "saude",
+          "casa",
+          "social",
+          "logistica",
+          "refeicoes",
+          "servicos",
+          "outros",
+        ]),
+        members: zod.array(zod.string()).optional(),
+        source: zod.enum(["manual", "auto", "pattern"]).optional(),
+        sync_status: zod
+          .enum(["synced", "pending", "failed", "local"])
+          .optional(),
+        notes: zod.string().nullish(),
+        workflow_tags: zod.array(zod.string()).optional(),
+        created_at: zod.coerce.date(),
+      }),
+    )
+    .optional(),
+  tasks: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        title: zod.string(),
+        owner_id: zod.number().nullish(),
+        owner_name: zod.string().nullish(),
+        due_at: zod.coerce.date().nullish(),
+        status: zod.enum(["pending", "in_progress", "done", "cancelled"]),
+        category: zod.string().nullish(),
+        linked_event_id: zod.number().nullish(),
+        workflow_tags: zod.array(zod.string()).optional(),
+        created_at: zod.coerce.date(),
+        completed_at: zod.string().nullish(),
+      }),
+    )
+    .optional(),
+  rules: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        name: zod.string(),
+        category: zod.enum([
+          "escola",
+          "saude",
+          "casa",
+          "social",
+          "logistica",
+          "refeicoes",
+          "servicos",
+          "outros",
+        ]),
+        trigger_desc: zod.string(),
+        action_desc: zod.string(),
+        approval_level: zod.enum(["soft", "one_tap", "explicit"]),
+        confidence: zod.number(),
+        active: zod.boolean(),
+        origin: zod
+          .enum(["system_template", "user_created", "pattern_suggested"])
+          .optional(),
+        times_triggered: zod.number().optional(),
+        times_approved: zod.number().optional(),
+        times_dismissed: zod.number().optional(),
+        created_at: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  patterns: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        type: zod.enum([
+          "sender",
+          "sequence",
+          "temporal",
+          "ownership",
+          "absence",
+          "seasonal",
+        ]),
+        description: zod.string(),
+        occurrences: zod.number(),
+        confidence: zod.number(),
+        status: zod.enum([
+          "accumulating",
+          "threshold_met",
+          "suggested",
+          "rule_created",
+          "dismissed",
+        ]),
+        evidence: zod.string().nullish(),
+        created_at: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  memory_staging: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        target_table: zod.enum([
+          "household_places",
+          "household_routines",
+          "household_preferences",
+        ]),
+        proposed_record: zod.record(zod.string(), zod.unknown()),
+        extracted_from_inbox_id: zod.number().nullish(),
+        context_summary: zod.string(),
+        status: zod.enum(["pending", "confirmed", "dismissed", "expired"]),
+        surfaced_to_user_at: zod.coerce.date().nullish(),
+        responded_at: zod.coerce.date().nullish(),
+        created_at: zod.coerce.date(),
+        expires_at: zod.coerce.date(),
+      }),
+    )
+    .optional(),
+  audit_log: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        action: zod.string(),
+        actor: zod.string(),
+        action_type: zod.string(),
+        category: zod.string().nullish(),
+        description: zod.string(),
+        timestamp: zod.coerce.date(),
+      }),
+    )
+    .optional(),
 });
 
 /**

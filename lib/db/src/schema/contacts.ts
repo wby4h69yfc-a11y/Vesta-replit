@@ -17,6 +17,7 @@ export const contactsTable = pgTable("contacts", {
   consent_granted_at: timestamp("consent_granted_at", { withTimezone: true }),
   consent_withdrawn_at: timestamp("consent_withdrawn_at", { withTimezone: true }),
   consent_check_in_due_at: timestamp("consent_check_in_due_at", { withTimezone: true }),
+  last_consent_requested_at: timestamp("last_consent_requested_at", { withTimezone: true }),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
