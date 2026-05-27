@@ -191,6 +191,7 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
     if (!existing) {
       await db.insert(membersTable).values({
         household_id: householdId,
+        user_id: userId,
         name: memberName,
         display_name: memberName,
         role: "admin",
@@ -198,6 +199,11 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
         // Only store the phone if the token flow confirmed ownership of the number.
         phone: serverPhone ?? null,
       });
+    } else if (!existing.user_id) {
+      await db
+        .update(membersTable)
+        .set({ user_id: userId })
+        .where(eq(membersTable.id, existing.id));
     }
 
     res.json({ success: true });

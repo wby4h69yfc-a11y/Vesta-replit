@@ -970,12 +970,132 @@ export const UpdateHouseholdResponse = zod.object({
  */
 export const ListMembersResponseItem = zod.object({
   id: zod.number(),
+  household_id: zod.number().optional(),
+  user_id: zod.string().nullish(),
   name: zod.string(),
+  display_name: zod.string().nullish(),
   role: zod.enum(["admin", "member", "restricted"]),
+  relationship_type: zod.enum(["adult", "child", "other"]).optional(),
   phone: zod.string().nullish(),
   avatar_url: zod.string().nullish(),
+  colour: zod.string().nullish(),
+  birth_year: zod.number().nullish(),
+  school: zod.string().nullish(),
+  grade: zod.string().nullish(),
+  primary_doctor: zod.string().nullish(),
+  schedule: zod.string().nullish(),
+  medical_plan: zod.string().nullish(),
+  created_at: zod.coerce.date().optional(),
 });
 export const ListMembersResponse = zod.array(ListMembersResponseItem);
+
+/**
+ * @summary Add a new member to the household
+ */
+
+export const CreateMemberBody = zod.object({
+  name: zod.string().min(1),
+  display_name: zod.string().optional(),
+  role: zod.enum(["admin", "member", "restricted"]).optional(),
+  relationship_type: zod.enum(["adult", "child", "other"]).optional(),
+  phone: zod.string().optional(),
+  avatar_url: zod.string().optional(),
+  colour: zod.string().optional(),
+  birth_year: zod.number().optional(),
+  school: zod.string().optional(),
+  grade: zod.string().optional(),
+  primary_doctor: zod.string().optional(),
+  schedule: zod.string().optional(),
+  medical_plan: zod.string().optional(),
+});
+
+/**
+ * @summary Update a household member
+ */
+export const UpdateMemberParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateMemberBody = zod.object({
+  name: zod.string().min(1).optional(),
+  display_name: zod.string().optional(),
+  role: zod.enum(["admin", "member", "restricted"]).optional(),
+  relationship_type: zod.enum(["adult", "child", "other"]).optional(),
+  phone: zod.string().optional(),
+  avatar_url: zod.string().optional(),
+  colour: zod.string().optional(),
+  birth_year: zod.number().optional(),
+  school: zod.string().optional(),
+  grade: zod.string().optional(),
+  primary_doctor: zod.string().optional(),
+  schedule: zod.string().optional(),
+  medical_plan: zod.string().optional(),
+});
+
+export const UpdateMemberResponse = zod.object({
+  id: zod.number(),
+  household_id: zod.number().optional(),
+  user_id: zod.string().nullish(),
+  name: zod.string(),
+  display_name: zod.string().nullish(),
+  role: zod.enum(["admin", "member", "restricted"]),
+  relationship_type: zod.enum(["adult", "child", "other"]).optional(),
+  phone: zod.string().nullish(),
+  avatar_url: zod.string().nullish(),
+  colour: zod.string().nullish(),
+  birth_year: zod.number().nullish(),
+  school: zod.string().nullish(),
+  grade: zod.string().nullish(),
+  primary_doctor: zod.string().nullish(),
+  schedule: zod.string().nullish(),
+  medical_plan: zod.string().nullish(),
+  created_at: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Remove a member from the household
+ */
+export const DeleteMemberParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary Generate a household invite and send it via WhatsApp
+ */
+export const createHouseholdInviteBodyPhoneMin = 8;
+
+export const CreateHouseholdInviteBody = zod.object({
+  phone: zod.string().min(createHouseholdInviteBodyPhoneMin),
+});
+
+/**
+ * @summary Look up a pending invite by code
+ */
+export const GetHouseholdInviteParams = zod.object({
+  code: zod.coerce.string(),
+});
+
+export const GetHouseholdInviteResponse = zod.object({
+  id: zod.number(),
+  code: zod.string(),
+  household_id: zod.number(),
+  household_name: zod.string(),
+  invited_phone: zod.string(),
+  expires_at: zod.coerce.date(),
+  accepted_at: zod.coerce.date().nullish(),
+});
+
+/**
+ * @summary Accept a household invite and link the authenticated user to the household
+ */
+export const AcceptHouseholdInviteParams = zod.object({
+  code: zod.coerce.string(),
+});
+
+export const AcceptHouseholdInviteResponse = zod.object({
+  success: zod.boolean(),
+  household_id: zod.number(),
+});
 
 /**
  * @summary List pattern observations and suggestions
