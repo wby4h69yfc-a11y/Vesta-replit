@@ -66,6 +66,12 @@ export interface Household {
   location?: string | null;
   plan: HouseholdPlan;
   concierge_eligible?: boolean;
+  /**
+   * Hour (0-23 UTC) at which the daily briefing is sent automatically.
+   * @minimum 0
+   * @maximum 23
+   */
+  briefing_hour?: number;
   created_at?: string;
 }
 
@@ -81,6 +87,12 @@ export interface HouseholdUpdate {
   name?: string;
   location?: string;
   plan?: HouseholdUpdatePlan;
+  /**
+   * Hour (0-23 UTC) at which the daily briefing is sent automatically.
+   * @minimum 0
+   * @maximum 23
+   */
+  briefing_hour?: number;
 }
 
 export type MemberRole = (typeof MemberRole)[keyof typeof MemberRole];

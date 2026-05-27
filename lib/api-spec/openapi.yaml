@@ -1386,6 +1386,11 @@ components:
           enum: [free, premium]
         concierge_eligible:
           type: boolean
+        briefing_hour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Hour (0-23 UTC) at which the daily briefing is sent automatically.
         created_at:
           type: string
           format: date-time
@@ -1400,6 +1405,11 @@ components:
         plan:
           type: string
           enum: [free, premium]
+        briefing_hour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Hour (0-23 UTC) at which the daily briefing is sent automatically.
 
     Member:
       type: object
