@@ -122,8 +122,11 @@ router.post("/contacts/:id/request-consent", async (req, res) => {
       return res.status(400).json({ error: "Contact has no phone number" });
     }
 
-    if (contact.consent_status === "consented") {
-      return res.status(409).json({ error: "Contact has already consented" });
+    if (contact.consent_status !== "pending") {
+      return res.status(409).json({
+        error: "Consent request can only be sent when consent_status is 'pending'",
+        consent_status: contact.consent_status ?? null,
+      });
     }
 
     // Rate limit: one request per 24 hours per contact
@@ -156,10 +159,7 @@ router.post("/contacts/:id/request-consent", async (req, res) => {
 
     const [updated] = await db
       .update(contactsTable)
-      .set({
-        last_consent_requested_at: new Date(),
-        consent_status: contact.consent_status === "consented" ? "consented" : "pending",
-      })
+      .set({ last_consent_requested_at: new Date() })
       .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)))
       .returning();
 
