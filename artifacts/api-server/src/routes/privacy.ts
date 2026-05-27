@@ -21,7 +21,7 @@ import {
   usersTable,
   otpCodesTable,
 } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 import { getSessionId, clearSession } from "../lib/auth";
 
@@ -94,6 +94,16 @@ router.delete("/account", async (req, res) => {
     const userPhone = req.user!.phone ?? null;
 
     await db.transaction(async (tx) => {
+      // 0. Collect all user IDs linked to this household (the requester + any co-members)
+      //    so we can fully clean up every account, not just the requesting user.
+      const householdUsers = await tx
+        .select({ id: usersTable.id, phone: usersTable.phone })
+        .from(usersTable)
+        .where(eq(usersTable.household_id, hid));
+      const allUserIds = householdUsers.map((u) => u.id);
+      // Ensure the requesting user is included even if their row is already stale
+      if (!allUserIds.includes(userId)) allUserIds.push(userId);
+
       // 1. Cascade through household-scoped tables (FK-safe order)
       await tx.delete(suggestedActionsTable).where(eq(suggestedActionsTable.household_id, hid));
       await tx.delete(inboxItemsTable).where(eq(inboxItemsTable.household_id, hid));
@@ -111,21 +121,29 @@ router.delete("/account", async (req, res) => {
       await tx.delete(onboardingStateTable).where(eq(onboardingStateTable.household_id, hid));
       await tx.delete(householdInvitesTable).where(eq(householdInvitesTable.household_id, hid));
 
-      // 2. User-scoped tables
-      await tx.delete(googleTokensTable).where(eq(googleTokensTable.user_id, userId));
-      if (userPhone) {
-        await tx.delete(otpCodesTable).where(eq(otpCodesTable.phone, userPhone));
+      // 2. User-scoped tables — all users in the household
+      if (allUserIds.length > 0) {
+        await tx.delete(googleTokensTable).where(inArray(googleTokensTable.user_id, allUserIds));
+        // Delete sessions for all household users via jsonb query
+        await tx.execute(
+          sql`DELETE FROM sessions WHERE sess->'user'->>'id' = ANY(${allUserIds}::text[])`,
+        );
+      }
+      // OTP codes are phone-scoped — clean up all phones in the household
+      const allPhones = householdUsers.map((u) => u.phone).filter((p): p is string => p != null);
+      if (userPhone && !allPhones.includes(userPhone)) allPhones.push(userPhone);
+      if (allPhones.length > 0) {
+        await tx.delete(otpCodesTable).where(inArray(otpCodesTable.phone, allPhones));
       }
 
-      // 3. Sessions for this user (sess is jsonb with {user: {id: ...}} shape)
-      await tx.execute(
-        sql`DELETE FROM sessions WHERE sess->'user'->>'id' = ${userId}`,
-      );
-
-      // 4. Household and user rows
-      await tx.update(usersTable).set({ household_id: null }).where(eq(usersTable.id, userId));
+      // 3. Household row (must be before user rows so FK on users.household_id can be nulled first)
+      await tx.update(usersTable).set({ household_id: null }).where(inArray(usersTable.id, allUserIds));
       await tx.delete(householdsTable).where(eq(householdsTable.id, hid));
-      await tx.delete(usersTable).where(eq(usersTable.id, userId));
+
+      // 4. Delete all user rows linked to the household
+      if (allUserIds.length > 0) {
+        await tx.delete(usersTable).where(inArray(usersTable.id, allUserIds));
+      }
     });
 
     // Clear the current session cookie
