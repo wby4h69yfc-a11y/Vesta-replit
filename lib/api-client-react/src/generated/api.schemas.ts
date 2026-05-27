@@ -243,6 +243,47 @@ export interface HouseholdJoinResponse {
   household_id: number;
 }
 
+export type PlanStatusPlan =
+  (typeof PlanStatusPlan)[keyof typeof PlanStatusPlan];
+
+export const PlanStatusPlan = {
+  free: "free",
+  premium: "premium",
+} as const;
+
+export type PlanStatusLimits = {
+  /**
+   * Maximum number of adult members allowed. Null means unlimited.
+   * @nullable
+   */
+  adults: number | null;
+  /**
+   * Maximum number of child members allowed. Null means unlimited.
+   * @nullable
+   */
+  children: number | null;
+  /**
+   * Maximum number of rules allowed. Null means unlimited.
+   * @nullable
+   */
+  rules: number | null;
+};
+
+export type PlanStatusUsage = {
+  /** Current number of adult members. */
+  adults: number;
+  /** Current number of child members. */
+  children: number;
+  /** Current number of active rules. */
+  rules: number;
+};
+
+export interface PlanStatus {
+  plan: PlanStatusPlan;
+  limits: PlanStatusLimits;
+  usage: PlanStatusUsage;
+}
+
 export type ContactCategory =
   (typeof ContactCategory)[keyof typeof ContactCategory];
 
