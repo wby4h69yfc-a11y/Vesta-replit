@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { householdsTable, membersTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { householdsTable, membersTable, rulesTable } from "@workspace/db";
+import { eq, and, count } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
+import { getPlanLimits } from "../lib/freemium";
 
 const router = Router();
 
@@ -67,6 +68,55 @@ router.patch("/household", async (req, res) => {
   }
 });
 
+router.get("/household/plan-status", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const hid = getHouseholdId(req);
+
+    const [household] = await db
+      .select({ plan: householdsTable.plan })
+      .from(householdsTable)
+      .where(eq(householdsTable.id, hid));
+
+    if (!household) return res.status(404).json({ error: "Not found" });
+
+    const [adultRow] = await db
+      .select({ total: count() })
+      .from(membersTable)
+      .where(and(eq(membersTable.household_id, hid), eq(membersTable.relationship_type, "adult")));
+
+    const [childRow] = await db
+      .select({ total: count() })
+      .from(membersTable)
+      .where(and(eq(membersTable.household_id, hid), eq(membersTable.relationship_type, "child")));
+
+    const [ruleRow] = await db
+      .select({ total: count() })
+      .from(rulesTable)
+      .where(eq(rulesTable.household_id, hid));
+
+    const limits = getPlanLimits(household.plan);
+    const plan = household.plan;
+
+    return res.json({
+      plan,
+      limits: {
+        adults: limits.adults === Infinity ? null : limits.adults,
+        children: limits.children === Infinity ? null : limits.children,
+        rules: limits.rules === Infinity ? null : limits.rules,
+      },
+      usage: {
+        adults: adultRow?.total ?? 0,
+        children: childRow?.total ?? 0,
+        rules: ruleRow?.total ?? 0,
+      },
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get plan status");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/household/members", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
@@ -121,6 +171,36 @@ router.post("/household/members", async (req, res) => {
       return res.status(400).json({ error: `relationship_type must be one of: ${VALID_RELATIONSHIP_TYPES.join(", ")}` });
     }
 
+    const relationshipType = body.relationship_type ?? "adult";
+
+    if (relationshipType === "adult" || relationshipType === "child") {
+      const [household] = await db
+        .select({ plan: householdsTable.plan })
+        .from(householdsTable)
+        .where(eq(householdsTable.id, hid));
+
+      if (household) {
+        const limits = getPlanLimits(household.plan);
+        const [countRow] = await db
+          .select({ total: count() })
+          .from(membersTable)
+          .where(and(eq(membersTable.household_id, hid), eq(membersTable.relationship_type, relationshipType)));
+
+        const current = countRow?.total ?? 0;
+        const limit = relationshipType === "adult" ? limits.adults : limits.children;
+
+        if (limit !== Infinity && current >= limit) {
+          return res.status(402).json({
+            error: relationshipType === "adult"
+              ? `Plano gratuito permite no máximo ${limit} adultos. Faça upgrade para adicionar mais.`
+              : `Plano gratuito permite no máximo ${limit} criança. Faça upgrade para adicionar mais.`,
+            limit,
+            plan: household.plan,
+          });
+        }
+      }
+    }
+
     const [member] = await db
       .insert(membersTable)
       .values({
@@ -128,7 +208,7 @@ router.post("/household/members", async (req, res) => {
         name: body.name.trim(),
         display_name: body.display_name ?? null,
         role: body.role ?? "member",
-        relationship_type: body.relationship_type ?? "adult",
+        relationship_type: relationshipType,
         phone: body.phone ?? null,
         avatar_url: body.avatar_url ?? null,
         colour: body.colour ?? null,

@@ -1439,6 +1439,36 @@ export const AcceptHouseholdInviteResponse = zod.object({
 });
 
 /**
+ * @summary Get current plan, limits, and usage counters for freemium gate UI
+ */
+export const GetHouseholdPlanStatusResponse = zod.object({
+  plan: zod.enum(["free", "premium"]),
+  limits: zod.object({
+    adults: zod
+      .number()
+      .nullable()
+      .describe(
+        "Maximum number of adult members allowed. Null means unlimited.",
+      ),
+    children: zod
+      .number()
+      .nullable()
+      .describe(
+        "Maximum number of child members allowed. Null means unlimited.",
+      ),
+    rules: zod
+      .number()
+      .nullable()
+      .describe("Maximum number of rules allowed. Null means unlimited."),
+  }),
+  usage: zod.object({
+    adults: zod.number().describe("Current number of adult members."),
+    children: zod.number().describe("Current number of child members."),
+    rules: zod.number().describe("Current number of active rules."),
+  }),
+});
+
+/**
  * @summary List pattern observations and suggestions
  */
 export const ListPatternsQueryParams = zod.object({

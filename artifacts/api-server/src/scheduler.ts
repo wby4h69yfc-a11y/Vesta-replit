@@ -3,10 +3,13 @@ import { householdsTable, onboardingStateTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./lib/logger";
 import { sendHouseholdBriefing } from "./lib/briefing-core";
+import { detectPatternsForAllHouseholds } from "./lib/pattern-detector";
 
 const TICK_INTERVAL_MS = 60_000;
+const PATTERN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-let intervalHandle: ReturnType<typeof setInterval> | null = null;
+let briefingIntervalHandle: ReturnType<typeof setInterval> | null = null;
+let patternIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
 async function tick(): Promise<void> {
   const currentHour = new Date().getUTCHours();
@@ -60,20 +63,36 @@ async function tick(): Promise<void> {
   }
 }
 
+async function patternTick(): Promise<void> {
+  logger.info("Scheduler: running pattern detection");
+  await detectPatternsForAllHouseholds();
+}
+
 export function startScheduler(): void {
-  if (intervalHandle !== null) {
+  if (briefingIntervalHandle !== null) {
     return;
   }
-  intervalHandle = setInterval(() => {
+  briefingIntervalHandle = setInterval(() => {
     void tick();
   }, TICK_INTERVAL_MS);
   logger.info({ intervalMs: TICK_INTERVAL_MS }, "Briefing scheduler started");
+
+  void patternTick();
+  patternIntervalHandle = setInterval(() => {
+    void patternTick();
+  }, PATTERN_INTERVAL_MS);
+  logger.info({ intervalMs: PATTERN_INTERVAL_MS }, "Pattern detection scheduler started");
 }
 
 export function stopScheduler(): void {
-  if (intervalHandle !== null) {
-    clearInterval(intervalHandle);
-    intervalHandle = null;
+  if (briefingIntervalHandle !== null) {
+    clearInterval(briefingIntervalHandle);
+    briefingIntervalHandle = null;
     logger.info("Briefing scheduler stopped");
+  }
+  if (patternIntervalHandle !== null) {
+    clearInterval(patternIntervalHandle);
+    patternIntervalHandle = null;
+    logger.info("Pattern detection scheduler stopped");
   }
 }

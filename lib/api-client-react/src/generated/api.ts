@@ -64,6 +64,7 @@ import type {
   OnboardingCompleteSuccess,
   OnboardingStateEnvelope,
   PatternObservation,
+  PlanStatus,
   PrivacyExport,
   Rule,
   RuleInput,
@@ -4457,6 +4458,82 @@ export const useAcceptHouseholdInvite = <
 > => {
   return useMutation(getAcceptHouseholdInviteMutationOptions(options));
 };
+
+/**
+ * @summary Get current plan, limits, and usage counters for freemium gate UI
+ */
+export const getGetHouseholdPlanStatusUrl = () => {
+  return `/api/household/plan-status`;
+};
+
+export const getHouseholdPlanStatus = async (
+  options?: RequestInit,
+): Promise<PlanStatus> => {
+  return customFetch<PlanStatus>(getGetHouseholdPlanStatusUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetHouseholdPlanStatusQueryKey = () => {
+  return [`/api/household/plan-status`] as const;
+};
+
+export const getGetHouseholdPlanStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getHouseholdPlanStatus>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getHouseholdPlanStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetHouseholdPlanStatusQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getHouseholdPlanStatus>>
+  > = ({ signal }) => getHouseholdPlanStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getHouseholdPlanStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetHouseholdPlanStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getHouseholdPlanStatus>>
+>;
+export type GetHouseholdPlanStatusQueryError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Get current plan, limits, and usage counters for freemium gate UI
+ */
+
+export function useGetHouseholdPlanStatus<
+  TData = Awaited<ReturnType<typeof getHouseholdPlanStatus>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getHouseholdPlanStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetHouseholdPlanStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List pattern observations and suggestions
