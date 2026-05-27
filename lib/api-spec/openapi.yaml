@@ -34,6 +34,8 @@ tags:
     description: Daily briefing operations
   - name: memory
     description: Household memory staging and audit log
+  - name: privacy
+    description: LGPD data portability and account deletion
 
 paths:
   /auth/user:
@@ -716,6 +718,78 @@ paths:
       responses:
         "204":
           description: Deleted
+
+  /contacts/{id}/request-consent:
+    post:
+      operationId: requestContactConsent
+      tags: [contacts]
+      summary: Send a WhatsApp consent request to a contact (LGPD)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Consent request sent (or attempted)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentRequestResponse"
+        "400":
+          description: Contact has no phone number
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Contact has already consented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited — one consent request per 24h per contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentRateLimitError"
+
+  # ── Privacy (LGPD) ────────────────────────────────────────────────
+  /privacy/export:
+    get:
+      operationId: exportPrivacyData
+      tags: [privacy]
+      summary: Export all household data as JSON (LGPD Art. 18 V)
+      responses:
+        "200":
+          description: Full household data export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrivacyExport"
+
+  /account:
+    delete:
+      operationId: deleteAccount
+      tags: [privacy]
+      summary: Permanently delete the account and all household data (LGPD Art. 18 VI)
+      responses:
+        "204":
+          description: Account and all household data deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ── Rules ────────────────────────────────────────────────────────
   /rules:
@@ -1605,9 +1679,85 @@ components:
         consent_withdrawn_at:
           type: ["string", "null"]
           format: date-time
+        last_consent_requested_at:
+          type: ["string", "null"]
+          format: date-time
         created_at:
           type: string
           format: date-time
+
+    ConsentRequestResponse:
+      type: object
+      required: [contact, whatsapp_sent]
+      properties:
+        contact:
+          $ref: "#/components/schemas/Contact"
+        whatsapp_sent:
+          type: boolean
+
+    ConsentRateLimitError:
+      type: object
+      required: [error, next_allowed_at]
+      properties:
+        error:
+          type: string
+        next_allowed_at:
+          type: string
+          format: date-time
+
+    PrivacyExport:
+      type: object
+      required: [exported_at, user_id]
+      properties:
+        exported_at:
+          type: string
+          format: date-time
+        user_id:
+          type: string
+        household:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Household"
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/Member"
+        contacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Contact"
+        inbox_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InboxItem"
+        suggested_actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SuggestedAction"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/CalendarEvent"
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/Rule"
+        patterns:
+          type: array
+          items:
+            $ref: "#/components/schemas/PatternObservation"
+        memory_staging:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoryStagingItem"
+        audit_log:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLogEntry"
 
     ContactInput:
       type: object

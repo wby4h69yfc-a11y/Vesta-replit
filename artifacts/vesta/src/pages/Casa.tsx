@@ -12,8 +12,10 @@ import {
   useGetHousehold,
   useListRules, useCreateRule, useToggleRule, useDeleteRule,
   useListPatterns, useAcceptPattern, useDismissPattern,
-  useListContacts, useUpdateContact,
+  useListContacts, useUpdateContact, useRequestContactConsent,
   useListAuditLog,
+  useDeleteAccount,
+  exportPrivacyData,
   getListRulesQueryKey, getListPatternsQueryKey, getListContactsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -950,6 +952,7 @@ function PrivacyDashboard() {
   const { toast } = useToast();
   const { data: contacts } = useListContacts();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const revokeConsent = useUpdateContact({
     mutation: {
@@ -960,6 +963,45 @@ function PrivacyDashboard() {
       onError: () => toast({ description: "Erro ao revogar consentimento.", variant: "destructive" }),
     },
   });
+
+  const requestConsent = useRequestContactConsent({
+    mutation: {
+      onSuccess: (data) => {
+        void qc.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        toast({ description: data.whatsapp_sent ? "Solicitação enviada por WhatsApp." : "Contato atualizado (WhatsApp não configurado)." });
+      },
+      onError: () => toast({ description: "Erro ao solicitar consentimento.", variant: "destructive" }),
+    },
+  });
+
+  const deleteAccount = useDeleteAccount({
+    mutation: {
+      onSuccess: () => {
+        toast({ description: "Conta excluída. Redirecionando..." });
+        setTimeout(() => { window.location.href = "/"; }, 1500);
+      },
+      onError: () => toast({ description: "Erro ao excluir conta.", variant: "destructive" }),
+    },
+  });
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const data = await exportPrivacyData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "vesta-export.json";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ description: "Dados exportados com sucesso." });
+    } catch {
+      toast({ description: "Erro ao exportar dados.", variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const externalContacts = (contacts ?? []) as Contact[];
   const consentedContacts = externalContacts.filter((c) =>
@@ -1003,6 +1045,15 @@ function PrivacyDashboard() {
                     style={{ background: colors.bg, color: colors.color }}>
                     {CONSENT_LABELS[status] ?? status}
                   </span>
+                  {status === "pending" && (
+                    <button
+                      onClick={() => requestConsent.mutate({ id: contact.id })}
+                      disabled={requestConsent.isPending}
+                      className="text-[10px] px-2 py-1 rounded-lg transition-colors disabled:opacity-50"
+                      style={{ background: "#EAF1E5", color: V.primary }}>
+                      Solicitar
+                    </button>
+                  )}
                   {status === "consented" && (
                     <button
                       onClick={() => revokeConsent.mutate({ id: contact.id, data: { consent_status: "revoked" } })}
@@ -1033,14 +1084,19 @@ function PrivacyDashboard() {
           Seus direitos (LGPD)
         </p>
 
-        <button className="w-full flex items-center gap-4 px-4 py-3 text-left hover:opacity-80 transition-opacity"
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="w-full flex items-center gap-4 px-4 py-3 text-left hover:opacity-80 transition-opacity disabled:opacity-50"
           style={{ borderTop: "1px solid rgba(14,59,46,0.06)" }}>
           <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
             style={{ background: "#EAF1E5" }}>
             <Download className="h-4 w-4" style={{ color: V.primary }} />
           </div>
           <div className="flex-1">
-            <p className="text-sm font-medium" style={{ color: V.ink }}>Baixar meus dados</p>
+            <p className="text-sm font-medium" style={{ color: V.ink }}>
+              {exporting ? "Exportando..." : "Baixar meus dados"}
+            </p>
             <p className="text-xs" style={{ color: V.muted }}>Export JSON com todos os seus dados</p>
           </div>
           <ChevronRight className="h-4 w-4" style={{ color: V.sage }} />
@@ -1075,9 +1131,12 @@ function PrivacyDashboard() {
                   style={{ background: V.beige, color: V.ink }}>
                   Cancelar
                 </button>
-                <button className="flex-1 py-2 rounded-xl text-xs font-semibold text-white"
+                <button
+                  onClick={() => deleteAccount.mutate()}
+                  disabled={deleteAccount.isPending}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
                   style={{ background: "#DC2626" }}>
-                  Excluir tudo
+                  {deleteAccount.isPending ? "Excluindo..." : "Excluir tudo"}
                 </button>
               </div>
             </div>

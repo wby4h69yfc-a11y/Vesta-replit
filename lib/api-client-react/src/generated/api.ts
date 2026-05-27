@@ -28,6 +28,8 @@ import type {
   CalendarEventInput,
   CalendarEventUpdate,
   CategoryCount,
+  ConsentRateLimitError,
+  ConsentRequestResponse,
   Contact,
   ContactInput,
   ContactUpdate,
@@ -62,6 +64,7 @@ import type {
   OnboardingCompleteSuccess,
   OnboardingStateEnvelope,
   PatternObservation,
+  PrivacyExport,
   Rule,
   RuleInput,
   RuleUpdate,
@@ -3058,6 +3061,246 @@ export const useDeleteContact = <
   TContext
 > => {
   return useMutation(getDeleteContactMutationOptions(options));
+};
+
+/**
+ * @summary Send a WhatsApp consent request to a contact (LGPD)
+ */
+export const getRequestContactConsentUrl = (id: number) => {
+  return `/api/contacts/${id}/request-consent`;
+};
+
+export const requestContactConsent = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ConsentRequestResponse> => {
+  return customFetch<ConsentRequestResponse>(getRequestContactConsentUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRequestContactConsentMutationOptions = <
+  TError = ErrorType<ErrorEnvelope | ConsentRateLimitError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestContactConsent>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestContactConsent>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["requestContactConsent"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestContactConsent>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return requestContactConsent(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestContactConsentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestContactConsent>>
+>;
+
+export type RequestContactConsentMutationError = ErrorType<
+  ErrorEnvelope | ConsentRateLimitError
+>;
+
+/**
+ * @summary Send a WhatsApp consent request to a contact (LGPD)
+ */
+export const useRequestContactConsent = <
+  TError = ErrorType<ErrorEnvelope | ConsentRateLimitError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestContactConsent>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestContactConsent>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRequestContactConsentMutationOptions(options));
+};
+
+/**
+ * @summary Export all household data as JSON (LGPD Art. 18 V)
+ */
+export const getExportPrivacyDataUrl = () => {
+  return `/api/privacy/export`;
+};
+
+export const exportPrivacyData = async (
+  options?: RequestInit,
+): Promise<PrivacyExport> => {
+  return customFetch<PrivacyExport>(getExportPrivacyDataUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportPrivacyDataQueryKey = () => {
+  return [`/api/privacy/export`] as const;
+};
+
+export const getExportPrivacyDataQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportPrivacyData>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof exportPrivacyData>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getExportPrivacyDataQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportPrivacyData>>
+  > = ({ signal }) => exportPrivacyData({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportPrivacyData>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportPrivacyDataQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportPrivacyData>>
+>;
+export type ExportPrivacyDataQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export all household data as JSON (LGPD Art. 18 V)
+ */
+
+export function useExportPrivacyData<
+  TData = Awaited<ReturnType<typeof exportPrivacyData>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof exportPrivacyData>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportPrivacyDataQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Permanently delete the account and all household data (LGPD Art. 18 VI)
+ */
+export const getDeleteAccountUrl = () => {
+  return `/api/account`;
+};
+
+export const deleteAccount = async (options?: RequestInit): Promise<void> => {
+  return customFetch<void>(getDeleteAccountUrl(), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteAccountMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAccount>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteAccount>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["deleteAccount"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteAccount>>,
+    void
+  > = () => {
+    return deleteAccount(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteAccountMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteAccount>>
+>;
+
+export type DeleteAccountMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Permanently delete the account and all household data (LGPD Art. 18 VI)
+ */
+export const useDeleteAccount = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAccount>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteAccount>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getDeleteAccountMutationOptions(options));
 };
 
 /**
