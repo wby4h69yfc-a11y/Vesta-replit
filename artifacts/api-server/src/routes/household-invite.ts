@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { householdInvitesTable, householdsTable, usersTable } from "@workspace/db";
+import { householdInvitesTable, householdsTable, usersTable, membersTable } from "@workspace/db";
 import { eq, and, isNull, gt } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 import { sendWhatsApp } from "../lib/whatsapp";
+import { getSessionId, getSession, updateSession } from "../lib/auth";
 import { randomBytes } from "crypto";
 
 const router = Router();
@@ -133,17 +134,62 @@ router.post("/household/join/:code", async (req, res) => {
       return res.status(404).json({ error: "Convite inválido ou expirado" });
     }
 
+    const newHouseholdId = invite.household_id;
+
+    // 1. Update the user's household in DB
     await db
       .update(usersTable)
-      .set({ household_id: invite.household_id })
+      .set({ household_id: newHouseholdId })
       .where(eq(usersTable.id, userId));
 
+    // 2. Mark invite as consumed
     await db
       .update(householdInvitesTable)
       .set({ accepted_at: now })
       .where(eq(householdInvitesTable.id, invite.id));
 
-    res.json({ success: true, household_id: invite.household_id });
+    // 3. Create or link a member record for the joining user in the new household
+    const [existingMember] = await db
+      .select()
+      .from(membersTable)
+      .where(
+        and(
+          eq(membersTable.household_id, newHouseholdId),
+          eq(membersTable.user_id, userId),
+        ),
+      );
+
+    if (!existingMember) {
+      const memberName =
+        req.user!.firstName ??
+        req.user!.email ??
+        invite.invited_phone;
+
+      await db.insert(membersTable).values({
+        household_id: newHouseholdId,
+        user_id: userId,
+        name: memberName,
+        display_name: memberName,
+        role: "member",
+        relationship_type: "adult",
+        phone: invite.invited_phone,
+      });
+    }
+
+    // 4. Update the live session so req.user.household_id is correct immediately
+    //    on subsequent requests without requiring re-login.
+    const sid = getSessionId(req);
+    if (sid) {
+      const session = await getSession(sid);
+      if (session) {
+        session.user = { ...session.user, household_id: newHouseholdId };
+        await updateSession(sid, session);
+      }
+    }
+    // Also patch in-process so this response sees the new household
+    req.user!.household_id = newHouseholdId;
+
+    res.json({ success: true, household_id: newHouseholdId });
   } catch (err) {
     req.log.error({ err }, "Failed to accept household invite");
     res.status(500).json({ error: "Internal server error" });
