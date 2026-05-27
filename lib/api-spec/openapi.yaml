@@ -852,6 +852,166 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Member"
+    post:
+      operationId: createMember
+      tags: [household]
+      summary: Add a new member to the household
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /household/members/{id}:
+    patch:
+      operationId: updateMember
+      tags: [household]
+      summary: Update a household member
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteMember
+      tags: [household]
+      summary: Remove a member from the household
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          description: Cannot delete yourself
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /household/invite:
+    post:
+      operationId: createHouseholdInvite
+      tags: [household]
+      summary: Generate a household invite and send it via WhatsApp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HouseholdInviteInput"
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdInvite"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /household/invite/{code}:
+    get:
+      operationId: getHouseholdInvite
+      tags: [household]
+      summary: Look up a pending invite by code
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invite details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdInviteDetail"
+        "404":
+          description: Invalid or expired invite
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /household/join/{code}:
+    post:
+      operationId: acceptHouseholdInvite
+      tags: [household]
+      summary: Accept a household invite and link the authenticated user to the household
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Joined successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdJoinResponse"
+        "404":
+          description: Invalid or expired invite
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ── Patterns ─────────────────────────────────────────────────────
   /patterns:
@@ -1247,15 +1407,164 @@ components:
       properties:
         id:
           type: integer
+        household_id:
+          type: integer
+        user_id:
+          type: ["string", "null"]
         name:
           type: string
+        display_name:
+          type: ["string", "null"]
         role:
           type: string
           enum: [admin, member, restricted]
+        relationship_type:
+          type: string
+          enum: [adult, child, other]
         phone:
           type: ["string", "null"]
         avatar_url:
           type: ["string", "null"]
+        colour:
+          type: ["string", "null"]
+        birth_year:
+          type: ["integer", "null"]
+        school:
+          type: ["string", "null"]
+        grade:
+          type: ["string", "null"]
+        primary_doctor:
+          type: ["string", "null"]
+        schedule:
+          type: ["string", "null"]
+        medical_plan:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+
+    MemberInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, member, restricted]
+        relationship_type:
+          type: string
+          enum: [adult, child, other]
+        phone:
+          type: string
+        avatar_url:
+          type: string
+        colour:
+          type: string
+        birth_year:
+          type: integer
+        school:
+          type: string
+        grade:
+          type: string
+        primary_doctor:
+          type: string
+        schedule:
+          type: string
+        medical_plan:
+          type: string
+
+    MemberUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, member, restricted]
+        relationship_type:
+          type: string
+          enum: [adult, child, other]
+        phone:
+          type: string
+        avatar_url:
+          type: string
+        colour:
+          type: string
+        birth_year:
+          type: integer
+        school:
+          type: string
+        grade:
+          type: string
+        primary_doctor:
+          type: string
+        schedule:
+          type: string
+        medical_plan:
+          type: string
+
+    HouseholdInviteInput:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string
+          minLength: 8
+
+    HouseholdInvite:
+      type: object
+      required: [id, code, household_id, invited_phone, expires_at, whatsapp_sent]
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        household_id:
+          type: integer
+        invited_phone:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        whatsapp_sent:
+          type: boolean
+
+    HouseholdInviteDetail:
+      type: object
+      required: [id, code, household_id, household_name, invited_phone, expires_at]
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        household_id:
+          type: integer
+        household_name:
+          type: string
+        invited_phone:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        accepted_at:
+          type: ["string", "null"]
+          format: date-time
+
+    HouseholdJoinResponse:
+      type: object
+      required: [success, household_id]
+      properties:
+        success:
+          type: boolean
+        household_id:
+          type: integer
 
     # ── Contacts ─────────────────────────────────────────────────
     Contact:

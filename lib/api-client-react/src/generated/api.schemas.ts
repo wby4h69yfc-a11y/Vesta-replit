@@ -91,14 +91,144 @@ export const MemberRole = {
   restricted: "restricted",
 } as const;
 
+export type MemberRelationshipType =
+  (typeof MemberRelationshipType)[keyof typeof MemberRelationshipType];
+
+export const MemberRelationshipType = {
+  adult: "adult",
+  child: "child",
+  other: "other",
+} as const;
+
 export interface Member {
   id: number;
+  household_id?: number;
+  /** @nullable */
+  user_id?: string | null;
   name: string;
+  /** @nullable */
+  display_name?: string | null;
   role: MemberRole;
+  relationship_type?: MemberRelationshipType;
   /** @nullable */
   phone?: string | null;
   /** @nullable */
   avatar_url?: string | null;
+  /** @nullable */
+  colour?: string | null;
+  /** @nullable */
+  birth_year?: number | null;
+  /** @nullable */
+  school?: string | null;
+  /** @nullable */
+  grade?: string | null;
+  /** @nullable */
+  primary_doctor?: string | null;
+  /** @nullable */
+  schedule?: string | null;
+  /** @nullable */
+  medical_plan?: string | null;
+  created_at?: string;
+}
+
+export type MemberInputRole =
+  (typeof MemberInputRole)[keyof typeof MemberInputRole];
+
+export const MemberInputRole = {
+  admin: "admin",
+  member: "member",
+  restricted: "restricted",
+} as const;
+
+export type MemberInputRelationshipType =
+  (typeof MemberInputRelationshipType)[keyof typeof MemberInputRelationshipType];
+
+export const MemberInputRelationshipType = {
+  adult: "adult",
+  child: "child",
+  other: "other",
+} as const;
+
+export interface MemberInput {
+  /** @minLength 1 */
+  name: string;
+  display_name?: string;
+  role?: MemberInputRole;
+  relationship_type?: MemberInputRelationshipType;
+  phone?: string;
+  avatar_url?: string;
+  colour?: string;
+  birth_year?: number;
+  school?: string;
+  grade?: string;
+  primary_doctor?: string;
+  schedule?: string;
+  medical_plan?: string;
+}
+
+export type MemberUpdateRole =
+  (typeof MemberUpdateRole)[keyof typeof MemberUpdateRole];
+
+export const MemberUpdateRole = {
+  admin: "admin",
+  member: "member",
+  restricted: "restricted",
+} as const;
+
+export type MemberUpdateRelationshipType =
+  (typeof MemberUpdateRelationshipType)[keyof typeof MemberUpdateRelationshipType];
+
+export const MemberUpdateRelationshipType = {
+  adult: "adult",
+  child: "child",
+  other: "other",
+} as const;
+
+export interface MemberUpdate {
+  /** @minLength 1 */
+  name?: string;
+  display_name?: string;
+  role?: MemberUpdateRole;
+  relationship_type?: MemberUpdateRelationshipType;
+  phone?: string;
+  avatar_url?: string;
+  colour?: string;
+  birth_year?: number;
+  school?: string;
+  grade?: string;
+  primary_doctor?: string;
+  schedule?: string;
+  medical_plan?: string;
+}
+
+export interface HouseholdInviteInput {
+  /** @minLength 8 */
+  phone: string;
+}
+
+export interface HouseholdInvite {
+  id: number;
+  code: string;
+  household_id: number;
+  invited_phone: string;
+  expires_at: string;
+  whatsapp_sent: boolean;
+}
+
+export interface HouseholdInviteDetail {
+  id: number;
+  code: string;
+  household_id: number;
+  household_name: string;
+  invited_phone: string;
+  expires_at: string;
+  /** @nullable */
+  accepted_at?: string | null;
+}
+
+export interface HouseholdJoinResponse {
+  success: boolean;
+  household_id: number;
 }
 
 export type ContactCategory =
