@@ -938,23 +938,48 @@ export const ToggleRuleResponse = zod.object({
 /**
  * @summary Get the household profile
  */
+export const getHouseholdResponseBriefingHourMin = 0;
+export const getHouseholdResponseBriefingHourMax = 23;
+
 export const GetHouseholdResponse = zod.object({
   id: zod.number(),
   name: zod.string(),
   location: zod.string().nullish(),
   plan: zod.enum(["free", "premium"]),
   concierge_eligible: zod.boolean().optional(),
+  briefing_hour: zod
+    .number()
+    .min(getHouseholdResponseBriefingHourMin)
+    .max(getHouseholdResponseBriefingHourMax)
+    .optional()
+    .describe(
+      "Hour (0-23 UTC) at which the daily briefing is sent automatically.",
+    ),
   created_at: zod.coerce.date().optional(),
 });
 
 /**
  * @summary Update household settings
  */
+export const updateHouseholdBodyBriefingHourMin = 0;
+export const updateHouseholdBodyBriefingHourMax = 23;
+
 export const UpdateHouseholdBody = zod.object({
   name: zod.string().optional(),
   location: zod.string().optional(),
   plan: zod.enum(["free", "premium"]).optional(),
+  briefing_hour: zod
+    .number()
+    .min(updateHouseholdBodyBriefingHourMin)
+    .max(updateHouseholdBodyBriefingHourMax)
+    .optional()
+    .describe(
+      "Hour (0-23 UTC) at which the daily briefing is sent automatically.",
+    ),
 });
+
+export const updateHouseholdResponseBriefingHourMin = 0;
+export const updateHouseholdResponseBriefingHourMax = 23;
 
 export const UpdateHouseholdResponse = zod.object({
   id: zod.number(),
@@ -962,6 +987,14 @@ export const UpdateHouseholdResponse = zod.object({
   location: zod.string().nullish(),
   plan: zod.enum(["free", "premium"]),
   concierge_eligible: zod.boolean().optional(),
+  briefing_hour: zod
+    .number()
+    .min(updateHouseholdResponseBriefingHourMin)
+    .max(updateHouseholdResponseBriefingHourMax)
+    .optional()
+    .describe(
+      "Hour (0-23 UTC) at which the daily briefing is sent automatically.",
+    ),
   created_at: zod.coerce.date().optional(),
 });
 
