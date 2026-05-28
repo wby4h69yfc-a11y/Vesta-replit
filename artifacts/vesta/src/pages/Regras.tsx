@@ -111,7 +111,7 @@ export default function RegrasPage() {
           </button>
         ) : (
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={() => { setPendingPattern(null); setShowCreate(true); }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium"
             data-testid="button-create-rule"
           >
@@ -171,7 +171,7 @@ export default function RegrasPage() {
             <option value="explicit">Aprovação explícita</option>
           </select>
           <div className="flex gap-2">
-            <button onClick={() => setShowCreate(false)} className="flex-1 py-2.5 rounded-xl border border-border text-sm text-muted-foreground">Cancelar</button>
+            <button onClick={() => { setPendingPattern(null); setShowCreate(false); }} className="flex-1 py-2.5 rounded-xl border border-border text-sm text-muted-foreground">Cancelar</button>
             <button
               onClick={() => createRule.mutate({ data: { name: form.name, category: form.category, trigger_desc: form.trigger_desc, action_desc: form.action_desc, approval_level: form.approval_level as import("@workspace/api-client-react").RuleInputApprovalLevel } })}
               disabled={!form.name || !form.trigger_desc || !form.action_desc || createRule.isPending}
