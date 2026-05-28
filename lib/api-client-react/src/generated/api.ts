@@ -4630,7 +4630,7 @@ export function useListPatterns<
 }
 
 /**
- * @summary Accept a pattern suggestion (creates a rule)
+ * @summary Accept a pattern suggestion (marks as rule_created; caller is responsible for creating the rule via POST /rules)
  */
 export const getAcceptPatternUrl = (id: number) => {
   return `/api/patterns/${id}/accept`;
@@ -4691,7 +4691,7 @@ export type AcceptPatternMutationResult = NonNullable<
 export type AcceptPatternMutationError = ErrorType<unknown>;
 
 /**
- * @summary Accept a pattern suggestion (creates a rule)
+ * @summary Accept a pattern suggestion (marks as rule_created; caller is responsible for creating the rule via POST /rules)
  */
 export const useAcceptPattern = <
   TError = ErrorType<unknown>,

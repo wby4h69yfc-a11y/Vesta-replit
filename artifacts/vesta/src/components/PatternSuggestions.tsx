@@ -63,10 +63,22 @@ export default function PatternSuggestions({ onAcceptClick }: PatternSuggestions
     setTimeout(() => dismissPattern.mutate({ id }), 220);
   }
 
+  function categoryFromType(type: string): string {
+    switch (type) {
+      case "temporal":  return "escola";
+      case "sender":    return "escola";
+      case "sequence":  return "escola";
+      case "ownership": return "casa";
+      case "absence":   return "escola";
+      case "seasonal":  return "escola";
+      default:          return "outros";
+    }
+  }
+
   function handleAccept(pattern: PatternObservation) {
     const prefill: PrefillRule = {
       name: pattern.description,
-      category: "outros",
+      category: categoryFromType(pattern.type),
       trigger_desc: pattern.description,
       action_desc: "",
     };
