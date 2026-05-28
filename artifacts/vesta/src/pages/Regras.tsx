@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Zap, Plus, TrendingUp, Pause, Play, Trash2, ToggleLeft } from "lucide-react";
+import { Zap, Plus, TrendingUp, Pause, Play, Trash2, ToggleLeft, Lock } from "lucide-react";
 import {
   useListRules,
   useCreateRule,
@@ -8,6 +8,7 @@ import {
   useListPatterns,
   useAcceptPattern,
   useDismissPattern,
+  useGetHouseholdPlanStatus,
   getListRulesQueryKey,
   getListPatternsQueryKey,
 } from "@workspace/api-client-react";
@@ -16,6 +17,7 @@ import CategoryBadge from "@/components/CategoryBadge";
 import { CATEGORIES } from "@/lib/categories";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import UpgradePrompt from "@/components/UpgradePrompt";
 
 const ORIGIN_LABELS: Record<string, string> = {
   system_template:    "Padrão do sistema",
@@ -27,6 +29,8 @@ export default function RegrasPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [upgradeLabel, setUpgradeLabel] = useState("");
   const [form, setForm] = useState({
     name: "",
     category: "escola",
@@ -37,6 +41,11 @@ export default function RegrasPage() {
 
   const { data: rules, isLoading } = useListRules();
   const { data: patterns } = useListPatterns({ status: "suggested" });
+  const { data: planStatus } = useGetHouseholdPlanStatus();
+
+  const rulesLimit = planStatus?.limits?.rules ?? null;
+  const rulesUsage = planStatus?.usage?.rules ?? 0;
+  const rulesAtLimit = rulesLimit !== null && rulesUsage >= rulesLimit;
 
   const createRule = useCreateRule({
     mutation: {
@@ -45,6 +54,14 @@ export default function RegrasPage() {
         setShowCreate(false);
         setForm({ name: "", category: "escola", trigger_desc: "", action_desc: "", approval_level: "one_tap" });
         toast({ description: "Regra criada." });
+      },
+      onError: (e: unknown) => {
+        if ((e as { status?: number })?.status === 402) {
+          setUpgradeLabel(`Plano gratuito: máximo de ${rulesLimit ?? 3} regras inteligentes.`);
+          setShowUpgrade(true);
+        } else {
+          toast({ description: "Erro ao criar regra.", variant: "destructive" });
+        }
       },
     },
   });
@@ -82,16 +99,30 @@ export default function RegrasPage() {
 
   return (
     <div className="p-4 space-y-5 animate-fade-in-up">
+      {showUpgrade && <UpgradePrompt limitLabel={upgradeLabel} onClose={() => setShowUpgrade(false)} />}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-foreground">Regras inteligentes</h1>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium"
-          data-testid="button-create-rule"
-        >
-          <Plus className="w-4 h-4" />
-          Regra
-        </button>
+        {rulesAtLimit ? (
+          <button
+            onClick={() => { setUpgradeLabel(`Plano gratuito: máximo de ${rulesLimit} regras inteligentes.`); setShowUpgrade(true); }}
+            title={`Limite atingido — plano gratuito: máximo de ${rulesLimit} regras`}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium"
+            style={{ background: "#EEE6D6", color: "#5F6B61" }}
+            data-testid="button-create-rule"
+          >
+            <Lock className="w-4 h-4" />
+            Regra
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium"
+            data-testid="button-create-rule"
+          >
+            <Plus className="w-4 h-4" />
+            Regra
+          </button>
+        )}
       </div>
 
       {/* Pattern suggestions */}

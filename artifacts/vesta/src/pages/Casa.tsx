@@ -13,6 +13,7 @@ import {
   useUpdateHousehold,
   useListMembers, useCreateMember, useUpdateMember, useDeleteMember,
   useCreateHouseholdInvite,
+  useGetHouseholdPlanStatus,
   useListRules, useCreateRule, useToggleRule, useDeleteRule,
   useListPatterns, useAcceptPattern, useDismissPattern,
   useListContacts, useUpdateContact, useRequestContactConsent,
@@ -23,6 +24,7 @@ import {
   getListRulesQueryKey, getListPatternsQueryKey, getListContactsQueryKey,
   type Member,
 } from "@workspace/api-client-react";
+import UpgradePrompt from "@/components/UpgradePrompt";
 import { useAuth } from "@workspace/replit-auth-web";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -742,6 +744,7 @@ function FamiliaTab() {
   const { user } = useAuth();
 
   const { data: members = [], isLoading } = useListMembers();
+  const { data: planStatus } = useGetHouseholdPlanStatus();
 
   type FormMode = "none" | "add" | "edit";
   const [formMode, setFormMode] = useState<FormMode>("none");
@@ -752,13 +755,32 @@ function FamiliaTab() {
   const [showInvite, setShowInvite] = useState(false);
   const [invitePhone, setInvitePhone] = useState("");
 
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [upgradeLabel, setUpgradeLabel] = useState("");
+
   const [consentStep, setConsentStep] = useState<"idle" | "form" | "pending" | "consented">("idle");
   const [consentPhone, setConsentPhone] = useState("");
   const [consentName, setConsentName] = useState("");
 
   const invalidateMembers = () => qc.invalidateQueries({ queryKey: getListMembersQueryKey() });
 
-  const createMember = useCreateMember({ mutation: { onSuccess: () => { invalidateMembers(); closeForm(); toast({ description: "Membro adicionado." }); }, onError: () => toast({ title: "Erro ao adicionar", variant: "destructive" }) } });
+  const createMember = useCreateMember({
+    mutation: {
+      onSuccess: () => { invalidateMembers(); closeForm(); toast({ description: "Membro adicionado." }); },
+      onError: (e: unknown) => {
+        if ((e as { status?: number })?.status === 402) {
+          const lim = planStatus?.limits;
+          const type = formValues.relationship_type;
+          const n = type === "child" ? (lim?.children ?? 1) : (lim?.adults ?? 2);
+          const label = type === "child" ? `Plano gratuito: máximo de ${n} criança(s).` : `Plano gratuito: máximo de ${n} adulto(s).`;
+          setUpgradeLabel(label);
+          setShowUpgrade(true);
+        } else {
+          toast({ title: "Erro ao adicionar", variant: "destructive" });
+        }
+      },
+    },
+  });
   const updateMember = useUpdateMember({ mutation: { onSuccess: () => { invalidateMembers(); closeForm(); toast({ description: "Membro atualizado." }); }, onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }) } });
   const deleteMember = useDeleteMember({ mutation: { onSuccess: () => { invalidateMembers(); setConfirmDeleteId(null); toast({ description: "Membro removido." }); }, onError: (e: { status?: number }) => toast({ title: e?.status === 403 ? "Não é possível remover sua própria conta" : "Erro ao remover", variant: "destructive" }) } });
   const createInvite = useCreateHouseholdInvite({ mutation: { onSuccess: () => { setShowInvite(false); setInvitePhone(""); toast({ title: "Convite enviado!", description: "O link chegará no WhatsApp deles." }); }, onError: () => toast({ title: "Erro ao enviar convite", variant: "destructive" }) } });
@@ -787,8 +809,27 @@ function FamiliaTab() {
   const children = members.filter(m => m.relationship_type === "child");
   const isSaving = createMember.isPending || updateMember.isPending;
 
+  const lim = planStatus?.limits;
+  const usg = planStatus?.usage;
+  const adultsAtLimit = lim?.adults !== null && lim?.adults !== undefined && (usg?.adults ?? 0) >= lim.adults;
+  const childrenAtLimit = lim?.children !== null && lim?.children !== undefined && (usg?.children ?? 0) >= lim.children;
+
+  function openAddGated(type: "adult" | "child") {
+    const atLimit = type === "adult" ? adultsAtLimit : childrenAtLimit;
+    if (atLimit) {
+      const n = type === "adult" ? lim?.adults : lim?.children;
+      setUpgradeLabel(type === "adult" ? `Plano gratuito: máximo de ${n ?? 2} adulto(s).` : `Plano gratuito: máximo de ${n ?? 1} criança(s).`);
+      setShowUpgrade(true);
+    } else {
+      openAdd(type);
+      setShowInvite(false);
+    }
+  }
+
   return (
     <div className="space-y-6 py-6">
+
+      {showUpgrade && <UpgradePrompt limitLabel={upgradeLabel} onClose={() => setShowUpgrade(false)} />}
 
       {/* Member form panel */}
       {formMode !== "none" && (
@@ -805,11 +846,21 @@ function FamiliaTab() {
               style={{ background: "#EAF1E5", color: V.primary }}>
               <MessageCircle className="h-3.5 w-3.5" /> Convidar
             </button>
-            <button onClick={() => { openAdd("adult"); setShowInvite(false); }}
-              className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full"
-              style={{ background: "#EAF1E5", color: V.primary }}>
-              <Plus className="h-3.5 w-3.5" /> Adicionar
-            </button>
+            {adultsAtLimit ? (
+              <button
+                onClick={() => openAddGated("adult")}
+                title={`Limite atingido — plano gratuito: máximo de ${lim?.adults} adultos`}
+                className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full"
+                style={{ background: V.beige, color: V.muted }}>
+                <Lock className="h-3.5 w-3.5" /> Adicionar
+              </button>
+            ) : (
+              <button onClick={() => openAddGated("adult")}
+                className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full"
+                style={{ background: "#EAF1E5", color: V.primary }}>
+                <Plus className="h-3.5 w-3.5" /> Adicionar
+              </button>
+            )}
           </div>
         </div>
 
@@ -855,24 +906,42 @@ function FamiliaTab() {
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: V.muted }}>Crianças</h2>
-          <button onClick={() => { openAdd("child"); setShowInvite(false); }}
-            className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full"
-            style={{ background: "#EAF1E5", color: V.primary }}>
-            <Plus className="h-3.5 w-3.5" /> Adicionar
-          </button>
+          {childrenAtLimit ? (
+            <button
+              onClick={() => openAddGated("child")}
+              title={`Limite atingido — plano gratuito: máximo de ${lim?.children} crianças`}
+              className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full"
+              style={{ background: V.beige, color: V.muted }}>
+              <Lock className="h-3.5 w-3.5" /> Adicionar
+            </button>
+          ) : (
+            <button onClick={() => openAddGated("child")}
+              className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full"
+              style={{ background: "#EAF1E5", color: V.primary }}>
+              <Plus className="h-3.5 w-3.5" /> Adicionar
+            </button>
+          )}
         </div>
         <div className="rounded-3xl overflow-hidden" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
           {children.length === 0 ? (
-            <button onClick={() => openAdd("child")}
+            <button onClick={() => openAddGated("child")}
               className="w-full flex items-center gap-4 p-4 hover:opacity-80 transition-opacity">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: V.beige }}>
-                <Baby className="h-5 w-5" style={{ color: V.sage }} />
+                {childrenAtLimit
+                  ? <Lock className="h-5 w-5" style={{ color: V.muted }} />
+                  : <Baby className="h-5 w-5" style={{ color: V.sage }} />}
               </div>
               <div className="text-left">
-                <p className="text-sm font-medium" style={{ color: V.ink }}>Adicionar criança</p>
-                <p className="text-xs" style={{ color: V.muted }}>Nome, escola e ano</p>
+                <p className="text-sm font-medium" style={{ color: V.ink }}>
+                  {childrenAtLimit ? "Limite de crianças atingido" : "Adicionar criança"}
+                </p>
+                <p className="text-xs" style={{ color: V.muted }}>
+                  {childrenAtLimit ? `Plano gratuito: máximo de ${lim?.children} criança(s)` : "Nome, escola e ano"}
+                </p>
               </div>
-              <Plus className="h-4 w-4 ml-auto" style={{ color: V.sage }} />
+              {childrenAtLimit
+                ? <Lock className="h-4 w-4 ml-auto" style={{ color: V.muted }} />
+                : <Plus className="h-4 w-4 ml-auto" style={{ color: V.sage }} />}
             </button>
           ) : (
             children.map((m, i) => (
