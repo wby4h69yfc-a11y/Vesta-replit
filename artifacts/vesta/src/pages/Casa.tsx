@@ -373,6 +373,23 @@ const TZ_LABELS: Record<string, string> = {
   "America/Noronha":     "Fernando de Noronha",
 };
 
+/** Convert a UTC hour (0-23) to the household-local hour using Intl.DateTimeFormat. */
+function utcHourToLocal(utcHour: number, tz: string): number {
+  const ref = new Date();
+  ref.setUTCHours(utcHour, 0, 0, 0);
+  const formatted = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "2-digit", hour12: false }).format(ref);
+  const h = parseInt(formatted, 10);
+  return isNaN(h) ? utcHour : h % 24;
+}
+
+/** Convert a household-local hour back to the UTC-equivalent hour to store in DB. */
+function localHourToUTC(localHour: number, tz: string): number {
+  for (let u = 0; u < 24; u++) {
+    if (utcHourToLocal(u, tz) === localHour) return u;
+  }
+  return localHour; // fallback for sub-hour offsets
+}
+
 function BriefingHourSelector() {
   const { data: household } = useGetHousehold();
   const updateHousehold = useUpdateHousehold();
@@ -381,15 +398,16 @@ function BriefingHourSelector() {
   const tz = household?.timezone ?? "America/Sao_Paulo";
   const tzLabel = TZ_LABELS[tz] ?? "horário local";
 
-  // briefing_hour is stored as a local hour in the household's timezone;
-  // the scheduler compares it directly to localHourInTimezone(now, timezone).
-  const savedLocal = household?.briefing_hour ?? 7;
+  // briefing_hour is stored in UTC; convert to local for display.
+  const savedUTC = household?.briefing_hour ?? 7;
+  const savedLocal = utcHourToLocal(savedUTC, tz);
+
   const [selectedLocal, setSelectedLocal] = useState<number>(savedLocal);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setSelectedLocal(household?.briefing_hour ?? 7);
-  }, [household?.briefing_hour]);
+    setSelectedLocal(utcHourToLocal(household?.briefing_hour ?? 7, tz));
+  }, [household?.briefing_hour, tz]);
 
   function formatHour(h: number) {
     const period = h < 12 ? "AM" : "PM";
@@ -398,8 +416,9 @@ function BriefingHourSelector() {
   }
 
   async function handleSave() {
+    const utcHour = localHourToUTC(selectedLocal, tz);
     try {
-      await updateHousehold.mutateAsync({ data: { briefing_hour: selectedLocal } });
+      await updateHousehold.mutateAsync({ data: { briefing_hour: utcHour } });
       setSaved(true);
       toast({ title: "Horário salvo", description: `Resumo diário às ${formatHour(selectedLocal)} (horário de ${tzLabel})` });
       setTimeout(() => setSaved(false), 2500);
