@@ -87,6 +87,26 @@ export function replyConsentRequest(householdName?: string | null): string {
   );
 }
 
+/**
+ * Sent to a diarista/contact after they reply "SIM" to the consent request.
+ */
+export function replyConsentGranted(): string {
+  return (
+    "✅ Autorização confirmada! A partir de agora você poderá receber mensagens da família pelo Vesta.\n\n" +
+    "Para revogar a autorização a qualquer momento, responda *REVOGAR*."
+  );
+}
+
+/**
+ * Sent to a diarista/contact after they reply "NÃO" or "REVOGAR" to the consent request.
+ */
+export function replyConsentRevoked(): string {
+  return (
+    "🔒 Autorização recusada. Você não receberá mais mensagens da família pelo Vesta.\n\n" +
+    "Se mudar de ideia, peça ao administrador da casa para enviar um novo convite."
+  );
+}
+
 // ── Action proposal & approval replies ───────────────────────────────────────
 
 const CATEGORY_EMOJI: Record<string, string> = {

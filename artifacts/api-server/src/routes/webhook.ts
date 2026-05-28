@@ -12,6 +12,8 @@ import {
   replyEdited,
   replyUndone,
   replyExplicitReviewNeeded,
+  replyConsentGranted,
+  replyConsentRevoked,
 } from "../lib/wa-reply-composer";
 
 const router = Router();
@@ -152,6 +154,17 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
 
       case "undone_via_wa":
         void sendWhatsApp(outcome.phone, replyUndone(outcome.actionTitle));
+        break;
+
+      case "consent_updated":
+        void sendWhatsApp(
+          outcome.phone,
+          outcome.newStatus === "consented" ? replyConsentGranted() : replyConsentRevoked(),
+        );
+        req.log.info(
+          { contactId: outcome.contactId, newStatus: outcome.newStatus },
+          "Consent updated via WhatsApp reply — ack sent",
+        );
         break;
 
       // ── New inbound message — classified and proposed ─────────────────────
