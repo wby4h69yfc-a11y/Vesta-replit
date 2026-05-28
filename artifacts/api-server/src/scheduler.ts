@@ -43,9 +43,9 @@ async function tick(): Promise<void> {
       )
       .where(eq(onboardingStateTable.whatsapp_verified, true));
 
+    const currentUTCHour = now.getUTCHours();
     const dueHouseholds = allVerified.filter((h) => {
-      const localHour = localHourInTimezone(now, h.timezone ?? "America/Sao_Paulo");
-      return h.briefing_hour === localHour;
+      return h.briefing_hour === currentUTCHour;
     });
 
     if (dueHouseholds.length === 0) {
