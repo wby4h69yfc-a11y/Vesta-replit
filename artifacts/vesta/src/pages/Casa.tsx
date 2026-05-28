@@ -373,20 +373,38 @@ const TZ_LABELS: Record<string, string> = {
   "America/Noronha":     "Fernando de Noronha",
 };
 
+function utcHourToLocal(utcHour: number, tz: string): number {
+  const ref = new Date();
+  ref.setUTCHours(utcHour, 0, 0, 0);
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "2-digit", hour12: false }).formatToParts(ref);
+  const h = parts.find(p => p.type === "hour")?.value;
+  return h ? parseInt(h, 10) % 24 : utcHour;
+}
+
+function localHourToUTC(localHour: number, tz: string): number {
+  for (let u = 0; u < 24; u++) {
+    if (utcHourToLocal(u, tz) === localHour) return u;
+  }
+  return localHour;
+}
+
 function BriefingHourSelector() {
   const { data: household } = useGetHousehold();
   const updateHousehold = useUpdateHousehold();
   const { toast } = useToast();
 
-  const savedHour = household?.briefing_hour ?? 7;
   const tz = household?.timezone ?? "America/Sao_Paulo";
   const tzLabel = TZ_LABELS[tz] ?? "horário local";
-  const [selectedHour, setSelectedHour] = useState<number>(savedHour);
+
+  const savedUTC = household?.briefing_hour ?? 7;
+  const savedLocal = utcHourToLocal(savedUTC, tz);
+
+  const [selectedLocal, setSelectedLocal] = useState<number>(savedLocal);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setSelectedHour(household?.briefing_hour ?? 7);
-  }, [household?.briefing_hour]);
+    setSelectedLocal(utcHourToLocal(household?.briefing_hour ?? 7, tz));
+  }, [household?.briefing_hour, tz]);
 
   function formatHour(h: number) {
     const period = h < 12 ? "AM" : "PM";
@@ -395,10 +413,11 @@ function BriefingHourSelector() {
   }
 
   async function handleSave() {
+    const utcHour = localHourToUTC(selectedLocal, tz);
     try {
-      await updateHousehold.mutateAsync({ data: { briefing_hour: selectedHour } });
+      await updateHousehold.mutateAsync({ data: { briefing_hour: utcHour } });
       setSaved(true);
-      toast({ title: "Horário salvo", description: `Resumo diário às ${formatHour(selectedHour)} (${tzLabel})` });
+      toast({ title: "Horário salvo", description: `Resumo diário às ${formatHour(selectedLocal)} (${tzLabel})` });
       setTimeout(() => setSaved(false), 2500);
     } catch {
       toast({ title: "Erro ao salvar", description: "Tente novamente.", variant: "destructive" });
@@ -406,6 +425,7 @@ function BriefingHourSelector() {
   }
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
+  const isDirty = selectedLocal !== savedLocal;
 
   return (
     <section>
@@ -423,18 +443,18 @@ function BriefingHourSelector() {
               <p className="text-xs" style={{ color: V.muted }}>
                 Briefing diário às{" "}
                 <span className="font-semibold" style={{ color: V.primary }}>
-                  {formatHour(savedHour)}
+                  {formatHour(savedLocal)}
                 </span>
                 {" "}
-                <span style={{ color: V.muted }}>({tzLabel})</span>
+                <span style={{ color: V.muted }}>(horário de {tzLabel})</span>
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             <select
-              value={selectedHour}
-              onChange={(e) => setSelectedHour(Number(e.target.value))}
+              value={selectedLocal}
+              onChange={(e) => setSelectedLocal(Number(e.target.value))}
               className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium border-0 outline-none appearance-none"
               style={{ background: V.beige, color: V.ink, cursor: "pointer" }}
             >
@@ -447,7 +467,7 @@ function BriefingHourSelector() {
 
             <button
               onClick={() => void handleSave()}
-              disabled={updateHousehold.isPending || selectedHour === savedHour}
+              disabled={updateHousehold.isPending || !isDirty}
               className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50 shrink-0"
               style={{ background: saved ? "#059669" : V.primary }}
             >
@@ -769,7 +789,7 @@ function FamiliaTab() {
 
       {/* Member form panel */}
       {formMode !== "none" && (
-        <MemberForm mode={formMode} initialValues={formValues} onSave={handleSave} onCancel={closeForm} isSaving={isSaving} />
+        <MemberForm key={formMode === "edit" ? (editingId ?? "edit") : "add"} mode={formMode} initialValues={formValues} onSave={handleSave} onCancel={closeForm} isSaving={isSaving} />
       )}
 
       {/* Adults */}

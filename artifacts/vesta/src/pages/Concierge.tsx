@@ -41,10 +41,12 @@ export default function ConciergePage() {
           <input
             placeholder="Funcionalidade em desenvolvimento…"
             disabled
+            title="funcionalidade em desenvolvimento"
             className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none cursor-not-allowed"
             style={{ background: "rgba(255,255,255,0.15)", color: "white" }}
           />
-          <button disabled className="rounded-full px-5 py-2.5 text-sm font-semibold cursor-not-allowed"
+          <button disabled title="funcionalidade em desenvolvimento"
+            className="rounded-full px-5 py-2.5 text-sm font-semibold cursor-not-allowed"
             style={{ background: V.gold, color: V.deep }}>
             Pedir
           </button>
