@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { rulesTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { rulesTable, householdsTable } from "@workspace/db";
+import { eq, and, count } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
+import { getPlanLimits } from "../lib/freemium";
 
 const router = Router();
 
@@ -30,6 +31,30 @@ router.post("/rules", async (req, res) => {
 
     if (!name || !category || !trigger_desc || !action_desc) {
       return res.status(400).json({ error: "name, category, trigger_desc, and action_desc are required" });
+    }
+
+    const [household] = await db
+      .select({ plan: householdsTable.plan })
+      .from(householdsTable)
+      .where(eq(householdsTable.id, hid));
+
+    if (household) {
+      const limits = getPlanLimits(household.plan);
+      if (limits.rules !== Infinity) {
+        const [countRow] = await db
+          .select({ total: count() })
+          .from(rulesTable)
+          .where(eq(rulesTable.household_id, hid));
+
+        const current = countRow?.total ?? 0;
+        if (current >= limits.rules) {
+          return res.status(402).json({
+            error: `Plano gratuito permite no máximo ${limits.rules} regras. Faça upgrade para criar mais.`,
+            limit: limits.rules,
+            plan: household.plan,
+          });
+        }
+      }
     }
 
     const [rule] = await db

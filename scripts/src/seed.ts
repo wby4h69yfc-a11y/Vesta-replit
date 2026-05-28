@@ -300,6 +300,7 @@ async function seed() {
   await db.insert(patternObservationsTable).values([
     {
       household_id: household.id,
+      pattern_key: "escola_tarefa_dow1",
       type: "temporal",
       description: "recados da escola chegam toda segunda-feira de manhã",
       occurrences: 8,
@@ -309,6 +310,7 @@ async function seed() {
     },
     {
       household_id: household.id,
+      pattern_key: "casa_task_dow5",
       type: "sender",
       description: "lista de compras semanal vem sempre da família às sextas",
       occurrences: 5,

@@ -28,6 +28,8 @@ import type {
   CalendarEventInput,
   CalendarEventUpdate,
   CategoryCount,
+  ConsentRateLimitError,
+  ConsentRequestResponse,
   Contact,
   ContactInput,
   ContactUpdate,
@@ -36,6 +38,10 @@ import type {
   HandleBrowserLoginCallbackParams,
   HealthStatus,
   Household,
+  HouseholdInvite,
+  HouseholdInviteDetail,
+  HouseholdInviteInput,
+  HouseholdJoinResponse,
   HouseholdUpdate,
   InboxItem,
   InboxItemDetail,
@@ -49,6 +55,8 @@ import type {
   ListTasksParams,
   LogoutSuccess,
   Member,
+  MemberInput,
+  MemberUpdate,
   MemoryStagingItem,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
@@ -56,6 +64,8 @@ import type {
   OnboardingCompleteSuccess,
   OnboardingStateEnvelope,
   PatternObservation,
+  PlanStatus,
+  PrivacyExport,
   Rule,
   RuleInput,
   RuleUpdate,
@@ -3055,6 +3065,246 @@ export const useDeleteContact = <
 };
 
 /**
+ * @summary Send a WhatsApp consent request to a contact (LGPD)
+ */
+export const getRequestContactConsentUrl = (id: number) => {
+  return `/api/contacts/${id}/request-consent`;
+};
+
+export const requestContactConsent = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ConsentRequestResponse> => {
+  return customFetch<ConsentRequestResponse>(getRequestContactConsentUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRequestContactConsentMutationOptions = <
+  TError = ErrorType<ErrorEnvelope | ConsentRateLimitError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestContactConsent>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestContactConsent>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["requestContactConsent"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestContactConsent>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return requestContactConsent(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestContactConsentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestContactConsent>>
+>;
+
+export type RequestContactConsentMutationError = ErrorType<
+  ErrorEnvelope | ConsentRateLimitError
+>;
+
+/**
+ * @summary Send a WhatsApp consent request to a contact (LGPD)
+ */
+export const useRequestContactConsent = <
+  TError = ErrorType<ErrorEnvelope | ConsentRateLimitError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestContactConsent>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestContactConsent>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRequestContactConsentMutationOptions(options));
+};
+
+/**
+ * @summary Export all household data as JSON (LGPD Art. 18 V)
+ */
+export const getExportPrivacyDataUrl = () => {
+  return `/api/privacy/export`;
+};
+
+export const exportPrivacyData = async (
+  options?: RequestInit,
+): Promise<PrivacyExport> => {
+  return customFetch<PrivacyExport>(getExportPrivacyDataUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportPrivacyDataQueryKey = () => {
+  return [`/api/privacy/export`] as const;
+};
+
+export const getExportPrivacyDataQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportPrivacyData>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof exportPrivacyData>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getExportPrivacyDataQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportPrivacyData>>
+  > = ({ signal }) => exportPrivacyData({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportPrivacyData>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportPrivacyDataQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportPrivacyData>>
+>;
+export type ExportPrivacyDataQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export all household data as JSON (LGPD Art. 18 V)
+ */
+
+export function useExportPrivacyData<
+  TData = Awaited<ReturnType<typeof exportPrivacyData>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof exportPrivacyData>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportPrivacyDataQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Permanently delete the account and all household data (LGPD Art. 18 VI)
+ */
+export const getDeleteAccountUrl = () => {
+  return `/api/account`;
+};
+
+export const deleteAccount = async (options?: RequestInit): Promise<void> => {
+  return customFetch<void>(getDeleteAccountUrl(), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteAccountMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAccount>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteAccount>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["deleteAccount"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteAccount>>,
+    void
+  > = () => {
+    return deleteAccount(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteAccountMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteAccount>>
+>;
+
+export type DeleteAccountMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Permanently delete the account and all household data (LGPD Art. 18 VI)
+ */
+export const useDeleteAccount = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAccount>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteAccount>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getDeleteAccountMutationOptions(options));
+};
+
+/**
  * @summary List smart rules
  */
 export const getListRulesUrl = () => {
@@ -3686,6 +3936,597 @@ export function useListMembers<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListMembersQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add a new member to the household
+ */
+export const getCreateMemberUrl = () => {
+  return `/api/household/members`;
+};
+
+export const createMember = async (
+  memberInput: MemberInput,
+  options?: RequestInit,
+): Promise<Member> => {
+  return customFetch<Member>(getCreateMemberUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(memberInput),
+  });
+};
+
+export const getCreateMemberMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createMember>>,
+    TError,
+    { data: BodyType<MemberInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createMember>>,
+  TError,
+  { data: BodyType<MemberInput> },
+  TContext
+> => {
+  const mutationKey = ["createMember"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createMember>>,
+    { data: BodyType<MemberInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createMember(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateMemberMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createMember>>
+>;
+export type CreateMemberMutationBody = BodyType<MemberInput>;
+export type CreateMemberMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Add a new member to the household
+ */
+export const useCreateMember = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createMember>>,
+    TError,
+    { data: BodyType<MemberInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createMember>>,
+  TError,
+  { data: BodyType<MemberInput> },
+  TContext
+> => {
+  return useMutation(getCreateMemberMutationOptions(options));
+};
+
+/**
+ * @summary Update a household member
+ */
+export const getUpdateMemberUrl = (id: number) => {
+  return `/api/household/members/${id}`;
+};
+
+export const updateMember = async (
+  id: number,
+  memberUpdate: MemberUpdate,
+  options?: RequestInit,
+): Promise<Member> => {
+  return customFetch<Member>(getUpdateMemberUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(memberUpdate),
+  });
+};
+
+export const getUpdateMemberMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateMember>>,
+    TError,
+    { id: number; data: BodyType<MemberUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateMember>>,
+  TError,
+  { id: number; data: BodyType<MemberUpdate> },
+  TContext
+> => {
+  const mutationKey = ["updateMember"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateMember>>,
+    { id: number; data: BodyType<MemberUpdate> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateMember(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateMemberMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateMember>>
+>;
+export type UpdateMemberMutationBody = BodyType<MemberUpdate>;
+export type UpdateMemberMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Update a household member
+ */
+export const useUpdateMember = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateMember>>,
+    TError,
+    { id: number; data: BodyType<MemberUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateMember>>,
+  TError,
+  { id: number; data: BodyType<MemberUpdate> },
+  TContext
+> => {
+  return useMutation(getUpdateMemberMutationOptions(options));
+};
+
+/**
+ * @summary Remove a member from the household
+ */
+export const getDeleteMemberUrl = (id: number) => {
+  return `/api/household/members/${id}`;
+};
+
+export const deleteMember = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteMemberUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteMemberMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteMember>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteMember>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteMember"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteMember>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteMember(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteMemberMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteMember>>
+>;
+
+export type DeleteMemberMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Remove a member from the household
+ */
+export const useDeleteMember = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteMember>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteMember>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteMemberMutationOptions(options));
+};
+
+/**
+ * @summary Generate a household invite and send it via WhatsApp
+ */
+export const getCreateHouseholdInviteUrl = () => {
+  return `/api/household/invite`;
+};
+
+export const createHouseholdInvite = async (
+  householdInviteInput: HouseholdInviteInput,
+  options?: RequestInit,
+): Promise<HouseholdInvite> => {
+  return customFetch<HouseholdInvite>(getCreateHouseholdInviteUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(householdInviteInput),
+  });
+};
+
+export const getCreateHouseholdInviteMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createHouseholdInvite>>,
+    TError,
+    { data: BodyType<HouseholdInviteInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createHouseholdInvite>>,
+  TError,
+  { data: BodyType<HouseholdInviteInput> },
+  TContext
+> => {
+  const mutationKey = ["createHouseholdInvite"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createHouseholdInvite>>,
+    { data: BodyType<HouseholdInviteInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createHouseholdInvite(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateHouseholdInviteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createHouseholdInvite>>
+>;
+export type CreateHouseholdInviteMutationBody = BodyType<HouseholdInviteInput>;
+export type CreateHouseholdInviteMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Generate a household invite and send it via WhatsApp
+ */
+export const useCreateHouseholdInvite = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createHouseholdInvite>>,
+    TError,
+    { data: BodyType<HouseholdInviteInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createHouseholdInvite>>,
+  TError,
+  { data: BodyType<HouseholdInviteInput> },
+  TContext
+> => {
+  return useMutation(getCreateHouseholdInviteMutationOptions(options));
+};
+
+/**
+ * @summary Look up a pending invite by code
+ */
+export const getGetHouseholdInviteUrl = (code: string) => {
+  return `/api/household/invite/${code}`;
+};
+
+export const getHouseholdInvite = async (
+  code: string,
+  options?: RequestInit,
+): Promise<HouseholdInviteDetail> => {
+  return customFetch<HouseholdInviteDetail>(getGetHouseholdInviteUrl(code), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetHouseholdInviteQueryKey = (code: string) => {
+  return [`/api/household/invite/${code}`] as const;
+};
+
+export const getGetHouseholdInviteQueryOptions = <
+  TData = Awaited<ReturnType<typeof getHouseholdInvite>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(
+  code: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getHouseholdInvite>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetHouseholdInviteQueryKey(code);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getHouseholdInvite>>
+  > = ({ signal }) => getHouseholdInvite(code, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!code,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getHouseholdInvite>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetHouseholdInviteQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getHouseholdInvite>>
+>;
+export type GetHouseholdInviteQueryError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Look up a pending invite by code
+ */
+
+export function useGetHouseholdInvite<
+  TData = Awaited<ReturnType<typeof getHouseholdInvite>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(
+  code: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getHouseholdInvite>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetHouseholdInviteQueryOptions(code, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Accept a household invite and link the authenticated user to the household
+ */
+export const getAcceptHouseholdInviteUrl = (code: string) => {
+  return `/api/household/join/${code}`;
+};
+
+export const acceptHouseholdInvite = async (
+  code: string,
+  options?: RequestInit,
+): Promise<HouseholdJoinResponse> => {
+  return customFetch<HouseholdJoinResponse>(getAcceptHouseholdInviteUrl(code), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getAcceptHouseholdInviteMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof acceptHouseholdInvite>>,
+    TError,
+    { code: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof acceptHouseholdInvite>>,
+  TError,
+  { code: string },
+  TContext
+> => {
+  const mutationKey = ["acceptHouseholdInvite"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof acceptHouseholdInvite>>,
+    { code: string }
+  > = (props) => {
+    const { code } = props ?? {};
+
+    return acceptHouseholdInvite(code, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AcceptHouseholdInviteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof acceptHouseholdInvite>>
+>;
+
+export type AcceptHouseholdInviteMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Accept a household invite and link the authenticated user to the household
+ */
+export const useAcceptHouseholdInvite = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof acceptHouseholdInvite>>,
+    TError,
+    { code: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof acceptHouseholdInvite>>,
+  TError,
+  { code: string },
+  TContext
+> => {
+  return useMutation(getAcceptHouseholdInviteMutationOptions(options));
+};
+
+/**
+ * @summary Get current plan, limits, and usage counters for freemium gate UI
+ */
+export const getGetHouseholdPlanStatusUrl = () => {
+  return `/api/household/plan-status`;
+};
+
+export const getHouseholdPlanStatus = async (
+  options?: RequestInit,
+): Promise<PlanStatus> => {
+  return customFetch<PlanStatus>(getGetHouseholdPlanStatusUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetHouseholdPlanStatusQueryKey = () => {
+  return [`/api/household/plan-status`] as const;
+};
+
+export const getGetHouseholdPlanStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getHouseholdPlanStatus>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getHouseholdPlanStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetHouseholdPlanStatusQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getHouseholdPlanStatus>>
+  > = ({ signal }) => getHouseholdPlanStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getHouseholdPlanStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetHouseholdPlanStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getHouseholdPlanStatus>>
+>;
+export type GetHouseholdPlanStatusQueryError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Get current plan, limits, and usage counters for freemium gate UI
+ */
+
+export function useGetHouseholdPlanStatus<
+  TData = Awaited<ReturnType<typeof getHouseholdPlanStatus>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getHouseholdPlanStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetHouseholdPlanStatusQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

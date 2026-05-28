@@ -482,13 +482,13 @@ function Privacy() {
     },
     {
       icon: <ShieldCheck className="h-5 w-5" style={{ color: V.primary }} />,
-      title: "Não treinamos modelo com seus dados",
-      text: "Sua casa não vira dataset. Nada do que entra na Vesta sai pra alimentar IA externa.",
+      title: "OpenAI processa, mas não treina com seus dados",
+      text: "Mensagens são enviadas à OpenAI para classificação via API. A OpenAI não usa dados de API para treinar modelos. Seus dados nunca viram dataset.",
     },
     {
       icon: <Check className="h-5 w-5" style={{ color: V.primary }} />,
-      title: "Hospedagem no Brasil, em conformidade com a LGPD",
-      text: "Servidores na região Brasil e DPO designado. Você exporta ou apaga tudo a qualquer momento.",
+      title: "Hospedagem nos EUA, conformidade com a LGPD",
+      text: "Servidores na nuvem Replit (EUA). Você exporta ou apaga todos os seus dados a qualquer momento, conforme a LGPD.",
     },
     {
       icon: <Sparkles className="h-5 w-5" style={{ color: V.primary }} />,
@@ -885,7 +885,7 @@ function FAQ() {
     },
     {
       q: "Meus dados são usados pra treinar IA?",
-      a: "Não. Sua casa não vira dataset. Nada do que entra na Vesta sai pra alimentar modelos externos.",
+      a: "Não. Mensagens são enviadas à OpenAI via API para classificação, mas a OpenAI não usa dados de API para treinar modelos. Seus dados nunca viram dataset.",
     },
     {
       q: "Quanto vai custar?",

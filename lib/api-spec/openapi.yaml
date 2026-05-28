@@ -34,6 +34,8 @@ tags:
     description: Daily briefing operations
   - name: memory
     description: Household memory staging and audit log
+  - name: privacy
+    description: LGPD data portability and account deletion
 
 paths:
   /auth/user:
@@ -717,6 +719,78 @@ paths:
         "204":
           description: Deleted
 
+  /contacts/{id}/request-consent:
+    post:
+      operationId: requestContactConsent
+      tags: [contacts]
+      summary: Send a WhatsApp consent request to a contact (LGPD)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Consent request sent (or attempted)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentRequestResponse"
+        "400":
+          description: Contact has no phone number
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Contact has already consented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited — one consent request per 24h per contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentRateLimitError"
+
+  # ── Privacy (LGPD) ────────────────────────────────────────────────
+  /privacy/export:
+    get:
+      operationId: exportPrivacyData
+      tags: [privacy]
+      summary: Export all household data as JSON (LGPD Art. 18 V)
+      responses:
+        "200":
+          description: Full household data export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrivacyExport"
+
+  /account:
+    delete:
+      operationId: deleteAccount
+      tags: [privacy]
+      summary: Permanently delete the account and all household data (LGPD Art. 18 VI)
+      responses:
+        "204":
+          description: Account and all household data deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   # ── Rules ────────────────────────────────────────────────────────
   /rules:
     get:
@@ -852,6 +926,191 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Member"
+    post:
+      operationId: createMember
+      tags: [household]
+      summary: Add a new member to the household
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /household/members/{id}:
+    patch:
+      operationId: updateMember
+      tags: [household]
+      summary: Update a household member
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteMember
+      tags: [household]
+      summary: Remove a member from the household
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          description: Cannot delete yourself
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /household/invite:
+    post:
+      operationId: createHouseholdInvite
+      tags: [household]
+      summary: Generate a household invite and send it via WhatsApp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HouseholdInviteInput"
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdInvite"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /household/invite/{code}:
+    get:
+      operationId: getHouseholdInvite
+      tags: [household]
+      summary: Look up a pending invite by code
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invite details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdInviteDetail"
+        "404":
+          description: Invalid or expired invite
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /household/join/{code}:
+    post:
+      operationId: acceptHouseholdInvite
+      tags: [household]
+      summary: Accept a household invite and link the authenticated user to the household
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Joined successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdJoinResponse"
+        "404":
+          description: Invalid or expired invite
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /household/plan-status:
+    get:
+      operationId: getHouseholdPlanStatus
+      tags: [household]
+      summary: Get current plan, limits, and usage counters for freemium gate UI
+      responses:
+        "200":
+          description: Plan status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Household not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ── Patterns ─────────────────────────────────────────────────────
   /patterns:
@@ -1226,6 +1485,14 @@ components:
           enum: [free, premium]
         concierge_eligible:
           type: boolean
+        briefing_hour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.
+        timezone:
+          type: string
+          description: IANA timezone name for this household (e.g. "America/Sao_Paulo"). Defaults to "America/Sao_Paulo".
         created_at:
           type: string
           format: date-time
@@ -1240,6 +1507,14 @@ components:
         plan:
           type: string
           enum: [free, premium]
+        briefing_hour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.
+        timezone:
+          type: string
+          description: IANA timezone name for this household (e.g. "America/Sao_Paulo").
 
     Member:
       type: object
@@ -1247,15 +1522,198 @@ components:
       properties:
         id:
           type: integer
+        household_id:
+          type: integer
+        user_id:
+          type: ["string", "null"]
         name:
           type: string
+        display_name:
+          type: ["string", "null"]
         role:
           type: string
           enum: [admin, member, restricted]
+        relationship_type:
+          type: string
+          enum: [adult, child, other]
         phone:
           type: ["string", "null"]
         avatar_url:
           type: ["string", "null"]
+        colour:
+          type: ["string", "null"]
+        birth_year:
+          type: ["integer", "null"]
+        school:
+          type: ["string", "null"]
+        grade:
+          type: ["string", "null"]
+        primary_doctor:
+          type: ["string", "null"]
+        schedule:
+          type: ["string", "null"]
+        medical_plan:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+
+    MemberInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, member, restricted]
+        relationship_type:
+          type: string
+          enum: [adult, child, other]
+        phone:
+          type: string
+        avatar_url:
+          type: string
+        colour:
+          type: string
+        birth_year:
+          type: integer
+        school:
+          type: string
+        grade:
+          type: string
+        primary_doctor:
+          type: string
+        schedule:
+          type: string
+        medical_plan:
+          type: string
+
+    MemberUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, member, restricted]
+        relationship_type:
+          type: string
+          enum: [adult, child, other]
+        phone:
+          type: string
+        avatar_url:
+          type: string
+        colour:
+          type: string
+        birth_year:
+          type: integer
+        school:
+          type: string
+        grade:
+          type: string
+        primary_doctor:
+          type: string
+        schedule:
+          type: string
+        medical_plan:
+          type: string
+
+    HouseholdInviteInput:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string
+          minLength: 8
+
+    HouseholdInvite:
+      type: object
+      required: [id, code, household_id, invited_phone, expires_at, whatsapp_sent]
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        household_id:
+          type: integer
+        invited_phone:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        whatsapp_sent:
+          type: boolean
+
+    HouseholdInviteDetail:
+      type: object
+      required: [id, code, household_id, household_name, invited_phone, expires_at]
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        household_id:
+          type: integer
+        household_name:
+          type: string
+        invited_phone:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        accepted_at:
+          type: ["string", "null"]
+          format: date-time
+
+    HouseholdJoinResponse:
+      type: object
+      required: [success, household_id]
+      properties:
+        success:
+          type: boolean
+        household_id:
+          type: integer
+
+    PlanStatus:
+      type: object
+      required: [plan, limits, usage]
+      properties:
+        plan:
+          type: string
+          enum: [free, premium]
+        limits:
+          type: object
+          required: [adults, children, rules]
+          properties:
+            adults:
+              type: ["integer", "null"]
+              description: Maximum number of adult members allowed. Null means unlimited.
+            children:
+              type: ["integer", "null"]
+              description: Maximum number of child members allowed. Null means unlimited.
+            rules:
+              type: ["integer", "null"]
+              description: Maximum number of rules allowed. Null means unlimited.
+        usage:
+          type: object
+          required: [adults, children, rules]
+          properties:
+            adults:
+              type: integer
+              description: Current number of adult members.
+            children:
+              type: integer
+              description: Current number of child members.
+            rules:
+              type: integer
+              description: Current number of active rules.
 
     # ── Contacts ─────────────────────────────────────────────────
     Contact:
@@ -1286,9 +1744,85 @@ components:
         consent_withdrawn_at:
           type: ["string", "null"]
           format: date-time
+        last_consent_requested_at:
+          type: ["string", "null"]
+          format: date-time
         created_at:
           type: string
           format: date-time
+
+    ConsentRequestResponse:
+      type: object
+      required: [contact, whatsapp_sent]
+      properties:
+        contact:
+          $ref: "#/components/schemas/Contact"
+        whatsapp_sent:
+          type: boolean
+
+    ConsentRateLimitError:
+      type: object
+      required: [error, next_allowed_at]
+      properties:
+        error:
+          type: string
+        next_allowed_at:
+          type: string
+          format: date-time
+
+    PrivacyExport:
+      type: object
+      required: [exported_at, user_id]
+      properties:
+        exported_at:
+          type: string
+          format: date-time
+        user_id:
+          type: string
+        household:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Household"
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/Member"
+        contacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Contact"
+        inbox_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InboxItem"
+        suggested_actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SuggestedAction"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/CalendarEvent"
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/Rule"
+        patterns:
+          type: array
+          items:
+            $ref: "#/components/schemas/PatternObservation"
+        memory_staging:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoryStagingItem"
+        audit_log:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLogEntry"
 
     ContactInput:
       type: object

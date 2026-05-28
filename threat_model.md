@@ -27,12 +27,13 @@ Production assumptions for this scan:
 - **API → external identity providers** — OIDC, Google, and Apple callbacks cross a trust boundary and must validate tokens, state, and callback context.
 - **API → Twilio / public webhook callers** — `/api/webhook/whatsapp` is designed as a public callback surface and must authenticate the sender before treating inbound data as trusted. In the current private deployment, public reachability is reduced by platform visibility controls, but the endpoint still represents a trust boundary whenever external delivery is enabled.
 - **Authenticated user → household data** — household resources must be scoped to the correct authenticated user and household membership. Cross-household reads and writes are high impact.
+- **Household admin/member/restricted boundary** — the product stores household sub-roles in `members.role`, so exports, invitations, household-wide settings, member management, and destructive privacy operations must distinguish administrators from ordinary or restricted household members.
 - **Internal production surface → dev-only artifacts** — `artifacts/mockup-sandbox` is excluded from production threat analysis unless later wired into deployed routes.
 
 ## Scan Anchors
 
 - **Production entry points:** `artifacts/api-server/src/index.ts`, `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/*.ts`, `artifacts/vesta/src/App.tsx`.
-- **Highest-risk code areas:** `artifacts/api-server/src/routes/` (authz and public routes), `artifacts/api-server/src/routes/webhook.ts`, `artifacts/api-server/src/routes/auth*.ts`, `artifacts/api-server/src/routes/google.ts`, `artifacts/api-server/src/lib/wa-message-processor.ts`, `artifacts/api-server/src/lib/wa-approval-handler.ts`, `artifacts/api-server/src/lib/classifier.ts`, `lib/db/src/schema/*`.
+- **Highest-risk code areas:** `artifacts/api-server/src/routes/` (especially `auth*.ts`, `household.ts`, `household-invite.ts`, `privacy.ts`, `webhook.ts`, `google.ts`), `artifacts/api-server/src/lib/wa-message-processor.ts`, `artifacts/api-server/src/lib/wa-approval-handler.ts`, `artifacts/api-server/src/lib/whatsapp.ts`, `artifacts/api-server/src/lib/classifier.ts`, `lib/db/src/schema/*`.
 - **Public vs authenticated surfaces:** business routes are currently mounted behind a protected router that applies `requireAuth` and `requireHousehold`; the nominally public surfaces that still need careful review are auth routes, OTP routes, social-login callbacks, and the Twilio webhook, but the current `private` deployment means exploitation should be judged based on deployment-authorized access rather than anonymous public reachability.
 - **Dev-only surface usually ignored:** `artifacts/mockup-sandbox/**`.
 
@@ -54,6 +55,7 @@ Household tasks, events, contacts, inbox items, rules, and patterns are all muta
 
 Required guarantees:
 - Every state-changing household route MUST enforce authentication and household membership server-side.
+- Household-wide mutations (settings, member management, invitations, destructive privacy actions) MUST also enforce the caller's household role, not just shared household membership.
 - Business objects MUST be written with the correct household/user scope rather than relying on implicit defaults.
 - External inbound data MUST be authenticated before it can create inbox items, tasks, events, or suggested actions.
 - Webhook sender identity MUST be matched using exact normalized identifiers rather than lossy partial-phone comparisons that can collide across households.
@@ -66,9 +68,11 @@ Vesta stores sensitive household schedules, children and family member data, sch
 
 Required guarantees:
 - Every read of household data MUST be scoped to the authenticated user’s authorized household(s).
+- Household-wide exports and other bulk disclosures MUST be restricted to authorized administrators when the product defines member sub-roles.
 - Integration tokens and message contents MUST never be exposed through unauthenticated endpoints or overbroad queries.
 - API responses and logs MUST avoid leaking secrets or unnecessary personal data.
 - Outbound WhatsApp messages to non-household contacts MUST enforce the stored consent state before any message is sent.
+- Outbound WhatsApp delivery that depends on phone verification MUST be bound to the exact verified destination number, not merely to household-level verification state.
 
 ### Denial of Service
 
@@ -88,4 +92,5 @@ The most important privilege boundary is household isolation. A valid session fo
 Required guarantees:
 - Household membership MUST be represented explicitly in storage and enforced in every query.
 - Routes MUST not rely on global defaults like a shared household row for authorization decisions.
+- When the product defines `admin` / `member` / `restricted` household roles, those roles MUST be enforced consistently on member management, invitation, export, billing-plan, and account-deletion flows.
 - Approval flows, action execution, and automation outputs MUST only affect resources the caller is authorized to control.

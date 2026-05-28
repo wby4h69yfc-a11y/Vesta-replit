@@ -13,6 +13,7 @@ import eventsRouter from "./events";
 import contactsRouter from "./contacts";
 import rulesRouter from "./rules";
 import householdRouter from "./household";
+import householdInviteRouter from "./household-invite";
 import patternsRouter from "./patterns";
 import onboardingRouter from "./onboarding";
 import googleRouter from "./google";
@@ -20,6 +21,7 @@ import briefingRouter from "./briefing";
 import adminRouter from "./admin";
 import devRouter from "./dev";
 import memoryRouter from "./memory";
+import privacyRouter from "./privacy";
 
 const router: IRouter = Router();
 
@@ -32,6 +34,7 @@ router.use(authRouter);      // GET /login, GET /callback, GET /logout, GET /aut
 router.use(authOtpRouter);   // POST /auth/otp/send, POST /auth/otp/verify
 router.use(authSocialRouter); // GET /auth/google, GET /auth/google/callback, POST /auth/apple/callback
 router.use(webhookRouter);   // POST /webhook/whatsapp (authenticated via Twilio HMAC)
+router.use(householdInviteRouter); // GET /household/invite/:code (public), POST /household/invite, POST /household/join/:code (auth-checked inline)
 
 // ── Dev-only routes (auth required, no household check) ───────────────────────
 // Only registered when NODE_ENV !== "production". Useful for resetting state
@@ -65,12 +68,13 @@ protectedRouter.use(tasksRouter);      // GET|POST|PATCH|DELETE /tasks, POST /ta
 protectedRouter.use(eventsRouter);     // GET|POST|PATCH|DELETE /events
 protectedRouter.use(contactsRouter);  // GET|POST|PATCH|DELETE /contacts, POST /contacts/bulk
 protectedRouter.use(rulesRouter);      // GET|POST|PATCH|DELETE|POST /rules, POST /rules/:id/toggle
-protectedRouter.use(householdRouter);  // GET|PATCH /household, GET /household/members
+protectedRouter.use(householdRouter);  // GET|PATCH /household, GET|POST /household/members, PATCH|DELETE /household/members/:id
 protectedRouter.use(patternsRouter);   // GET /patterns, POST /patterns/:id/*
 protectedRouter.use(onboardingRouter); // GET|POST /onboarding/*
 protectedRouter.use(googleRouter);     // GET|POST /google/*, DELETE /google/disconnect
 protectedRouter.use(briefingRouter);   // POST /briefing/send
 protectedRouter.use(memoryRouter);     // GET /memory/staging, POST /memory/staging/:id/confirm|dismiss, GET /audit
+protectedRouter.use(privacyRouter);    // GET /privacy/export, DELETE /account
 protectedRouter.use(adminRouter);      // GET /admin/stats
 
 // Catch-all: any path that reaches here through the protectedRouter did not
