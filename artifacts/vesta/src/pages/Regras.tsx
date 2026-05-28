@@ -6,7 +6,10 @@ import {
   useToggleRule,
   useDeleteRule,
   useGetHouseholdPlanStatus,
+  useAcceptPattern,
   getListRulesQueryKey,
+  getListPatternsQueryKey,
+  type PatternObservation,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import CategoryBadge from "@/components/CategoryBadge";
@@ -28,6 +31,7 @@ export default function RegrasPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgradeLabel, setUpgradeLabel] = useState("");
+  const [pendingPattern, setPendingPattern] = useState<PatternObservation | null>(null);
   const [form, setForm] = useState({
     name: "",
     category: "escola",
@@ -43,6 +47,15 @@ export default function RegrasPage() {
   const rulesUsage = planStatus?.usage?.rules ?? 0;
   const rulesAtLimit = rulesLimit !== null && rulesUsage >= rulesLimit;
 
+  const acceptPattern = useAcceptPattern({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListPatternsQueryKey() });
+        setPendingPattern(null);
+      },
+    },
+  });
+
   const createRule = useCreateRule({
     mutation: {
       onSuccess: () => {
@@ -50,6 +63,9 @@ export default function RegrasPage() {
         setShowCreate(false);
         setForm({ name: "", category: "escola", trigger_desc: "", action_desc: "", approval_level: "one_tap" });
         toast({ description: "Regra criada." });
+        if (pendingPattern) {
+          acceptPattern.mutate({ id: pendingPattern.id });
+        }
       },
       onError: (e: unknown) => {
         if (isUpgradeError(e)) {
@@ -105,7 +121,13 @@ export default function RegrasPage() {
         )}
       </div>
 
-      <PatternSuggestions onAcceptSuccess={() => qc.invalidateQueries({ queryKey: getListRulesQueryKey() })} />
+      <PatternSuggestions
+        onAcceptClick={(pattern, prefill) => {
+          setPendingPattern(pattern);
+          setForm({ ...prefill, approval_level: "one_tap" });
+          setShowCreate(true);
+        }}
+      />
 
       {/* Create form */}
       {showCreate && (

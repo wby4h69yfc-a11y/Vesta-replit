@@ -15,14 +15,15 @@ import {
   useCreateHouseholdInvite,
   useGetHouseholdPlanStatus,
   useListRules, useCreateRule, useToggleRule, useDeleteRule,
-  useListPatterns,
+  useListPatterns, useAcceptPattern,
   useListContacts, useUpdateContact, useRequestContactConsent,
   useListAuditLog,
   useDeleteAccount,
   exportPrivacyData,
   getListMembersQueryKey,
-  getListRulesQueryKey, getListContactsQueryKey,
+  getListRulesQueryKey, getListPatternsQueryKey, getListContactsQueryKey,
   type Member,
+  type PatternObservation,
 } from "@workspace/api-client-react";
 import UpgradePrompt from "@/components/UpgradePrompt";
 import PatternSuggestions from "@/components/PatternSuggestions";
@@ -63,11 +64,15 @@ function TabBar({ active, onChange, patternCount = 0 }: { active: Tab; onChange:
             color: active === t.id ? V.primary : V.muted,
             borderBottom: active === t.id ? `2px solid ${V.primary}` : "2px solid transparent",
           }}>
-          {t.label}
-          {t.id === "regras" && patternCount > 0 && (
-            <span className="absolute top-1.5 ml-0.5 w-2 h-2 rounded-full inline-block"
-              style={{ background: "#EF4444" }} />
-          )}
+          <span className="relative inline-flex items-center gap-1">
+            {t.label}
+            {t.id === "regras" && patternCount > 0 && (
+              <span className="min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center"
+                style={{ background: "#EF4444", color: "white" }}>
+                {patternCount > 9 ? "9+" : patternCount}
+              </span>
+            )}
+          </span>
         </button>
       ))}
     </div>
@@ -1062,6 +1067,7 @@ function RegrasTab() {
   const [showCreate, setShowCreate] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgradeLabel, setUpgradeLabel] = useState("");
+  const [pendingPattern, setPendingPattern] = useState<PatternObservation | null>(null);
   const [form, setForm] = useState({
     name: "", category: "escola", trigger_desc: "", action_desc: "", approval_level: "one_tap",
   });
@@ -1073,6 +1079,15 @@ function RegrasTab() {
   const rulesUsage = planStatus?.usage?.rules ?? 0;
   const rulesAtLimit = rulesLimit !== null && rulesUsage >= rulesLimit;
 
+  const acceptPattern = useAcceptPattern({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListPatternsQueryKey() });
+        setPendingPattern(null);
+      },
+    },
+  });
+
   const createRule = useCreateRule({
     mutation: {
       onSuccess: () => {
@@ -1080,6 +1095,9 @@ function RegrasTab() {
         setShowCreate(false);
         setForm({ name: "", category: "escola", trigger_desc: "", action_desc: "", approval_level: "one_tap" });
         toast({ description: "Regra criada." });
+        if (pendingPattern) {
+          acceptPattern.mutate({ id: pendingPattern.id });
+        }
       },
       onError: (e: unknown) => {
         if (isUpgradeError(e)) {
@@ -1131,7 +1149,13 @@ function RegrasTab() {
         )}
       </div>
 
-      <PatternSuggestions />
+      <PatternSuggestions
+        onAcceptClick={(pattern, prefill) => {
+          setPendingPattern(pattern);
+          setForm({ ...prefill, approval_level: "one_tap" });
+          setShowCreate(true);
+        }}
+      />
 
       {/* Create form */}
       {showCreate && (
