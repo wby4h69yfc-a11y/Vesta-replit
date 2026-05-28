@@ -15,16 +15,17 @@ import {
   useCreateHouseholdInvite,
   useGetHouseholdPlanStatus,
   useListRules, useCreateRule, useToggleRule, useDeleteRule,
-  useListPatterns, useAcceptPattern, useDismissPattern,
+  useListPatterns,
   useListContacts, useUpdateContact, useRequestContactConsent,
   useListAuditLog,
   useDeleteAccount,
   exportPrivacyData,
   getListMembersQueryKey,
-  getListRulesQueryKey, getListPatternsQueryKey, getListContactsQueryKey,
+  getListRulesQueryKey, getListContactsQueryKey,
   type Member,
 } from "@workspace/api-client-react";
 import UpgradePrompt from "@/components/UpgradePrompt";
+import PatternSuggestions from "@/components/PatternSuggestions";
 import { useAuth } from "@workspace/replit-auth-web";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -46,7 +47,7 @@ const V = {
 type Tab = "inicio" | "familia" | "regras" | "privacidade";
 
 /* ── TabBar ──────────────────────────────────────────────────────────────── */
-function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
+function TabBar({ active, onChange, patternCount = 0 }: { active: Tab; onChange: (t: Tab) => void; patternCount?: number }) {
   const tabs: { id: Tab; label: string }[] = [
     { id: "inicio",      label: "Início" },
     { id: "familia",     label: "Família" },
@@ -57,12 +58,16 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
     <div className="flex" style={{ borderBottom: "1px solid rgba(14,59,46,0.08)" }}>
       {tabs.map((t) => (
         <button key={t.id} onClick={() => onChange(t.id)}
-          className="flex-1 py-3 text-xs font-semibold transition-colors"
+          className="flex-1 py-3 text-xs font-semibold transition-colors relative"
           style={{
             color: active === t.id ? V.primary : V.muted,
             borderBottom: active === t.id ? `2px solid ${V.primary}` : "2px solid transparent",
           }}>
           {t.label}
+          {t.id === "regras" && patternCount > 0 && (
+            <span className="absolute top-1.5 ml-0.5 w-2 h-2 rounded-full inline-block"
+              style={{ background: "#EF4444" }} />
+          )}
         </button>
       ))}
     </div>
@@ -1062,7 +1067,6 @@ function RegrasTab() {
   });
 
   const { data: rules, isLoading } = useListRules();
-  const { data: patterns } = useListPatterns({ status: "suggested" });
   const { data: planStatus } = useGetHouseholdPlanStatus();
 
   const rulesLimit = planStatus?.limits?.rules ?? null;
@@ -1101,20 +1105,6 @@ function RegrasTab() {
     },
   });
 
-  const acceptPattern = useAcceptPattern({
-    mutation: {
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: getListPatternsQueryKey() });
-        qc.invalidateQueries({ queryKey: getListRulesQueryKey() });
-        toast({ description: "Regra criada a partir do padrão!" });
-      },
-    },
-  });
-
-  const dismissPattern = useDismissPattern({
-    mutation: { onSuccess: () => qc.invalidateQueries({ queryKey: getListPatternsQueryKey() }) },
-  });
-
   return (
     <div className="space-y-5 py-6">
       {showUpgrade && <UpgradePrompt limitLabel={upgradeLabel} onClose={() => setShowUpgrade(false)} />}
@@ -1141,44 +1131,7 @@ function RegrasTab() {
         )}
       </div>
 
-      {/* Pattern suggestions */}
-      {(patterns?.length ?? 0) > 0 && (
-        <section>
-          <h2 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: V.muted }}>
-            Padrões detectados
-          </h2>
-          <div className="space-y-2">
-            {patterns?.map((p) => (
-              <div key={p.id}
-                className="rounded-2xl p-4 space-y-2"
-                style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.12)" }}
-                data-testid={`pattern-${p.id}`}>
-                <div className="flex items-start gap-2">
-                  <TrendingUp className="w-4 h-4 shrink-0 mt-0.5" style={{ color: V.primary }} />
-                  <p className="text-sm flex-1" style={{ color: V.ink }}>
-                    Notei que <span className="font-medium">{p.description}</span> aconteceu {p.occurrences} {p.occurrences === 1 ? "vez" : "vezes"}.
-                  </p>
-                </div>
-                {p.evidence && <p className="text-xs pl-6" style={{ color: V.muted }}>{p.evidence}</p>}
-                <div className="flex gap-2 pl-6">
-                  <button onClick={() => dismissPattern.mutate({ id: p.id })}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-border"
-                    style={{ color: V.muted }}
-                    data-testid={`dismiss-pattern-${p.id}`}>
-                    Ignorar
-                  </button>
-                  <button onClick={() => acceptPattern.mutate({ id: p.id })}
-                    className="text-xs px-3 py-1.5 rounded-lg font-medium"
-                    style={{ background: "#EAF1E5", color: V.primary }}
-                    data-testid={`accept-pattern-${p.id}`}>
-                    Criar regra
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      <PatternSuggestions />
 
       {/* Create form */}
       {showCreate && (
@@ -1605,11 +1558,13 @@ function PrivacidadeTab() {
 /* ── Page ────────────────────────────────────────────────────────────────── */
 export default function CasaPage() {
   const [tab, setTab] = useState<Tab>("inicio");
+  const { data: suggestedPatterns } = useListPatterns({ status: "suggested" });
+  const patternCount = suggestedPatterns?.length ?? 0;
   return (
     <div className="animate-fade-in-up">
       <div className="sticky top-0 z-10 px-4 pt-4" style={{ background: V.ivory }}>
         <h1 className="text-xl font-bold mb-3" style={{ color: V.ink }}>Casa</h1>
-        <TabBar active={tab} onChange={setTab} />
+        <TabBar active={tab} onChange={setTab} patternCount={patternCount} />
       </div>
       <div className="px-4 pb-24">
         {tab === "inicio"      && <InicioTab />}

@@ -19,6 +19,7 @@ import {
   useGetDashboardSummary,
   useGetTodayEvents,
   useGetActivityFeed,
+  useListPatterns,
 } from "@workspace/api-client-react";
 import CategoryBadge from "@/components/CategoryBadge";
 import { formatTime, formatRelativeTime, formatDate } from "@/lib/utils";
@@ -241,6 +242,30 @@ function EscalationBanner({ count }: { count: number }) {
   );
 }
 
+/* ── PatternNudge ──────────────────────────────────────────────────────────── */
+function PatternNudge() {
+  const { data: patterns } = useListPatterns({ status: "suggested" });
+  const count = patterns?.length ?? 0;
+  if (count === 0) return null;
+  return (
+    <Link href="/rules">
+      <div
+        className="flex items-center gap-3 rounded-2xl px-4 py-3 cursor-pointer hover:opacity-90 transition-opacity"
+        style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.12)" }}
+      >
+        <span className="text-lg shrink-0">💡</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium" style={{ color: V.ink }}>
+            {count === 1 ? "1 sugestão de regra detectada" : `${count} sugestões de regras detectadas`}
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: V.muted }}>Ver e aprovar padrões →</p>
+        </div>
+        <ArrowRight className="h-4 w-4 shrink-0" style={{ color: V.sage }} />
+      </div>
+    </Link>
+  );
+}
+
 /* ── Main ──────────────────────────────────────────────────────────────────── */
 export default function Hoje() {
   const { data: summary } = useGetDashboardSummary();
@@ -281,6 +306,9 @@ export default function Hoje() {
 
       {/* ⑤ Escalation — only surfaces when explicit web review is needed */}
       <EscalationBanner count={pendingInbox} />
+
+      {/* ⑤b Pattern nudge — appears when there are unreviewed pattern suggestions */}
+      <PatternNudge />
 
       {/* ⑥ Today's agenda */}
       <section>
