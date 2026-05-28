@@ -10,6 +10,7 @@ export const householdsTable = pgTable("households", {
   concierge_eligible: boolean("concierge_eligible").notNull().default(false),
   last_briefing_sent_at: timestamp("last_briefing_sent_at", { withTimezone: true }),
   briefing_hour: integer("briefing_hour").notNull().default(7),
+  timezone: text("timezone").notNull().default("America/Sao_Paulo"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

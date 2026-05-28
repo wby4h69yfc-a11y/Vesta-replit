@@ -871,7 +871,13 @@ export const ExportPrivacyDataResponse = zod.object({
         .max(exportPrivacyDataResponseHouseholdOneBriefingHourMax)
         .optional()
         .describe(
-          "Hour (0-23 UTC) at which the daily briefing is sent automatically.",
+          "Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.",
+        ),
+      timezone: zod
+        .string()
+        .optional()
+        .describe(
+          'IANA timezone name for this household (e.g. \"America\/Sao_Paulo\"). Defaults to \"America\/Sao_Paulo\".',
         ),
       created_at: zod.coerce.date().optional(),
     })
@@ -1261,7 +1267,13 @@ export const GetHouseholdResponse = zod.object({
     .max(getHouseholdResponseBriefingHourMax)
     .optional()
     .describe(
-      "Hour (0-23 UTC) at which the daily briefing is sent automatically.",
+      "Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.",
+    ),
+  timezone: zod
+    .string()
+    .optional()
+    .describe(
+      'IANA timezone name for this household (e.g. \"America\/Sao_Paulo\"). Defaults to \"America\/Sao_Paulo\".',
     ),
   created_at: zod.coerce.date().optional(),
 });
@@ -1282,7 +1294,13 @@ export const UpdateHouseholdBody = zod.object({
     .max(updateHouseholdBodyBriefingHourMax)
     .optional()
     .describe(
-      "Hour (0-23 UTC) at which the daily briefing is sent automatically.",
+      "Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.",
+    ),
+  timezone: zod
+    .string()
+    .optional()
+    .describe(
+      'IANA timezone name for this household (e.g. \"America\/Sao_Paulo\").',
     ),
 });
 
@@ -1301,7 +1319,13 @@ export const UpdateHouseholdResponse = zod.object({
     .max(updateHouseholdResponseBriefingHourMax)
     .optional()
     .describe(
-      "Hour (0-23 UTC) at which the daily briefing is sent automatically.",
+      "Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.",
+    ),
+  timezone: zod
+    .string()
+    .optional()
+    .describe(
+      'IANA timezone name for this household (e.g. \"America\/Sao_Paulo\"). Defaults to \"America\/Sao_Paulo\".',
     ),
   created_at: zod.coerce.date().optional(),
 });

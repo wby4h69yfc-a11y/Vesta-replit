@@ -35,11 +35,19 @@ router.patch("/household", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const hid = getHouseholdId(req);
-    const { name, location, plan, briefing_hour } = req.body;
+    const { name, location, plan, briefing_hour, timezone } = req.body;
 
     if (briefing_hour !== undefined) {
       if (!Number.isInteger(briefing_hour) || briefing_hour < 0 || briefing_hour > 23) {
         return res.status(400).json({ error: "briefing_hour deve ser um inteiro entre 0 e 23." });
+      }
+    }
+
+    if (timezone !== undefined) {
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: timezone });
+      } catch {
+        return res.status(400).json({ error: "timezone inválido. Use um nome IANA válido (ex: America/Sao_Paulo)." });
       }
     }
 
@@ -57,6 +65,7 @@ router.patch("/household", async (req, res) => {
         location: location ?? household.location,
         plan: plan ?? household.plan,
         briefing_hour: briefing_hour !== undefined ? briefing_hour : household.briefing_hour,
+        timezone: timezone ?? household.timezone,
       })
       .where(eq(householdsTable.id, hid))
       .returning();

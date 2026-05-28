@@ -1489,7 +1489,10 @@ components:
           type: integer
           minimum: 0
           maximum: 23
-          description: Hour (0-23 UTC) at which the daily briefing is sent automatically.
+          description: Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.
+        timezone:
+          type: string
+          description: IANA timezone name for this household (e.g. "America/Sao_Paulo"). Defaults to "America/Sao_Paulo".
         created_at:
           type: string
           format: date-time
@@ -1508,7 +1511,10 @@ components:
           type: integer
           minimum: 0
           maximum: 23
-          description: Hour (0-23 UTC) at which the daily briefing is sent automatically.
+          description: Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.
+        timezone:
+          type: string
+          description: IANA timezone name for this household (e.g. "America/Sao_Paulo").
 
     Member:
       type: object
