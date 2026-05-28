@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import {
   useGetHousehold,
+  useUpdateHousehold,
   useListRules, useCreateRule, useToggleRule, useDeleteRule,
   useListPatterns, useAcceptPattern, useDismissPattern,
   useListContacts, useUpdateContact, useRequestContactConsent,
@@ -351,6 +352,90 @@ function GoogleIntegrationsSection() {
   );
 }
 
+/* ── BriefingHourSelector ─────────────────────────────────────────────────── */
+function BriefingHourSelector() {
+  const { data: household } = useGetHousehold();
+  const updateHousehold = useUpdateHousehold();
+  const { toast } = useToast();
+
+  const savedHour = household?.briefing_hour ?? 7;
+  const [selectedHour, setSelectedHour] = useState<number>(savedHour);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setSelectedHour(household?.briefing_hour ?? 7);
+  }, [household?.briefing_hour]);
+
+  function formatHour(h: number) {
+    const period = h < 12 ? "AM" : "PM";
+    const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${display}:00 ${period}`;
+  }
+
+  async function handleSave() {
+    try {
+      await updateHousehold.mutateAsync({ data: { briefing_hour: selectedHour } });
+      setSaved(true);
+      toast({ title: "Horário salvo", description: `Resumo diário às ${formatHour(selectedHour)}` });
+      setTimeout(() => setSaved(false), 2500);
+    } catch {
+      toast({ title: "Erro ao salvar", description: "Tente novamente.", variant: "destructive" });
+    }
+  }
+
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+
+  return (
+    <section>
+      <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: V.muted }}>
+        Resumo diário
+      </h2>
+      <div className="rounded-3xl overflow-hidden" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
+        <div className="px-5 py-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#EAF1E5" }}>
+              <Bell className="h-4 w-4" style={{ color: V.primary }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium" style={{ color: V.ink }}>Horário do resumo</p>
+              <p className="text-xs" style={{ color: V.muted }}>
+                Briefing diário enviado às{" "}
+                <span className="font-semibold" style={{ color: V.primary }}>
+                  {formatHour(savedHour)}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <select
+              value={selectedHour}
+              onChange={(e) => setSelectedHour(Number(e.target.value))}
+              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium border-0 outline-none appearance-none"
+              style={{ background: V.beige, color: V.ink, cursor: "pointer" }}
+            >
+              {hours.map((h) => (
+                <option key={h} value={h}>
+                  {formatHour(h)}
+                </option>
+              ))}
+            </select>
+
+            <button
+              onClick={() => void handleSave()}
+              disabled={updateHousehold.isPending || selectedHour === savedHour}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50 shrink-0"
+              style={{ background: saved ? "#059669" : V.primary }}
+            >
+              {updateHousehold.isPending ? "…" : saved ? "Salvo ✓" : "Salvar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ── Início tab ──────────────────────────────────────────────────────────── */
 function InicioTab() {
   const { data: household } = useGetHousehold();
@@ -421,6 +506,8 @@ function InicioTab() {
           ))}
         </div>
       </section>
+
+      <BriefingHourSelector />
 
       <GoogleIntegrationsSection />
 
