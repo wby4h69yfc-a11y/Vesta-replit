@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { patternObservationsTable, rulesTable } from "@workspace/db";
+import { patternObservationsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 

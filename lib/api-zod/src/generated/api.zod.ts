@@ -1533,7 +1533,7 @@ export const ListPatternsResponseItem = zod.object({
 export const ListPatternsResponse = zod.array(ListPatternsResponseItem);
 
 /**
- * @summary Accept a pattern suggestion (creates a rule)
+ * @summary Accept a pattern suggestion (marks as rule_created; caller is responsible for creating the rule via POST /rules)
  */
 export const AcceptPatternParams = zod.object({
   id: zod.coerce.number(),
