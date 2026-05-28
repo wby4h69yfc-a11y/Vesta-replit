@@ -1140,7 +1140,7 @@ function RegrasTab() {
             <Lock className="h-3.5 w-3.5" /> Regra
           </button>
         ) : (
-          <button onClick={() => setShowCreate(true)}
+          <button onClick={() => { setPendingPattern(null); setShowCreate(true); }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 ml-3"
             style={{ background: "#EAF1E5", color: V.primary }}
             data-testid="button-create-rule">
@@ -1185,7 +1185,7 @@ function RegrasTab() {
             <option value="explicit">Aprovação explícita</option>
           </select>
           <div className="flex gap-2">
-            <button onClick={() => setShowCreate(false)}
+            <button onClick={() => { setPendingPattern(null); setShowCreate(false); }}
               className="flex-1 py-2.5 rounded-xl border border-border text-sm"
               style={{ color: V.muted }}>Cancelar</button>
             <button

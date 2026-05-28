@@ -52,7 +52,8 @@ export default function PatternSuggestions({ onAcceptClick }: PatternSuggestions
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getListPatternsQueryKey() });
       },
-      onError: () => {
+      onError: (_err, variables) => {
+        setDismissingIds((prev) => prev.filter((id) => id !== variables.id));
         toast({ description: "Erro ao ignorar padrão.", variant: "destructive" });
       },
     },
