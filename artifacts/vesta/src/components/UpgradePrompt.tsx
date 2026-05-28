@@ -1,4 +1,5 @@
 import { X, Sparkles } from "lucide-react";
+import { useLocation } from "wouter";
 
 const V = { primary: "#0E3B2E", cream: "#FFFDF6", beige: "#EEE6D6", ink: "#12231C", muted: "#5F6B61" };
 
@@ -8,6 +9,7 @@ interface UpgradePromptProps {
 }
 
 export default function UpgradePrompt({ limitLabel, onClose }: UpgradePromptProps) {
+  const [, navigate] = useLocation();
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
@@ -49,7 +51,7 @@ export default function UpgradePrompt({ limitLabel, onClose }: UpgradePromptProp
             style={{ background: V.beige, color: V.ink }}>
             Agora não
           </button>
-          <button onClick={() => { window.location.href = "/planos"; }}
+          <button onClick={() => { onClose(); navigate("/planos"); }}
             className="flex-1 py-3 rounded-2xl text-sm font-semibold text-white"
             style={{ background: V.primary }}>
             Ver planos →

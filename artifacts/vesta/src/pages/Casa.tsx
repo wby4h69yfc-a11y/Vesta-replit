@@ -30,8 +30,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import CategoryBadge from "@/components/CategoryBadge";
 import { CATEGORIES } from "@/lib/categories";
-import { cn } from "@/lib/utils";
-import { formatRelativeTime } from "@/lib/utils";
+import { cn, formatRelativeTime, isUpgradeError } from "@/lib/utils";
 
 const V = {
   primary: "#0E3B2E",
@@ -768,7 +767,7 @@ function FamiliaTab() {
     mutation: {
       onSuccess: () => { invalidateMembers(); closeForm(); toast({ description: "Membro adicionado." }); },
       onError: (e: unknown) => {
-        if ((e as { status?: number })?.status === 402) {
+        if (isUpgradeError(e)) {
           const lim = planStatus?.limits;
           const type = formValues.relationship_type;
           const n = type === "child" ? (lim?.children ?? 1) : (lim?.adults ?? 2);
@@ -1056,12 +1055,19 @@ function RegrasTab() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [upgradeLabel, setUpgradeLabel] = useState("");
   const [form, setForm] = useState({
     name: "", category: "escola", trigger_desc: "", action_desc: "", approval_level: "one_tap",
   });
 
   const { data: rules, isLoading } = useListRules();
   const { data: patterns } = useListPatterns({ status: "suggested" });
+  const { data: planStatus } = useGetHouseholdPlanStatus();
+
+  const rulesLimit = planStatus?.limits?.rules ?? null;
+  const rulesUsage = planStatus?.usage?.rules ?? 0;
+  const rulesAtLimit = rulesLimit !== null && rulesUsage >= rulesLimit;
 
   const createRule = useCreateRule({
     mutation: {
@@ -1070,6 +1076,14 @@ function RegrasTab() {
         setShowCreate(false);
         setForm({ name: "", category: "escola", trigger_desc: "", action_desc: "", approval_level: "one_tap" });
         toast({ description: "Regra criada." });
+      },
+      onError: (e: unknown) => {
+        if (isUpgradeError(e)) {
+          setUpgradeLabel(`Plano gratuito: máximo de ${rulesLimit ?? 3} regras inteligentes.`);
+          setShowUpgrade(true);
+        } else {
+          toast({ description: "Erro ao criar regra.", variant: "destructive" });
+        }
       },
     },
   });
@@ -1103,16 +1117,28 @@ function RegrasTab() {
 
   return (
     <div className="space-y-5 py-6">
+      {showUpgrade && <UpgradePrompt limitLabel={upgradeLabel} onClose={() => setShowUpgrade(false)} />}
       <div className="flex items-center justify-between">
         <p className="text-xs" style={{ color: V.muted }}>
           Regras ensinam a Vesta a agir automaticamente em situações recorrentes.
         </p>
-        <button onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 ml-3"
-          style={{ background: "#EAF1E5", color: V.primary }}
-          data-testid="button-create-rule">
-          <Plus className="h-3.5 w-3.5" /> Regra
-        </button>
+        {rulesAtLimit ? (
+          <button
+            onClick={() => { setUpgradeLabel(`Plano gratuito: máximo de ${rulesLimit} regras inteligentes.`); setShowUpgrade(true); }}
+            title={`Limite atingido — plano gratuito: máximo de ${rulesLimit} regras`}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 ml-3"
+            style={{ background: V.beige, color: V.muted }}
+            data-testid="button-create-rule">
+            <Lock className="h-3.5 w-3.5" /> Regra
+          </button>
+        ) : (
+          <button onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 ml-3"
+            style={{ background: "#EAF1E5", color: V.primary }}
+            data-testid="button-create-rule">
+            <Plus className="h-3.5 w-3.5" /> Regra
+          </button>
+        )}
       </div>
 
       {/* Pattern suggestions */}
