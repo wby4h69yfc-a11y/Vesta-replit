@@ -33,20 +33,20 @@ export default function ConciergePage() {
       </div>
 
       {/* New request — disabled */}
-      <div className="rounded-3xl p-6 text-white opacity-50 pointer-events-none select-none"
+      <div className="rounded-3xl p-6 text-white"
         style={{ background: V.primary }}>
         <p className="text-xs font-semibold uppercase tracking-widest opacity-70 mb-2">Nova solicitação</p>
-        <p className="font-serif text-xl font-semibold mb-4 leading-snug">O que você precisa resolver hoje?</p>
+        <p className="font-serif text-xl font-semibold mb-4 leading-snug opacity-60">O que você precisa resolver hoje?</p>
         <div className="flex gap-2">
           <input
             placeholder="Funcionalidade em desenvolvimento…"
             disabled
             title="funcionalidade em desenvolvimento"
-            className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none cursor-not-allowed"
+            className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none pointer-events-none opacity-50 cursor-not-allowed select-none"
             style={{ background: "rgba(255,255,255,0.15)", color: "white" }}
           />
           <button disabled title="funcionalidade em desenvolvimento"
-            className="rounded-full px-5 py-2.5 text-sm font-semibold cursor-not-allowed"
+            className="rounded-full px-5 py-2.5 text-sm font-semibold opacity-50 cursor-not-allowed select-none"
             style={{ background: V.gold, color: V.deep }}>
             Pedir
           </button>
