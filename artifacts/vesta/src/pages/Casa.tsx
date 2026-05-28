@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  Users, ShieldCheck, ChevronRight, Plus, Trash2,
+  Users, ShieldCheck, ChevronRight, Plus, Trash2, Pencil,
   Home, Baby, Heart, Lock, Bell, Key, HelpCircle, LogOut,
   Sparkles, CheckCircle, Clock, AlertCircle, X,
   CalendarDays, Mail, RefreshCw, Unlink, ExternalLink,
@@ -11,14 +11,19 @@ import {
 import {
   useGetHousehold,
   useUpdateHousehold,
+  useListMembers, useCreateMember, useUpdateMember, useDeleteMember,
+  useCreateHouseholdInvite,
   useListRules, useCreateRule, useToggleRule, useDeleteRule,
   useListPatterns, useAcceptPattern, useDismissPattern,
   useListContacts, useUpdateContact, useRequestContactConsent,
   useListAuditLog,
   useDeleteAccount,
   exportPrivacyData,
+  getListMembersQueryKey,
   getListRulesQueryKey, getListPatternsQueryKey, getListContactsQueryKey,
+  type Member,
 } from "@workspace/api-client-react";
+import { useAuth } from "@workspace/replit-auth-web";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import CategoryBadge from "@/components/CategoryBadge";
@@ -353,12 +358,29 @@ function GoogleIntegrationsSection() {
 }
 
 /* ── BriefingHourSelector ─────────────────────────────────────────────────── */
+const TZ_LABELS: Record<string, string> = {
+  "America/Sao_Paulo":   "Brasília",
+  "America/Manaus":      "Manaus",
+  "America/Belem":       "Belém",
+  "America/Fortaleza":   "Fortaleza",
+  "America/Recife":      "Recife",
+  "America/Maceio":      "Maceió",
+  "America/Bahia":       "Salvador",
+  "America/Cuiaba":      "Cuiabá",
+  "America/Porto_Velho": "Porto Velho",
+  "America/Boa_Vista":   "Boa Vista",
+  "America/Rio_Branco":  "Rio Branco",
+  "America/Noronha":     "Fernando de Noronha",
+};
+
 function BriefingHourSelector() {
   const { data: household } = useGetHousehold();
   const updateHousehold = useUpdateHousehold();
   const { toast } = useToast();
 
   const savedHour = household?.briefing_hour ?? 7;
+  const tz = household?.timezone ?? "America/Sao_Paulo";
+  const tzLabel = TZ_LABELS[tz] ?? "horário local";
   const [selectedHour, setSelectedHour] = useState<number>(savedHour);
   const [saved, setSaved] = useState(false);
 
@@ -376,7 +398,7 @@ function BriefingHourSelector() {
     try {
       await updateHousehold.mutateAsync({ data: { briefing_hour: selectedHour } });
       setSaved(true);
-      toast({ title: "Horário salvo", description: `Resumo diário às ${formatHour(selectedHour)}` });
+      toast({ title: "Horário salvo", description: `Resumo diário às ${formatHour(selectedHour)} (${tzLabel})` });
       setTimeout(() => setSaved(false), 2500);
     } catch {
       toast({ title: "Erro ao salvar", description: "Tente novamente.", variant: "destructive" });
@@ -399,10 +421,12 @@ function BriefingHourSelector() {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium" style={{ color: V.ink }}>Horário do resumo</p>
               <p className="text-xs" style={{ color: V.muted }}>
-                Briefing diário enviado às{" "}
+                Briefing diário às{" "}
                 <span className="font-semibold" style={{ color: V.primary }}>
                   {formatHour(savedHour)}
                 </span>
+                {" "}
+                <span style={{ color: V.muted }}>({tzLabel})</span>
               </p>
             </div>
           </div>
@@ -544,83 +568,299 @@ function InicioTab() {
   );
 }
 
-/* ── Família tab (members + diarista consent) ─────────────────────────────── */
+/* ── Família tab ─────────────────────────────────────────────────────────── */
+/* ── MemberRow ────────────────────────────────────────────────────────────── */
+const MEMBER_COLOURS = ["#0E3B2E", "#2563EB", "#D97706", "#7C3AED", "#DB2777", "#0891B2", "#059669", "#DC2626"];
+
+function MemberRow({
+  member, isFirst, isSelf, confirmDeleteId, setConfirmDeleteId, onEdit, onDelete,
+}: {
+  member: Member; isFirst: boolean; isSelf: boolean;
+  confirmDeleteId: number | null; setConfirmDeleteId: (id: number | null) => void;
+  onEdit: () => void; onDelete: () => void;
+}) {
+  const initial = member.name.charAt(0).toUpperCase();
+  const bg = member.colour ?? V.primary;
+  const isConfirming = confirmDeleteId === member.id;
+  const subtitle = member.school
+    ? member.school + (member.grade ? ` · ${member.grade}` : "")
+    : member.role === "admin" ? "Administrador" : "Membro";
+
+  return (
+    <div className="px-5 py-4" style={{ borderTop: isFirst ? "none" : "1px solid rgba(14,59,46,0.06)" }}>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
+          style={{ background: bg }}>{initial}</div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold truncate" style={{ color: V.ink }}>{member.name}</p>
+          <p className="text-xs truncate" style={{ color: V.muted }}>{subtitle}</p>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button onClick={onEdit}
+            className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors hover:opacity-80"
+            style={{ background: V.beige }}>
+            <Pencil className="h-3.5 w-3.5" style={{ color: V.muted }} />
+          </button>
+          {!isSelf && (
+            <button onClick={() => setConfirmDeleteId(isConfirming ? null : member.id)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors hover:opacity-80"
+              style={{ background: isConfirming ? "#FEE2E2" : V.beige }}>
+              <Trash2 className="h-3.5 w-3.5" style={{ color: isConfirming ? "#DC2626" : V.muted }} />
+            </button>
+          )}
+        </div>
+      </div>
+      {isConfirming && (
+        <div className="mt-3 flex items-center gap-2 pl-13">
+          <p className="text-xs flex-1" style={{ color: "#DC2626" }}>Remover {member.name}?</p>
+          <button onClick={onDelete}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold text-white"
+            style={{ background: "#DC2626" }}>Sim</button>
+          <button onClick={() => setConfirmDeleteId(null)}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold"
+            style={{ background: V.beige, color: V.ink }}>Não</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── MemberForm ───────────────────────────────────────────────────────────── */
+function MemberForm({
+  mode, initialValues, onSave, onCancel, isSaving,
+}: {
+  mode: "add" | "edit";
+  initialValues: { name: string; relationship_type: "adult" | "child"; phone: string; school: string; grade: string; medical_plan: string; colour: string };
+  onSave: (v: typeof initialValues) => void;
+  onCancel: () => void;
+  isSaving: boolean;
+}) {
+  const [form, setForm] = useState(initialValues);
+  const isChild = form.relationship_type === "child";
+  const set = (patch: Partial<typeof initialValues>) => setForm(f => ({ ...f, ...patch }));
+
+  return (
+    <div className="p-5 rounded-3xl space-y-3" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.1)" }}>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold" style={{ color: V.ink }}>
+          {mode === "add" ? (isChild ? "Adicionar criança" : "Adicionar adulto") : "Editar membro"}
+        </p>
+        <button onClick={onCancel}><X className="h-4 w-4" style={{ color: V.muted }} /></button>
+      </div>
+
+      {mode === "add" && (
+        <div className="flex gap-2">
+          {(["adult", "child"] as const).map(r => (
+            <button key={r} onClick={() => set({ relationship_type: r })}
+              className="flex-1 py-2 rounded-xl text-xs font-semibold transition-colors"
+              style={{ background: form.relationship_type === r ? V.primary : V.beige, color: form.relationship_type === r ? "white" : V.ink }}>
+              {r === "adult" ? "Adulto" : "Criança"}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <input value={form.name} onChange={e => set({ name: e.target.value })}
+        placeholder="Nome *" className="w-full px-4 py-3 rounded-xl text-sm border-0 outline-none"
+        style={{ background: V.beige, color: V.ink }} />
+
+      {!isChild && (
+        <input value={form.phone} onChange={e => set({ phone: e.target.value })}
+          placeholder="WhatsApp (opcional)" type="tel"
+          className="w-full px-4 py-3 rounded-xl text-sm border-0 outline-none"
+          style={{ background: V.beige, color: V.ink }} />
+      )}
+
+      {isChild && (<>
+        <input value={form.school} onChange={e => set({ school: e.target.value })}
+          placeholder="Escola (opcional)"
+          className="w-full px-4 py-3 rounded-xl text-sm border-0 outline-none"
+          style={{ background: V.beige, color: V.ink }} />
+        <input value={form.grade} onChange={e => set({ grade: e.target.value })}
+          placeholder="Ano / turma (opcional)"
+          className="w-full px-4 py-3 rounded-xl text-sm border-0 outline-none"
+          style={{ background: V.beige, color: V.ink }} />
+      </>)}
+
+      <input value={form.medical_plan} onChange={e => set({ medical_plan: e.target.value })}
+        placeholder="Plano de saúde (opcional)"
+        className="w-full px-4 py-3 rounded-xl text-sm border-0 outline-none"
+        style={{ background: V.beige, color: V.ink }} />
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="text-xs mr-1" style={{ color: V.muted }}>Cor:</p>
+        {MEMBER_COLOURS.map(c => (
+          <button key={c} onClick={() => set({ colour: c })}
+            className="w-7 h-7 rounded-lg transition-transform"
+            style={{ background: c, outline: form.colour === c ? `2px solid ${V.ink}` : "none", outlineOffset: "2px", transform: form.colour === c ? "scale(1.15)" : "scale(1)" }} />
+        ))}
+      </div>
+
+      <div className="flex gap-2 pt-1">
+        <button onClick={onCancel}
+          className="flex-1 py-2.5 rounded-full text-xs font-semibold"
+          style={{ background: V.beige, color: V.ink }}>Cancelar</button>
+        <button onClick={() => onSave(form)} disabled={!form.name.trim() || isSaving}
+          className="flex-1 py-2.5 rounded-full text-xs font-semibold text-white disabled:opacity-50"
+          style={{ background: V.primary }}>
+          {isSaving ? "…" : mode === "add" ? "Adicionar" : "Salvar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── FamiliaTab ───────────────────────────────────────────────────────────── */
+const EMPTY_FORM = { name: "", relationship_type: "adult" as "adult" | "child", phone: "", school: "", grade: "", medical_plan: "", colour: "" };
+
 function FamiliaTab() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+  const { data: members = [], isLoading } = useListMembers();
+
+  type FormMode = "none" | "add" | "edit";
+  const [formMode, setFormMode] = useState<FormMode>("none");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [formValues, setFormValues] = useState(EMPTY_FORM);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
   const [showInvite, setShowInvite] = useState(false);
-  const [phone, setPhone] = useState("");
+  const [invitePhone, setInvitePhone] = useState("");
+
   const [consentStep, setConsentStep] = useState<"idle" | "form" | "pending" | "consented">("idle");
   const [consentPhone, setConsentPhone] = useState("");
   const [consentName, setConsentName] = useState("");
 
+  const invalidateMembers = () => qc.invalidateQueries({ queryKey: getListMembersQueryKey() });
+
+  const createMember = useCreateMember({ mutation: { onSuccess: () => { invalidateMembers(); closeForm(); toast({ description: "Membro adicionado." }); }, onError: () => toast({ title: "Erro ao adicionar", variant: "destructive" }) } });
+  const updateMember = useUpdateMember({ mutation: { onSuccess: () => { invalidateMembers(); closeForm(); toast({ description: "Membro atualizado." }); }, onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }) } });
+  const deleteMember = useDeleteMember({ mutation: { onSuccess: () => { invalidateMembers(); setConfirmDeleteId(null); toast({ description: "Membro removido." }); }, onError: (e: { status?: number }) => toast({ title: e?.status === 403 ? "Não é possível remover sua própria conta" : "Erro ao remover", variant: "destructive" }) } });
+  const createInvite = useCreateHouseholdInvite({ mutation: { onSuccess: () => { setShowInvite(false); setInvitePhone(""); toast({ title: "Convite enviado!", description: "O link chegará no WhatsApp deles." }); }, onError: () => toast({ title: "Erro ao enviar convite", variant: "destructive" }) } });
+
+  function openAdd(type: "adult" | "child") {
+    setFormMode("add");
+    setEditingId(null);
+    setFormValues({ ...EMPTY_FORM, relationship_type: type });
+  }
+
+  function openEdit(m: Member) {
+    setFormMode("edit");
+    setEditingId(m.id);
+    setFormValues({ name: m.name, relationship_type: m.relationship_type === "child" ? "child" : "adult", phone: m.phone ?? "", school: m.school ?? "", grade: m.grade ?? "", medical_plan: m.medical_plan ?? "", colour: m.colour ?? "" });
+  }
+
+  function closeForm() { setFormMode("none"); setEditingId(null); }
+
+  function handleSave(v: typeof EMPTY_FORM) {
+    const body = { name: v.name, relationship_type: v.relationship_type, ...(v.colour && { colour: v.colour }), ...(v.relationship_type === "adult" && v.phone ? { phone: v.phone } : {}), ...(v.relationship_type === "child" && v.school ? { school: v.school } : {}), ...(v.relationship_type === "child" && v.grade ? { grade: v.grade } : {}), ...(v.medical_plan ? { medical_plan: v.medical_plan } : {}) };
+    if (formMode === "add") createMember.mutate({ data: body });
+    else if (editingId) updateMember.mutate({ id: editingId, data: body });
+  }
+
+  const adults = members.filter(m => m.relationship_type !== "child");
+  const children = members.filter(m => m.relationship_type === "child");
+  const isSaving = createMember.isPending || updateMember.isPending;
+
   return (
     <div className="space-y-6 py-6">
+
+      {/* Member form panel */}
+      {formMode !== "none" && (
+        <MemberForm mode={formMode} initialValues={formValues} onSave={handleSave} onCancel={closeForm} isSaving={isSaving} />
+      )}
+
       {/* Adults */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: V.muted }}>Membros</h2>
-          <button onClick={() => setShowInvite(!showInvite)}
-            className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full"
-            style={{ background: "#EAF1E5", color: V.primary }}>
-            <Plus className="h-3.5 w-3.5" /> Convidar
-          </button>
+          <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: V.muted }}>Adultos</h2>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { setShowInvite(!showInvite); if (formMode !== "none") closeForm(); }}
+              className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full"
+              style={{ background: "#EAF1E5", color: V.primary }}>
+              <MessageCircle className="h-3.5 w-3.5" /> Convidar
+            </button>
+            <button onClick={() => { openAdd("adult"); setShowInvite(false); }}
+              className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full"
+              style={{ background: "#EAF1E5", color: V.primary }}>
+              <Plus className="h-3.5 w-3.5" /> Adicionar
+            </button>
+          </div>
         </div>
 
         {showInvite && (
           <div className="mb-4 p-4 rounded-2xl space-y-3"
             style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.1)" }}>
             <p className="text-sm font-semibold" style={{ color: V.ink }}>Convidar parceiro/a</p>
-            <p className="text-xs" style={{ color: V.muted }}>O convite chega no WhatsApp deles.</p>
-            <input type="tel" placeholder="+55 11 99999-9999" value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+            <p className="text-xs" style={{ color: V.muted }}>O convite chega no WhatsApp deles com um link para entrar na casa.</p>
+            <input type="tel" placeholder="+55 11 99999-9999" value={invitePhone}
+              onChange={e => setInvitePhone(e.target.value)}
               className="w-full px-4 py-3 rounded-xl text-sm border-0 outline-none"
               style={{ background: V.beige, color: V.ink }} />
             <div className="flex gap-2">
-              <button onClick={() => setShowInvite(false)}
+              <button onClick={() => { setShowInvite(false); setInvitePhone(""); }}
                 className="flex-1 py-2.5 rounded-full text-xs font-semibold"
                 style={{ background: V.beige, color: V.ink }}>Cancelar</button>
-              <button className="flex-1 py-2.5 rounded-full text-xs font-semibold text-white"
-                style={{ background: "#25D366" }}>Enviar pelo WhatsApp</button>
+              <button onClick={() => createInvite.mutate({ data: { phone: invitePhone } })}
+                disabled={!invitePhone.trim() || createInvite.isPending}
+                className="flex-1 py-2.5 rounded-full text-xs font-semibold text-white disabled:opacity-50"
+                style={{ background: "#25D366" }}>
+                {createInvite.isPending ? "…" : "Enviar pelo WhatsApp"}
+              </button>
             </div>
           </div>
         )}
 
         <div className="rounded-3xl overflow-hidden" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
-          <div className="flex items-center gap-4 px-5 py-4">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm"
-              style={{ background: V.primary }}>V</div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold" style={{ color: V.ink }}>Você</p>
-              <p className="text-xs" style={{ color: V.muted }}>Administrador</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 px-5 py-4 opacity-50 cursor-not-allowed"
-            style={{ borderTop: "1px solid rgba(14,59,46,0.06)" }}>
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center border-2 border-dashed"
-              style={{ borderColor: V.sage }}>
-              <Users className="h-4 w-4" style={{ color: V.sage }} />
-            </div>
-            <div>
-              <p className="text-sm" style={{ color: V.muted }}>Aguardando parceiro/a</p>
-              <p className="text-xs" style={{ color: V.muted }}>Convite não enviado ainda</p>
-            </div>
-          </div>
+          {isLoading && <p className="px-5 py-4 text-sm" style={{ color: V.muted }}>Carregando…</p>}
+          {!isLoading && adults.length === 0 && (
+            <p className="px-5 py-4 text-sm" style={{ color: V.muted }}>Nenhum adulto cadastrado.</p>
+          )}
+          {adults.map((m, i) => (
+            <MemberRow key={m.id} member={m} isFirst={i === 0}
+              isSelf={!!user && m.user_id === user.id}
+              confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId}
+              onEdit={() => { openEdit(m); setShowInvite(false); }}
+              onDelete={() => deleteMember.mutate({ id: m.id })} />
+          ))}
         </div>
       </section>
 
       {/* Children */}
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: V.muted }}>Crianças</h2>
-        <button className="w-full flex items-center gap-4 p-4 rounded-3xl border-2 border-dashed hover:opacity-80 transition-opacity"
-          style={{ borderColor: V.beige }}>
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: V.beige }}>
-            <Baby className="h-5 w-5" style={{ color: V.sage }} />
-          </div>
-          <div className="text-left">
-            <p className="text-sm font-medium" style={{ color: V.ink }}>Adicionar criança</p>
-            <p className="text-xs" style={{ color: V.muted }}>Nome, escola e ano</p>
-          </div>
-          <Plus className="h-4 w-4 ml-auto" style={{ color: V.sage }} />
-        </button>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: V.muted }}>Crianças</h2>
+          <button onClick={() => { openAdd("child"); setShowInvite(false); }}
+            className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full"
+            style={{ background: "#EAF1E5", color: V.primary }}>
+            <Plus className="h-3.5 w-3.5" /> Adicionar
+          </button>
+        </div>
+        <div className="rounded-3xl overflow-hidden" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
+          {children.length === 0 ? (
+            <button onClick={() => openAdd("child")}
+              className="w-full flex items-center gap-4 p-4 hover:opacity-80 transition-opacity">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: V.beige }}>
+                <Baby className="h-5 w-5" style={{ color: V.sage }} />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-medium" style={{ color: V.ink }}>Adicionar criança</p>
+                <p className="text-xs" style={{ color: V.muted }}>Nome, escola e ano</p>
+              </div>
+              <Plus className="h-4 w-4 ml-auto" style={{ color: V.sage }} />
+            </button>
+          ) : (
+            children.map((m, i) => (
+              <MemberRow key={m.id} member={m} isFirst={i === 0}
+                isSelf={false}
+                confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId}
+                onEdit={() => { openEdit(m); setShowInvite(false); }}
+                onDelete={() => deleteMember.mutate({ id: m.id })} />
+            ))
+          )}
+        </div>
       </section>
 
       {/* Diarista consent */}
