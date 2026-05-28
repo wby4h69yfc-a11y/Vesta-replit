@@ -11,12 +11,31 @@ const PATTERN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 let briefingIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let patternIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
+function localHourInTimezone(date: Date, timezone: string): number {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: timezone,
+    });
+    const hourStr = formatter.format(date);
+    const hour = parseInt(hourStr, 10);
+    return isNaN(hour) ? date.getUTCHours() : hour % 24;
+  } catch {
+    return date.getUTCHours();
+  }
+}
+
 async function tick(): Promise<void> {
-  const currentHour = new Date().getUTCHours();
+  const now = new Date();
 
   try {
     const allVerified = await db
-      .select({ id: householdsTable.id, briefing_hour: householdsTable.briefing_hour })
+      .select({
+        id: householdsTable.id,
+        briefing_hour: householdsTable.briefing_hour,
+        timezone: householdsTable.timezone,
+      })
       .from(householdsTable)
       .innerJoin(
         onboardingStateTable,
@@ -24,14 +43,17 @@ async function tick(): Promise<void> {
       )
       .where(eq(onboardingStateTable.whatsapp_verified, true));
 
-    const dueHouseholds = allVerified.filter((h) => h.briefing_hour === currentHour);
+    const dueHouseholds = allVerified.filter((h) => {
+      const localHour = localHourInTimezone(now, h.timezone ?? "America/Sao_Paulo");
+      return h.briefing_hour === localHour;
+    });
 
     if (dueHouseholds.length === 0) {
       return;
     }
 
     logger.info(
-      { currentHour, count: dueHouseholds.length },
+      { utcHour: now.getUTCHours(), count: dueHouseholds.length },
       "Scheduler: dispatching briefings",
     );
 

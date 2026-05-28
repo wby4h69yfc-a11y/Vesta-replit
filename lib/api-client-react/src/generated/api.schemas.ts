@@ -67,11 +67,13 @@ export interface Household {
   plan: HouseholdPlan;
   concierge_eligible?: boolean;
   /**
-   * Hour (0-23 UTC) at which the daily briefing is sent automatically.
+   * Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.
    * @minimum 0
    * @maximum 23
    */
   briefing_hour?: number;
+  /** IANA timezone name for this household (e.g. "America/Sao_Paulo"). Defaults to "America/Sao_Paulo". */
+  timezone?: string;
   created_at?: string;
 }
 
@@ -88,11 +90,13 @@ export interface HouseholdUpdate {
   location?: string;
   plan?: HouseholdUpdatePlan;
   /**
-   * Hour (0-23 UTC) at which the daily briefing is sent automatically.
+   * Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.
    * @minimum 0
    * @maximum 23
    */
   briefing_hour?: number;
+  /** IANA timezone name for this household (e.g. "America/Sao_Paulo"). */
+  timezone?: string;
 }
 
 export type MemberRole = (typeof MemberRole)[keyof typeof MemberRole];
