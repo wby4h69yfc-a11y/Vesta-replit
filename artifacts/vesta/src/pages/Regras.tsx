@@ -15,7 +15,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import CategoryBadge from "@/components/CategoryBadge";
 import { CATEGORIES } from "@/lib/categories";
-import { cn } from "@/lib/utils";
+import { cn, isUpgradeError } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import UpgradePrompt from "@/components/UpgradePrompt";
 
@@ -56,7 +56,7 @@ export default function RegrasPage() {
         toast({ description: "Regra criada." });
       },
       onError: (e: unknown) => {
-        if ((e as { status?: number })?.status === 402) {
+        if (isUpgradeError(e)) {
           setUpgradeLabel(`Plano gratuito: máximo de ${rulesLimit ?? 3} regras inteligentes.`);
           setShowUpgrade(true);
         } else {

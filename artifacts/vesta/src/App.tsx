@@ -18,6 +18,7 @@ import SettingsPage from "@/pages/Settings";
 import OnboardingPage from "@/pages/Onboarding";
 import AdminPage from "@/pages/Admin";
 import WaDevConsole from "@/pages/WaDevConsole";
+import PlanosPage from "@/pages/Planos";
 import NotFound from "@/pages/not-found";
 import DevToolbar from "@/components/DevToolbar";
 import { Home } from "lucide-react";
@@ -72,6 +73,7 @@ function AppShell() {
         <Route path="/rules"     component={RegrasPage} />
         <Route path="/concierge" component={ConciergePage} />
         <Route path="/settings/privacy" component={SettingsPage} />
+        <Route path="/planos"    component={PlanosPage} />
 
         {/* Legacy redirects */}
         <Route path="/hoje">

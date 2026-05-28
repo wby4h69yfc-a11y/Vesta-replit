@@ -55,3 +55,7 @@ export function isPast(date: string | Date): boolean {
   const d = typeof date === "string" ? new Date(date) : date;
   return d < new Date();
 }
+
+export function isUpgradeError(e: unknown): boolean {
+  return (e as { status?: number })?.status === 402;
+}
