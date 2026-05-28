@@ -373,21 +373,6 @@ const TZ_LABELS: Record<string, string> = {
   "America/Noronha":     "Fernando de Noronha",
 };
 
-function utcHourToLocal(utcHour: number, tz: string): number {
-  const ref = new Date();
-  ref.setUTCHours(utcHour, 0, 0, 0);
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "2-digit", hour12: false }).formatToParts(ref);
-  const h = parts.find(p => p.type === "hour")?.value;
-  return h ? parseInt(h, 10) % 24 : utcHour;
-}
-
-function localHourToUTC(localHour: number, tz: string): number {
-  for (let u = 0; u < 24; u++) {
-    if (utcHourToLocal(u, tz) === localHour) return u;
-  }
-  return localHour;
-}
-
 function BriefingHourSelector() {
   const { data: household } = useGetHousehold();
   const updateHousehold = useUpdateHousehold();
@@ -396,15 +381,15 @@ function BriefingHourSelector() {
   const tz = household?.timezone ?? "America/Sao_Paulo";
   const tzLabel = TZ_LABELS[tz] ?? "horário local";
 
-  const savedUTC = household?.briefing_hour ?? 7;
-  const savedLocal = utcHourToLocal(savedUTC, tz);
-
+  // briefing_hour is stored as a local hour in the household's timezone;
+  // the scheduler compares it directly to localHourInTimezone(now, timezone).
+  const savedLocal = household?.briefing_hour ?? 7;
   const [selectedLocal, setSelectedLocal] = useState<number>(savedLocal);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setSelectedLocal(utcHourToLocal(household?.briefing_hour ?? 7, tz));
-  }, [household?.briefing_hour, tz]);
+    setSelectedLocal(household?.briefing_hour ?? 7);
+  }, [household?.briefing_hour]);
 
   function formatHour(h: number) {
     const period = h < 12 ? "AM" : "PM";
@@ -413,11 +398,10 @@ function BriefingHourSelector() {
   }
 
   async function handleSave() {
-    const utcHour = localHourToUTC(selectedLocal, tz);
     try {
-      await updateHousehold.mutateAsync({ data: { briefing_hour: utcHour } });
+      await updateHousehold.mutateAsync({ data: { briefing_hour: selectedLocal } });
       setSaved(true);
-      toast({ title: "Horário salvo", description: `Resumo diário às ${formatHour(selectedLocal)} (${tzLabel})` });
+      toast({ title: "Horário salvo", description: `Resumo diário às ${formatHour(selectedLocal)} (horário de ${tzLabel})` });
       setTimeout(() => setSaved(false), 2500);
     } catch {
       toast({ title: "Erro ao salvar", description: "Tente novamente.", variant: "destructive" });
