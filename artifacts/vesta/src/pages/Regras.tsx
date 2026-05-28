@@ -1,16 +1,12 @@
 import { useState } from "react";
-import { Zap, Plus, TrendingUp, Pause, Play, Trash2, ToggleLeft, Lock } from "lucide-react";
+import { Zap, Plus, Pause, Play, Trash2, Lock } from "lucide-react";
 import {
   useListRules,
   useCreateRule,
   useToggleRule,
   useDeleteRule,
-  useListPatterns,
-  useAcceptPattern,
-  useDismissPattern,
   useGetHouseholdPlanStatus,
   getListRulesQueryKey,
-  getListPatternsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import CategoryBadge from "@/components/CategoryBadge";
@@ -18,6 +14,7 @@ import { CATEGORIES } from "@/lib/categories";
 import { cn, isUpgradeError } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import UpgradePrompt from "@/components/UpgradePrompt";
+import PatternSuggestions from "@/components/PatternSuggestions";
 
 const ORIGIN_LABELS: Record<string, string> = {
   system_template:    "Padrão do sistema",
@@ -40,7 +37,6 @@ export default function RegrasPage() {
   });
 
   const { data: rules, isLoading } = useListRules();
-  const { data: patterns } = useListPatterns({ status: "suggested" });
   const { data: planStatus } = useGetHouseholdPlanStatus();
 
   const rulesLimit = planStatus?.limits?.rules ?? null;
@@ -81,22 +77,6 @@ export default function RegrasPage() {
     },
   });
 
-  const acceptPattern = useAcceptPattern({
-    mutation: {
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: getListPatternsQueryKey() });
-        qc.invalidateQueries({ queryKey: getListRulesQueryKey() });
-        toast({ description: "Regra criada a partir do padrão!" });
-      },
-    },
-  });
-
-  const dismissPattern = useDismissPattern({
-    mutation: {
-      onSuccess: () => qc.invalidateQueries({ queryKey: getListPatternsQueryKey() }),
-    },
-  });
-
   return (
     <div className="p-4 space-y-5 animate-fade-in-up">
       {showUpgrade && <UpgradePrompt limitLabel={upgradeLabel} onClose={() => setShowUpgrade(false)} />}
@@ -125,43 +105,7 @@ export default function RegrasPage() {
         )}
       </div>
 
-      {/* Pattern suggestions */}
-      {(patterns?.length ?? 0) > 0 && (
-        <section>
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Padrões detectados</h2>
-          <div className="space-y-2">
-            {patterns?.map((p) => (
-              <div key={p.id} className="bg-card border border-primary/20 rounded-2xl p-4 space-y-2" data-testid={`pattern-${p.id}`}>
-                <div className="flex items-start gap-2">
-                  <TrendingUp className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                  <p className="text-sm text-foreground flex-1">
-                    Notei que <span className="font-medium">{p.description}</span> aconteceu {p.occurrences} {p.occurrences === 1 ? "vez" : "vezes"}.
-                  </p>
-                </div>
-                {p.evidence && (
-                  <p className="text-xs text-muted-foreground pl-6">{p.evidence}</p>
-                )}
-                <div className="flex gap-2 pl-6">
-                  <button
-                    onClick={() => dismissPattern.mutate({ id: p.id })}
-                    className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-lg border border-border"
-                    data-testid={`dismiss-pattern-${p.id}`}
-                  >
-                    Ignorar
-                  </button>
-                  <button
-                    onClick={() => acceptPattern.mutate({ id: p.id })}
-                    className="text-xs text-primary font-medium px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20"
-                    data-testid={`accept-pattern-${p.id}`}
-                  >
-                    Criar regra
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      <PatternSuggestions onAcceptSuccess={() => qc.invalidateQueries({ queryKey: getListRulesQueryKey() })} />
 
       {/* Create form */}
       {showCreate && (
