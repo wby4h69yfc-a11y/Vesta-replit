@@ -336,13 +336,15 @@ export async function processInboundWAMessage(
 
       if (newStatus !== null) {
         const now = new Date();
+        const twelveMonthsFromNow = new Date(now);
+        twelveMonthsFromNow.setFullYear(twelveMonthsFromNow.getFullYear() + 1);
         await db
           .update(contactsTable)
           .set({
             consent_status: newStatus,
             ...(newStatus === "consented"
-              ? { consent_granted_at: now }
-              : { consent_withdrawn_at: now }),
+              ? { consent_granted_at: now, consent_check_in_due_at: twelveMonthsFromNow }
+              : { consent_withdrawn_at: now, consent_check_in_due_at: null }),
           })
           .where(
             and(
