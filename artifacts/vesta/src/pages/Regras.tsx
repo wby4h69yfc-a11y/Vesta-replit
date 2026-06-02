@@ -6,9 +6,7 @@ import {
   useToggleRule,
   useDeleteRule,
   useGetHouseholdPlanStatus,
-  useAcceptPattern,
   getListRulesQueryKey,
-  getListPatternsQueryKey,
   type PatternObservation,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -47,25 +45,14 @@ export default function RegrasPage() {
   const rulesUsage = planStatus?.usage?.rules ?? 0;
   const rulesAtLimit = rulesLimit !== null && rulesUsage >= rulesLimit;
 
-  const acceptPattern = useAcceptPattern({
-    mutation: {
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: getListPatternsQueryKey() });
-        setPendingPattern(null);
-      },
-    },
-  });
-
   const createRule = useCreateRule({
     mutation: {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getListRulesQueryKey() });
         setShowCreate(false);
+        setPendingPattern(null);
         setForm({ name: "", category: "escola", trigger_desc: "", action_desc: "", approval_level: "one_tap" });
         toast({ description: "Regra criada." });
-        if (pendingPattern) {
-          acceptPattern.mutate({ id: pendingPattern.id });
-        }
       },
       onError: (e: unknown) => {
         if (isUpgradeError(e)) {
@@ -173,7 +160,7 @@ export default function RegrasPage() {
           <div className="flex gap-2">
             <button onClick={() => { setPendingPattern(null); setShowCreate(false); }} className="flex-1 py-2.5 rounded-xl border border-border text-sm text-muted-foreground">Cancelar</button>
             <button
-              onClick={() => createRule.mutate({ data: { name: form.name, category: form.category, trigger_desc: form.trigger_desc, action_desc: form.action_desc, approval_level: form.approval_level as import("@workspace/api-client-react").RuleInputApprovalLevel } })}
+              onClick={() => createRule.mutate({ data: { name: form.name, category: form.category, trigger_desc: form.trigger_desc, action_desc: form.action_desc, approval_level: form.approval_level as import("@workspace/api-client-react").RuleInputApprovalLevel, ...(pendingPattern ? { pattern_id: pendingPattern.id } : {}) } })}
               disabled={!form.name || !form.trigger_desc || !form.action_desc || createRule.isPending}
               className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
               data-testid="button-submit-rule"

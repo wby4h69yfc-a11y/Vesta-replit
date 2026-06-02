@@ -42,7 +42,7 @@ router.post("/patterns/:id/accept", async (req, res) => {
 
     const [updated] = await db
       .update(patternObservationsTable)
-      .set({ status: "rule_created" })
+      .set({ status: "accepted" })
       .where(and(eq(patternObservationsTable.id, id), eq(patternObservationsTable.household_id, hid)))
       .returning();
 

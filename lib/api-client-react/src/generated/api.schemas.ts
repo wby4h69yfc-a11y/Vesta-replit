@@ -613,6 +613,7 @@ export const PatternObservationStatus = {
   accumulating: "accumulating",
   threshold_met: "threshold_met",
   suggested: "suggested",
+  accepted: "accepted",
   rule_created: "rule_created",
   dismissed: "dismissed",
 } as const;
@@ -854,6 +855,8 @@ export interface RuleInput {
   trigger_desc: string;
   action_desc: string;
   approval_level: RuleInputApprovalLevel;
+  /** When provided, the referenced pattern will be marked as rule_created after the rule is saved. */
+  pattern_id?: number;
 }
 
 export type RuleUpdateApprovalLevel =
@@ -1067,6 +1070,7 @@ export const ListPatternsStatus = {
   accumulating: "accumulating",
   threshold_met: "threshold_met",
   suggested: "suggested",
+  accepted: "accepted",
   rule_created: "rule_created",
   dismissed: "dismissed",
 } as const;

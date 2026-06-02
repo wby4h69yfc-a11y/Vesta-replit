@@ -15,7 +15,7 @@ import {
   useCreateHouseholdInvite,
   useGetHouseholdPlanStatus,
   useListRules, useCreateRule, useToggleRule, useDeleteRule,
-  useListPatterns, useAcceptPattern,
+  useListPatterns,
   useListContacts, useUpdateContact, useRequestContactConsent,
   useGetContactsConsentDue,
   useListAuditLog,
@@ -24,7 +24,7 @@ import {
   getPrivacyExportSummary,
   type PrivacyExportSummary,
   getListMembersQueryKey,
-  getListRulesQueryKey, getListPatternsQueryKey, getListContactsQueryKey,
+  getListRulesQueryKey, getListContactsQueryKey,
   getGetContactsConsentDueQueryKey,
   type Member,
   type PatternObservation,
@@ -1131,25 +1131,14 @@ function RegrasTab() {
   const rulesUsage = planStatus?.usage?.rules ?? 0;
   const rulesAtLimit = rulesLimit !== null && rulesUsage >= rulesLimit;
 
-  const acceptPattern = useAcceptPattern({
-    mutation: {
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: getListPatternsQueryKey() });
-        setPendingPattern(null);
-      },
-    },
-  });
-
   const createRule = useCreateRule({
     mutation: {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getListRulesQueryKey() });
         setShowCreate(false);
+        setPendingPattern(null);
         setForm({ name: "", category: "escola", trigger_desc: "", action_desc: "", approval_level: "one_tap" });
         toast({ description: "Regra criada." });
-        if (pendingPattern) {
-          acceptPattern.mutate({ id: pendingPattern.id });
-        }
       },
       onError: (e: unknown) => {
         if (isUpgradeError(e)) {
@@ -1253,6 +1242,7 @@ function RegrasTab() {
                 name: form.name, category: form.category,
                 trigger_desc: form.trigger_desc, action_desc: form.action_desc,
                 approval_level: form.approval_level as import("@workspace/api-client-react").RuleInputApprovalLevel,
+                ...(pendingPattern ? { pattern_id: pendingPattern.id } : {}),
               }})}
               disabled={!form.name || !form.trigger_desc || !form.action_desc || createRule.isPending}
               className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-50"
