@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { householdsTable, membersTable, rulesTable } from "@workspace/db";
 import { eq, and, count, sql } from "drizzle-orm";
-import { getHouseholdId } from "../lib/tenant";
+import { getHouseholdId, getCallerRole } from "../lib/tenant";
 import { getPlanLimits } from "../lib/freemium";
 
 const router = Router();
@@ -34,6 +34,11 @@ router.get("/household", async (req, res) => {
 router.patch("/household", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const role = await getCallerRole(req);
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Apenas administradores podem alterar as configurações do domicílio" });
+    }
+
     const hid = getHouseholdId(req);
     const { name, location, plan, briefing_hour, timezone } = req.body;
 
@@ -167,6 +172,11 @@ interface MemberBody {
 router.post("/household/members", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const role = await getCallerRole(req);
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Apenas administradores podem adicionar membros ao domicílio" });
+    }
+
     const hid = getHouseholdId(req);
     const body = req.body as MemberBody;
 
@@ -249,6 +259,7 @@ router.post("/household/members", async (req, res) => {
 router.patch("/household/members/:id", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const callerRole = await getCallerRole(req);
     const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid member id" });
@@ -270,6 +281,18 @@ router.patch("/household/members/:id", async (req, res) => {
       .from(membersTable)
       .where(and(eq(membersTable.id, id), eq(membersTable.household_id, hid)));
     if (!existing) return res.status(404).json({ error: "Not found" });
+
+    // Admins may edit any member. Non-admins may only edit their own profile
+    // and may not change role.
+    const isOwnRecord = existing.user_id != null && existing.user_id === req.user?.id;
+    if (callerRole !== "admin") {
+      if (!isOwnRecord) {
+        return res.status(403).json({ error: "Apenas administradores podem editar o perfil de outros membros" });
+      }
+      if (body.role !== undefined) {
+        return res.status(403).json({ error: "Apenas administradores podem alterar funções de membros" });
+      }
+    }
 
     const [updated] = await db
       .update(membersTable)
@@ -301,6 +324,11 @@ router.patch("/household/members/:id", async (req, res) => {
 router.delete("/household/members/:id", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const role = await getCallerRole(req);
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Apenas administradores podem remover membros do domicílio" });
+    }
+
     const hid = getHouseholdId(req);
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid member id" });

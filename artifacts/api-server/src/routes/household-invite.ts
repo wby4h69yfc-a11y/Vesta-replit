@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { householdInvitesTable, householdsTable, usersTable, membersTable } from "@workspace/db";
 import { eq, and, isNull, gt } from "drizzle-orm";
-import { getHouseholdId } from "../lib/tenant";
+import { getHouseholdId, getCallerRole } from "../lib/tenant";
 import { sendWhatsApp } from "../lib/whatsapp";
 import { getSessionId, getSession, updateSession } from "../lib/auth";
 import { randomBytes } from "crypto";
@@ -13,11 +13,21 @@ function generateInviteCode(): string {
   return randomBytes(6).toString("hex").toUpperCase();
 }
 
+/** Strip all non-digit characters for phone comparison. */
+function normalizePhone(p: string): string {
+  return p.replace(/\D/g, "");
+}
+
 router.post("/household/invite", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     if (!req.user?.household_id) {
       return res.status(409).json({ error: "No household assigned" });
+    }
+
+    const role = await getCallerRole(req);
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Apenas administradores podem criar convites" });
     }
 
     const hid = getHouseholdId(req);
@@ -64,7 +74,6 @@ router.post("/household/invite", async (req, res) => {
 
     res.status(201).json({
       id: invite.id,
-      code: invite.code,
       household_id: invite.household_id,
       invited_phone: invite.invited_phone,
       expires_at: invite.expires_at,
@@ -132,6 +141,18 @@ router.post("/household/join/:code", async (req, res) => {
 
     if (!invite) {
       return res.status(404).json({ error: "Convite inválido ou expirado" });
+    }
+
+    // Verify the authenticated user's phone matches the invited phone.
+    // Both are normalized to digits-only for comparison so formatting
+    // differences (spaces, dashes, country-code prefix style) don't cause
+    // false negatives.
+    const callerPhone = normalizePhone(req.user!.phone ?? "");
+    const invitedPhone = normalizePhone(invite.invited_phone);
+    if (!callerPhone || callerPhone !== invitedPhone) {
+      return res.status(403).json({
+        error: "Este convite foi enviado para outro número de telefone",
+      });
     }
 
     const newHouseholdId = invite.household_id;
