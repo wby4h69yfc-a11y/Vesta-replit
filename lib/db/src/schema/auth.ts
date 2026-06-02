@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { index, integer, jsonb, pgTable, timestamp, varchar, serial } from "drizzle-orm/pg-core";
 
+
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const sessionsTable = pgTable(
   "sessions",
@@ -35,6 +36,14 @@ export const otpCodesTable = pgTable("otp_codes", {
   used_at: timestamp("used_at", { withTimezone: true }),
   failed_attempts: integer("failed_attempts").notNull().default(0),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Cross-instance OTP rate limit buckets — keyed by "send:phone:+55…", "send:ip:…", etc.
+// A single atomic INSERT … ON CONFLICT DO UPDATE enforces the window without a scheduler.
+export const otpRateLimitsTable = pgTable("otp_rate_limits", {
+  key: varchar("key", { length: 255 }).primaryKey(),
+  count: integer("count").notNull().default(1),
+  window_start: timestamp("window_start", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type UpsertUser = typeof usersTable.$inferInsert;

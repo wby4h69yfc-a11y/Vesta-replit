@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and, gt, isNull, sql } from "drizzle-orm";
-import { db, otpCodesTable, usersTable, householdsTable } from "@workspace/db";
+import { db, otpCodesTable, otpRateLimitsTable, usersTable, householdsTable } from "@workspace/db";
 import {
   createSession,
   SESSION_COOKIE,
@@ -18,36 +18,35 @@ const SEND_PHONE_MAX = 3;
 const SEND_IP_MAX = 10;
 const VERIFY_PHONE_MAX = 10;
 const VERIFY_IP_MAX = 20;
-const RATE_WINDOW_MS = 10 * 60 * 1_000;
 
-interface RateBucket {
-  count: number;
-  resetAt: number;
+/**
+ * DB-backed rate limiter — works correctly across all autoscaled instances.
+ *
+ * A single atomic INSERT … ON CONFLICT DO UPDATE:
+ *  - Inserts a new bucket (count=1) on the first request in a window.
+ *  - On conflict, resets to count=1 when the 10-minute window has elapsed,
+ *    or increments the existing counter otherwise.
+ * The RETURNING clause lets us check the post-update count without a
+ * second round-trip. There is no TOCTOU gap.
+ *
+ * Returns true when the caller is within the allowed limit, false when
+ * the limit has been exceeded (caller should respond 429).
+ */
+async function checkRateLimit(key: string, max: number): Promise<boolean> {
+  const [result] = await db
+    .insert(otpRateLimitsTable)
+    .values({ key, count: 1, window_start: new Date() })
+    .onConflictDoUpdate({
+      target: otpRateLimitsTable.key,
+      set: {
+        count: sql`CASE WHEN ${otpRateLimitsTable.window_start} < NOW() - INTERVAL '10 minutes' THEN 1 ELSE ${otpRateLimitsTable.count} + 1 END`,
+        window_start: sql`CASE WHEN ${otpRateLimitsTable.window_start} < NOW() - INTERVAL '10 minutes' THEN NOW() ELSE ${otpRateLimitsTable.window_start} END`,
+      },
+    })
+    .returning({ count: otpRateLimitsTable.count });
+
+  return (result?.count ?? 1) <= max;
 }
-
-const rateBuckets = new Map<string, RateBucket>();
-
-function checkRateLimit(key: string, max: number): boolean {
-  const now = Date.now();
-  const bucket = rateBuckets.get(key);
-
-  if (!bucket || now >= bucket.resetAt) {
-    rateBuckets.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return true;
-  }
-
-  if (bucket.count >= max) return false;
-
-  bucket.count++;
-  return true;
-}
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, bucket] of rateBuckets) {
-    if (now >= bucket.resetAt) rateBuckets.delete(key);
-  }
-}, RATE_WINDOW_MS).unref();
 
 function generateOtp(): string {
   return crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");
@@ -107,8 +106,8 @@ router.post("/auth/otp/send", async (req: Request, res: Response) => {
   const ip = req.ip ?? "unknown";
 
   if (
-    !checkRateLimit(`send:phone:${phone}`, SEND_PHONE_MAX) ||
-    !checkRateLimit(`send:ip:${ip}`, SEND_IP_MAX)
+    !(await checkRateLimit(`send:phone:${phone}`, SEND_PHONE_MAX)) ||
+    !(await checkRateLimit(`send:ip:${ip}`, SEND_IP_MAX))
   ) {
     req.log.warn({ phone, ip }, "OTP send rate limit exceeded");
     res.status(429).json({
@@ -173,8 +172,8 @@ router.post("/auth/otp/verify", async (req: Request, res: Response) => {
 
   // Time-window rate limiting on verify (independent of per-OTP attempt cap)
   if (
-    !checkRateLimit(`verify:phone:${phone}`, VERIFY_PHONE_MAX) ||
-    !checkRateLimit(`verify:ip:${ip}`, VERIFY_IP_MAX)
+    !(await checkRateLimit(`verify:phone:${phone}`, VERIFY_PHONE_MAX)) ||
+    !(await checkRateLimit(`verify:ip:${ip}`, VERIFY_IP_MAX))
   ) {
     req.log.warn({ phone, ip }, "OTP verify rate limit exceeded");
     res.status(429).json({
