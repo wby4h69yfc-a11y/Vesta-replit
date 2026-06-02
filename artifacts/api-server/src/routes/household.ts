@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { householdsTable, membersTable, rulesTable } from "@workspace/db";
-import { eq, and, count } from "drizzle-orm";
+import { eq, and, count, sql } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 import { getPlanLimits } from "../lib/freemium";
 
@@ -182,56 +182,65 @@ router.post("/household/members", async (req, res) => {
 
     const relationshipType = body.relationship_type ?? "adult";
 
-    if (relationshipType === "adult" || relationshipType === "child") {
-      const [household] = await db
-        .select({ plan: householdsTable.plan })
-        .from(householdsTable)
-        .where(eq(householdsTable.id, hid));
+    const member = await db.transaction(async (tx) => {
+      // Acquire a per-household advisory lock for the duration of this
+      // transaction so concurrent inserts cannot both pass the count check.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${hid})`);
 
-      if (household) {
-        const limits = getPlanLimits(household.plan);
-        const [countRow] = await db
-          .select({ total: count() })
-          .from(membersTable)
-          .where(and(eq(membersTable.household_id, hid), eq(membersTable.relationship_type, relationshipType)));
+      if (relationshipType === "adult" || relationshipType === "child") {
+        const [household] = await tx
+          .select({ plan: householdsTable.plan })
+          .from(householdsTable)
+          .where(eq(householdsTable.id, hid));
 
-        const current = countRow?.total ?? 0;
-        const limit = relationshipType === "adult" ? limits.adults : limits.children;
+        if (household) {
+          const limits = getPlanLimits(household.plan);
+          const [countRow] = await tx
+            .select({ total: count() })
+            .from(membersTable)
+            .where(and(eq(membersTable.household_id, hid), eq(membersTable.relationship_type, relationshipType)));
 
-        if (limit !== Infinity && current >= limit) {
-          return res.status(402).json({
-            error: relationshipType === "adult"
+          const current = countRow?.total ?? 0;
+          const limit = relationshipType === "adult" ? limits.adults : limits.children;
+
+          if (limit !== Infinity && current >= limit) {
+            const error = relationshipType === "adult"
               ? `Plano gratuito permite no máximo ${limit} adultos. Faça upgrade para adicionar mais.`
-              : `Plano gratuito permite no máximo ${limit} criança. Faça upgrade para adicionar mais.`,
-            limit,
-            plan: household.plan,
-          });
+              : `Plano gratuito permite no máximo ${limit} criança. Faça upgrade para adicionar mais.`;
+            throw Object.assign(new Error(error), { status: 402, limit, plan: household.plan });
+          }
         }
       }
-    }
 
-    const [member] = await db
-      .insert(membersTable)
-      .values({
-        household_id: hid,
-        name: body.name.trim(),
-        display_name: body.display_name ?? null,
-        role: body.role ?? "member",
-        relationship_type: relationshipType,
-        phone: body.phone ?? null,
-        avatar_url: body.avatar_url ?? null,
-        colour: body.colour ?? null,
-        birth_year: body.birth_year ?? null,
-        school: body.school ?? null,
-        grade: body.grade ?? null,
-        primary_doctor: body.primary_doctor ?? null,
-        schedule: body.schedule ?? null,
-        medical_plan: body.medical_plan ?? null,
-      })
-      .returning();
+      const [inserted] = await tx
+        .insert(membersTable)
+        .values({
+          household_id: hid,
+          name: body.name!.trim(),
+          display_name: body.display_name ?? null,
+          role: body.role ?? "member",
+          relationship_type: relationshipType,
+          phone: body.phone ?? null,
+          avatar_url: body.avatar_url ?? null,
+          colour: body.colour ?? null,
+          birth_year: body.birth_year ?? null,
+          school: body.school ?? null,
+          grade: body.grade ?? null,
+          primary_doctor: body.primary_doctor ?? null,
+          schedule: body.schedule ?? null,
+          medical_plan: body.medical_plan ?? null,
+        })
+        .returning();
+
+      return inserted;
+    });
 
     res.status(201).json(member);
-  } catch (err) {
+  } catch (err: unknown) {
+    const e = err as { status?: number; message?: string; limit?: number; plan?: string };
+    if (e.status === 402) {
+      return res.status(402).json({ error: e.message, limit: e.limit, plan: e.plan });
+    }
     req.log.error({ err }, "Failed to create member");
     res.status(500).json({ error: "Internal server error" });
   }

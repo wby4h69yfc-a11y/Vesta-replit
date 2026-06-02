@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { rulesTable, householdsTable } from "@workspace/db";
-import { eq, and, count } from "drizzle-orm";
+import { eq, and, count, sql } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 import { getPlanLimits } from "../lib/freemium";
 
@@ -33,47 +33,58 @@ router.post("/rules", async (req, res) => {
       return res.status(400).json({ error: "name, category, trigger_desc, and action_desc are required" });
     }
 
-    const [household] = await db
-      .select({ plan: householdsTable.plan })
-      .from(householdsTable)
-      .where(eq(householdsTable.id, hid));
+    const rule = await db.transaction(async (tx) => {
+      // Acquire a per-household advisory lock for the duration of this
+      // transaction so concurrent inserts cannot both pass the count check.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${hid})`);
 
-    if (household) {
-      const limits = getPlanLimits(household.plan);
-      if (limits.rules !== Infinity) {
-        const [countRow] = await db
-          .select({ total: count() })
-          .from(rulesTable)
-          .where(eq(rulesTable.household_id, hid));
+      const [household] = await tx
+        .select({ plan: householdsTable.plan })
+        .from(householdsTable)
+        .where(eq(householdsTable.id, hid));
 
-        const current = countRow?.total ?? 0;
-        if (current >= limits.rules) {
-          return res.status(402).json({
-            error: `Plano gratuito permite no máximo ${limits.rules} regras. Faça upgrade para criar mais.`,
-            limit: limits.rules,
-            plan: household.plan,
-          });
+      if (household) {
+        const limits = getPlanLimits(household.plan);
+        if (limits.rules !== Infinity) {
+          const [countRow] = await tx
+            .select({ total: count() })
+            .from(rulesTable)
+            .where(eq(rulesTable.household_id, hid));
+
+          const current = countRow?.total ?? 0;
+          if (current >= limits.rules) {
+            throw Object.assign(
+              new Error(`Plano gratuito permite no máximo ${limits.rules} regras. Faça upgrade para criar mais.`),
+              { status: 402, limit: limits.rules, plan: household.plan },
+            );
+          }
         }
       }
-    }
 
-    const [rule] = await db
-      .insert(rulesTable)
-      .values({
-        household_id: hid,
-        name,
-        category,
-        trigger_desc,
-        action_desc,
-        approval_level: approval_level ?? "one_tap",
-        confidence: 0.75,
-        active: true,
-        origin: "user_created",
-      })
-      .returning();
+      const [inserted] = await tx
+        .insert(rulesTable)
+        .values({
+          household_id: hid,
+          name,
+          category,
+          trigger_desc,
+          action_desc,
+          approval_level: approval_level ?? "one_tap",
+          confidence: 0.75,
+          active: true,
+          origin: "user_created",
+        })
+        .returning();
+
+      return inserted;
+    });
 
     return res.status(201).json(rule);
-  } catch (err) {
+  } catch (err: unknown) {
+    const e = err as { status?: number; message?: string; limit?: number; plan?: string };
+    if (e.status === 402) {
+      return res.status(402).json({ error: e.message, limit: e.limit, plan: e.plan });
+    }
     req.log.error({ err }, "Failed to create rule");
     res.status(500).json({ error: "Internal server error" });
   }
