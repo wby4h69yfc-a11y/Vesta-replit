@@ -17,7 +17,7 @@ import {
   membersTable,
   suggestedActionsTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { classifyAndSaveAction } from "./classifier";
 import { processWhatsAppMedia } from "./media-analysis";
 import { looksLikeToken, markTokenVerified } from "./wa-token-store";
@@ -52,6 +52,7 @@ export type ProcessOutcome =
   | { kind: "dismissed_via_wa"; actionId: number; householdId: number; phone: string }
   | { kind: "edited_via_wa"; actionId: number; newTitle: string; householdId: number; phone: string }
   | { kind: "undone_via_wa"; actionTitle: string; householdId: number; phone: string }
+  | { kind: "consent_updated"; contactId: number; newStatus: "consented" | "revoked"; phone: string }
   | {
       kind: "ingested";
       inboxItemId: number;
@@ -303,6 +304,60 @@ export async function processInboundWAMessage(
     const approvalOutcome = await handleApprovalResponse(bodyText, householdId, phoneRaw, log);
     if (approvalOutcome) {
       return { ...approvalOutcome, phone: phoneRaw };
+    }
+  }
+
+  // ── 4.6. Consent reply handling (SIM / NÃO / REVOGAR from diaristas) ────────
+  // This runs for all senders — members who are also contacts are rare, and the
+  // approval handler above already short-circuits for admin commands.
+  //
+  // Security invariants:
+  //   • We only update the contact row for the household that was resolved from
+  //     this sender's phone, preventing cross-tenant consent mutations.
+  //   • "SIM" / "NÃO" only apply when consent_status is "pending" — we do not
+  //     let a stale "SIM" flip a "revoked" contact back to consented.
+  //   • "REVOGAR" applies to both "pending" and "consented" contacts so a
+  //     diarista can always withdraw at any time (LGPD requirement).
+  if (bodyText) {
+    const upper = bodyText.trim().toUpperCase();
+    const contactForConsent = matchedContacts.find((c) => c.household_id === householdId);
+
+    if (contactForConsent && (upper === "SIM" || upper === "NÃO" || upper === "NAO" || upper === "REVOGAR")) {
+      const currentStatus = contactForConsent.consent_status;
+      let newStatus: "consented" | "revoked" | null = null;
+
+      if (upper === "SIM" && currentStatus === "pending") {
+        newStatus = "consented";
+      } else if ((upper === "NÃO" || upper === "NAO") && currentStatus === "pending") {
+        newStatus = "revoked";
+      } else if (upper === "REVOGAR" && (currentStatus === "pending" || currentStatus === "consented")) {
+        newStatus = "revoked";
+      }
+
+      if (newStatus !== null) {
+        const now = new Date();
+        await db
+          .update(contactsTable)
+          .set({
+            consent_status: newStatus,
+            ...(newStatus === "consented"
+              ? { consent_granted_at: now }
+              : { consent_withdrawn_at: now }),
+          })
+          .where(
+            and(
+              eq(contactsTable.id, contactForConsent.id),
+              eq(contactsTable.household_id, householdId),
+            ),
+          );
+
+        log.info(
+          { contactId: contactForConsent.id, householdId, oldStatus: currentStatus, newStatus },
+          "Contact consent status updated via WhatsApp reply",
+        );
+
+        return { kind: "consent_updated", contactId: contactForConsent.id, newStatus, phone: phoneRaw };
+      }
     }
   }
 
