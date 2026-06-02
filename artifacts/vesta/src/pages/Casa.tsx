@@ -20,6 +20,8 @@ import {
   useListAuditLog,
   useDeleteAccount,
   exportPrivacyData,
+  getPrivacyExportSummary,
+  type PrivacyExportSummary,
   getListMembersQueryKey,
   getListRulesQueryKey, getListPatternsQueryKey, getListContactsQueryKey,
   type Member,
@@ -1375,6 +1377,8 @@ function PrivacyDashboard() {
   const { data: contacts } = useListContacts();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+  const [exportSummary, setExportSummary] = useState<PrivacyExportSummary | null>(null);
 
   const revokeConsent = useUpdateContact({
     mutation: {
@@ -1406,7 +1410,19 @@ function PrivacyDashboard() {
     },
   });
 
-  async function handleExport() {
+  async function handleExportClick() {
+    setSummarizing(true);
+    try {
+      const summary = await getPrivacyExportSummary();
+      setExportSummary(summary);
+    } catch {
+      toast({ description: "Erro ao verificar dados para exportação.", variant: "destructive" });
+    } finally {
+      setSummarizing(false);
+    }
+  }
+
+  async function handleConfirmExport() {
     setExporting(true);
     try {
       const data = await exportPrivacyData();
@@ -1418,6 +1434,7 @@ function PrivacyDashboard() {
       a.click();
       URL.revokeObjectURL(url);
       toast({ description: "Dados exportados com sucesso." });
+      setExportSummary(null);
     } catch {
       toast({ description: "Erro ao exportar dados.", variant: "destructive" });
     } finally {
@@ -1506,23 +1523,81 @@ function PrivacyDashboard() {
           Seus direitos (LGPD)
         </p>
 
-        <button
-          onClick={handleExport}
-          disabled={exporting}
-          className="w-full flex items-center gap-4 px-4 py-3 text-left hover:opacity-80 transition-opacity disabled:opacity-50"
-          style={{ borderTop: "1px solid rgba(14,59,46,0.06)" }}>
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-            style={{ background: "#EAF1E5" }}>
-            <Download className="h-4 w-4" style={{ color: V.primary }} />
+        {!exportSummary ? (
+          <button
+            onClick={handleExportClick}
+            disabled={summarizing || exporting}
+            className="w-full flex items-center gap-4 px-4 py-3 text-left hover:opacity-80 transition-opacity disabled:opacity-50"
+            style={{ borderTop: "1px solid rgba(14,59,46,0.06)" }}>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: "#EAF1E5" }}>
+              <Download className="h-4 w-4" style={{ color: V.primary }} />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium" style={{ color: V.ink }}>
+                {summarizing ? "Verificando dados..." : "Baixar meus dados"}
+              </p>
+              <p className="text-xs" style={{ color: V.muted }}>Export JSON com todos os seus dados</p>
+            </div>
+            <ChevronRight className="h-4 w-4" style={{ color: V.sage }} />
+          </button>
+        ) : (
+          <div className="px-4 py-3 space-y-3" style={{ borderTop: "1px solid rgba(14,59,46,0.06)" }}>
+            <div className="flex items-center gap-2">
+              <Download className="h-4 w-4 shrink-0" style={{ color: V.primary }} />
+              <p className="text-sm font-semibold" style={{ color: V.ink }}>Confirmar download</p>
+            </div>
+            <div className="rounded-xl p-3 space-y-1.5" style={{ background: V.beige }}>
+              {exportSummary.inbox_items > 0 && (
+                <p className="text-xs" style={{ color: V.muted }}>
+                  <span className="font-semibold" style={{ color: V.ink }}>{exportSummary.inbox_items}</span> {exportSummary.inbox_items === 1 ? "item na caixa de entrada" : "itens na caixa de entrada"}
+                </p>
+              )}
+              {exportSummary.events > 0 && (
+                <p className="text-xs" style={{ color: V.muted }}>
+                  <span className="font-semibold" style={{ color: V.ink }}>{exportSummary.events}</span> {exportSummary.events === 1 ? "evento" : "eventos"}
+                </p>
+              )}
+              {exportSummary.tasks > 0 && (
+                <p className="text-xs" style={{ color: V.muted }}>
+                  <span className="font-semibold" style={{ color: V.ink }}>{exportSummary.tasks}</span> {exportSummary.tasks === 1 ? "tarefa" : "tarefas"}
+                </p>
+              )}
+              {exportSummary.members > 0 && (
+                <p className="text-xs" style={{ color: V.muted }}>
+                  <span className="font-semibold" style={{ color: V.ink }}>{exportSummary.members}</span> {exportSummary.members === 1 ? "membro" : "membros"}
+                </p>
+              )}
+              {exportSummary.audit_log > 0 && (
+                <p className="text-xs" style={{ color: V.muted }}>
+                  <span className="font-semibold" style={{ color: V.ink }}>{exportSummary.audit_log}</span> {exportSummary.audit_log === 1 ? "registro de auditoria" : "registros de auditoria"}
+                </p>
+              )}
+              <p className="text-xs pt-1" style={{ color: V.muted, borderTop: "1px solid rgba(14,59,46,0.08)" }}>
+                Tamanho estimado: <span className="font-semibold" style={{ color: V.ink }}>~{exportSummary.estimated_size_kb} KB</span>
+                {exportSummary.estimated_size_kb > 500 && (
+                  <span className="ml-1" style={{ color: "#92400E" }}>— pode demorar alguns segundos</span>
+                )}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setExportSummary(null)}
+                disabled={exporting}
+                className="flex-1 py-2 rounded-xl text-xs font-semibold disabled:opacity-50"
+                style={{ background: V.beige, color: V.ink }}>
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmExport}
+                disabled={exporting}
+                className="flex-1 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
+                style={{ background: V.primary }}>
+                {exporting ? "Exportando..." : "Baixar"}
+              </button>
+            </div>
           </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium" style={{ color: V.ink }}>
-              {exporting ? "Exportando..." : "Baixar meus dados"}
-            </p>
-            <p className="text-xs" style={{ color: V.muted }}>Export JSON com todos os seus dados</p>
-          </div>
-          <ChevronRight className="h-4 w-4" style={{ color: V.sage }} />
-        </button>
+        )}
 
         <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(14,59,46,0.06)" }}>
           {!confirmDelete ? (
