@@ -19,9 +19,8 @@ router.post("/briefing/send", async (req: Request, res: Response) => {
   }
   try {
     const hid = getHouseholdId(req);
-    const fallbackPhone = req.user.phone ?? null;
 
-    const result = await sendHouseholdBriefing(hid, fallbackPhone);
+    const result = await sendHouseholdBriefing(hid);
 
     if (result.ok) {
       req.log.info({ sid: result.sid }, "Daily briefing sent via HTTP");

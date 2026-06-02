@@ -79,6 +79,7 @@ export const onboardingStateTable = pgTable("onboarding_state", {
   }>(),
   pain_points: text("pain_points").array().notNull().default([]),
   whatsapp_verified: boolean("whatsapp_verified").notNull().default(false),
+  whatsapp_verified_phone: text("whatsapp_verified_phone"),
   calendar_connected: boolean("calendar_connected").notNull().default(false),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
