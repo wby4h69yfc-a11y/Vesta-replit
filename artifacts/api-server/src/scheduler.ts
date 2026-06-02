@@ -1,6 +1,6 @@
 import { db } from "@workspace/db";
 import { householdsTable, onboardingStateTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { logger } from "./lib/logger";
 import { sendHouseholdBriefing } from "./lib/briefing-core";
 import { detectPatternsForAllHouseholds } from "./lib/pattern-detector";
@@ -41,7 +41,16 @@ async function tick(): Promise<void> {
         onboardingStateTable,
         eq(onboardingStateTable.household_id, householdsTable.id),
       )
-      .where(eq(onboardingStateTable.whatsapp_verified, true));
+      .where(
+        and(
+          eq(onboardingStateTable.whatsapp_verified, true),
+          or(
+            isNull(householdsTable.last_briefing_sent_at),
+            sql`(${householdsTable.last_briefing_sent_at} AT TIME ZONE ${householdsTable.timezone})::date
+                < (NOW() AT TIME ZONE ${householdsTable.timezone})::date`,
+          ),
+        ),
+      );
 
     const currentUTCHour = now.getUTCHours();
     const dueHouseholds = allVerified.filter((h) => {

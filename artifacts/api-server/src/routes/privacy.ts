@@ -22,7 +22,7 @@ import {
   otpCodesTable,
 } from "@workspace/db";
 import { eq, inArray, sql } from "drizzle-orm";
-import { getHouseholdId } from "../lib/tenant";
+import { getHouseholdId, getCallerRole } from "../lib/tenant";
 import { getSessionId, clearSession } from "../lib/auth";
 
 const router = Router();
@@ -31,6 +31,11 @@ const router = Router();
 router.get("/privacy/export/summary", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const role = await getCallerRole(req);
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Apenas administradores podem exportar os dados do domicílio" });
+    }
+
     const hid = getHouseholdId(req);
 
     const [
@@ -95,6 +100,11 @@ router.get("/privacy/export/summary", async (req, res) => {
 router.get("/privacy/export", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const role = await getCallerRole(req);
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Apenas administradores podem exportar os dados do domicílio" });
+    }
+
     const hid = getHouseholdId(req);
     const userId = req.user!.id;
 
@@ -153,6 +163,11 @@ router.get("/privacy/export", async (req, res) => {
 router.delete("/account", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    const role = await getCallerRole(req);
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Apenas administradores podem excluir o domicílio e todas as contas" });
+    }
+
     const hid = getHouseholdId(req);
     const userId = req.user!.id;
     const userPhone = req.user!.phone ?? null;
