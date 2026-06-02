@@ -23,6 +23,7 @@ import { processWhatsAppMedia } from "./media-analysis";
 import { looksLikeToken, markTokenVerified } from "./wa-token-store";
 import { handleApprovalResponse } from "./wa-approval-handler";
 import { recordPrompt } from "./wa-prompt-store";
+import { detectPatternsForHousehold } from "./pattern-detector";
 
 /** Payload shape normalised by the webhook handler before calling us. */
 export interface InboundWAMessage {
@@ -437,6 +438,14 @@ export async function processInboundWAMessage(
   // ── 7. AI classification (async — response already sent to Twilio) ─────────
   await classifyAndSaveAction(item.id);
   log.info({ inboxItemId: item.id }, "Message classified");
+
+  // ── 7.5. Post-classification pattern detection (fire-and-forget) ──────────
+  // Runs after every successfully classified message so patterns are updated
+  // in near-real-time rather than waiting for the 6-hour scheduled scan.
+  // Errors here are non-fatal — the message was already ingested and classified.
+  void detectPatternsForHousehold(householdId).catch((err) => {
+    log.warn({ err, householdId }, "Post-classification pattern detection failed (non-fatal)");
+  });
 
   // Read back the saved action to inform the caller's reply (proposal message)
   const [savedAction] = await db
