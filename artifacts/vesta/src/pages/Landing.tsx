@@ -5,6 +5,9 @@ import {
   Eye, Server, SlidersHorizontal, Shield, Plus, X, CheckCircle,
 } from "lucide-react";
 import "./landing-v3.css";
+import heroFamiliaImg from "@assets/hero-familia_1780377659160.webp";
+import regrasoPaiImg from "@assets/regras-pai_1780377617921.webp";
+import comoFuncionaImg from "@assets/como-funciona_1780377671830.webp";
 
 /* ── Hearth SVG mark (Vesta brand) ── */
 function HearthMark({ className = "", style = {} }: { className?: string; style?: React.CSSProperties }) {
@@ -295,7 +298,7 @@ export default function Landing() {
               </div>
 
               <div className="stage" aria-hidden="true">
-                <div className="stage__photo" />
+                <div className="stage__photo" style={{ backgroundImage: `url(${heroFamiliaImg})`, backgroundSize: "cover", backgroundPosition: "center" }} />
                 <span className="script stage__script">
                   a casa toda.<br /><span className="heart">♥</span>
                 </span>
@@ -418,7 +421,7 @@ export default function Landing() {
         </section>
 
         {/* ── PHOTO BAND ── */}
-        <div className="photoband" role="img" aria-label="Família brasileira na correria da manhã de escola, dividindo as tarefas">
+        <div className="photoband" role="img" aria-label="Família brasileira na correria da manhã de escola, dividindo as tarefas" style={{ backgroundImage: `url(${comoFuncionaImg})`, backgroundSize: "cover", backgroundPosition: "center 30%" }}>
           <div className="photoband__cap">
             <div className="wrap">
               <span className="script">Para a casa toda. Não só para uma pessoa. ♥</span>
@@ -503,7 +506,7 @@ export default function Landing() {
                 ))}
               </ul>
             </div>
-            <div className="photoslot" />
+            <div className="photoslot" style={{ backgroundImage: `url(${regrasoPaiImg})`, backgroundSize: "cover", backgroundPosition: "center" }} />
           </div>
         </section>
 
