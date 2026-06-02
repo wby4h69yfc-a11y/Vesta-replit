@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { rulesTable, householdsTable } from "@workspace/db";
+import { rulesTable, householdsTable, patternObservationsTable } from "@workspace/db";
 import { eq, and, count, sql } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 import { getPlanLimits } from "../lib/freemium";
@@ -27,7 +27,7 @@ router.post("/rules", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const hid = getHouseholdId(req);
-    const { name, category, trigger_desc, action_desc, approval_level } = req.body;
+    const { name, category, trigger_desc, action_desc, approval_level, pattern_id } = req.body;
 
     if (!name || !category || !trigger_desc || !action_desc) {
       return res.status(400).json({ error: "name, category, trigger_desc, and action_desc are required" });
@@ -72,9 +72,21 @@ router.post("/rules", async (req, res) => {
           approval_level: approval_level ?? "one_tap",
           confidence: 0.75,
           active: true,
-          origin: "user_created",
+          origin: pattern_id ? "pattern_suggested" : "user_created",
         })
         .returning();
+
+      if (pattern_id) {
+        await tx
+          .update(patternObservationsTable)
+          .set({ status: "rule_created" })
+          .where(
+            and(
+              eq(patternObservationsTable.id, pattern_id),
+              eq(patternObservationsTable.household_id, hid),
+            ),
+          );
+      }
 
       return inserted;
     });

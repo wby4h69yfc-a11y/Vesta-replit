@@ -3,6 +3,7 @@ import { TrendingUp, Clock, User, Home, AlertCircle, Sun, Sparkles } from "lucid
 import {
   useListPatterns,
   useDismissPattern,
+  useAcceptPattern,
   getListPatternsQueryKey,
   type PatternObservation,
 } from "@workspace/api-client-react";
@@ -66,6 +67,7 @@ export default function PatternSuggestions({ onAcceptClick }: PatternSuggestions
   const { toast } = useToast();
   const { data: allPatterns, isLoading } = useListPatterns();
   const [dismissingIds, setDismissingIds] = useState<number[]>([]);
+  const [acceptingIds, setAcceptingIds] = useState<number[]>([]);
 
   const patterns = allPatterns?.filter((p) => ACTIONABLE_STATUSES.has(p.status)) ?? [];
 
@@ -77,6 +79,18 @@ export default function PatternSuggestions({ onAcceptClick }: PatternSuggestions
       onError: (_err, variables) => {
         setDismissingIds((prev) => prev.filter((id) => id !== variables.id));
         toast({ description: "Erro ao ignorar padrão.", variant: "destructive" });
+      },
+    },
+  });
+
+  const acceptPattern = useAcceptPattern({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListPatternsQueryKey() });
+      },
+      onError: (_err, variables) => {
+        setAcceptingIds((prev) => prev.filter((id) => id !== variables.id));
+        toast({ description: "Erro ao aceitar padrão.", variant: "destructive" });
       },
     },
   });
@@ -105,6 +119,8 @@ export default function PatternSuggestions({ onAcceptClick }: PatternSuggestions
       trigger_desc: pattern.description,
       action_desc: "",
     };
+    setAcceptingIds((prev) => [...prev, pattern.id]);
+    acceptPattern.mutate({ id: pattern.id });
     onAcceptClick?.(pattern, prefill);
   }
 
@@ -183,7 +199,7 @@ export default function PatternSuggestions({ onAcceptClick }: PatternSuggestions
                   </button>
                   <button
                     onClick={() => handleAccept(p)}
-                    disabled={isDismissing}
+                    disabled={isDismissing || acceptingIds.includes(p.id)}
                     className="text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50 transition-opacity"
                     style={{ background: "#EAF1E5", color: V.primary }}
                     data-testid={`accept-pattern-${p.id}`}

@@ -1144,6 +1144,7 @@ export const ExportPrivacyDataResponse = zod.object({
           "accumulating",
           "threshold_met",
           "suggested",
+          "accepted",
           "rule_created",
           "dismissed",
         ]),
@@ -1227,6 +1228,12 @@ export const CreateRuleBody = zod.object({
   trigger_desc: zod.string(),
   action_desc: zod.string(),
   approval_level: zod.enum(["soft", "one_tap", "explicit"]),
+  pattern_id: zod
+    .number()
+    .optional()
+    .describe(
+      "When provided, the referenced pattern will be marked as rule_created after the rule is saved.",
+    ),
 });
 
 /**
@@ -1576,6 +1583,7 @@ export const ListPatternsQueryParams = zod.object({
       "accumulating",
       "threshold_met",
       "suggested",
+      "accepted",
       "rule_created",
       "dismissed",
     ])
@@ -1599,6 +1607,7 @@ export const ListPatternsResponseItem = zod.object({
     "accumulating",
     "threshold_met",
     "suggested",
+    "accepted",
     "rule_created",
     "dismissed",
   ]),
@@ -1608,7 +1617,7 @@ export const ListPatternsResponseItem = zod.object({
 export const ListPatternsResponse = zod.array(ListPatternsResponseItem);
 
 /**
- * @summary Accept a pattern suggestion (marks as rule_created; caller is responsible for creating the rule via POST /rules)
+ * @summary Accept a pattern suggestion (marks as accepted; final rule_created status is set when the rule is saved via POST /rules with pattern_id)
  */
 export const AcceptPatternParams = zod.object({
   id: zod.coerce.number(),
@@ -1631,6 +1640,7 @@ export const AcceptPatternResponse = zod.object({
     "accumulating",
     "threshold_met",
     "suggested",
+    "accepted",
     "rule_created",
     "dismissed",
   ]),
@@ -1662,6 +1672,7 @@ export const DismissPatternResponse = zod.object({
     "accumulating",
     "threshold_met",
     "suggested",
+    "accepted",
     "rule_created",
     "dismissed",
   ]),

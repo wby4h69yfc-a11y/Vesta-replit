@@ -1157,7 +1157,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [accumulating, threshold_met, suggested, rule_created, dismissed]
+            enum: [accumulating, threshold_met, suggested, accepted, rule_created, dismissed]
       responses:
         "200":
           description: Pattern observations
@@ -1172,7 +1172,7 @@ paths:
     post:
       operationId: acceptPattern
       tags: [patterns]
-      summary: Accept a pattern suggestion (marks as rule_created; caller is responsible for creating the rule via POST /rules)
+      summary: Accept a pattern suggestion (marks as accepted; final rule_created status is set when the rule is saved via POST /rules with pattern_id)
       parameters:
         - name: id
           in: path
@@ -1181,7 +1181,7 @@ paths:
             type: integer
       responses:
         "200":
-          description: Accepted — pattern status set to rule_created
+          description: Accepted — pattern status set to accepted
           content:
             application/json:
               schema:
@@ -2253,6 +2253,9 @@ components:
         approval_level:
           type: string
           enum: [soft, one_tap, explicit]
+        pattern_id:
+          type: integer
+          description: When provided, the referenced pattern will be marked as rule_created after the rule is saved.
 
     RuleUpdate:
       type: object
@@ -2287,7 +2290,7 @@ components:
           type: number
         status:
           type: string
-          enum: [accumulating, threshold_met, suggested, rule_created, dismissed]
+          enum: [accumulating, threshold_met, suggested, accepted, rule_created, dismissed]
         evidence:
           type: ["string", "null"]
         created_at:

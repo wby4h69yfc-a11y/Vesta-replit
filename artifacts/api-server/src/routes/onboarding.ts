@@ -97,9 +97,14 @@ router.get("/onboarding/whatsapp-status", async (req: Request, res: Response) =>
   // server restarts and is visible from GET /onboarding/state.
   if (verified) {
     try {
+      const verifiedPhone = getVerifiedPhone(req.user.id);
       await db
         .update(onboardingStateTable)
-        .set({ whatsapp_verified: true, updated_at: new Date() })
+        .set({
+          whatsapp_verified: true,
+          whatsapp_verified_phone: verifiedPhone,
+          updated_at: new Date(),
+        })
         .where(eq(onboardingStateTable.user_id, req.user.id));
     } catch (err) {
       req.log.warn({ err }, "Could not persist whatsapp_verified flag");

@@ -1,7 +1,7 @@
 import { logger } from "./logger";
 import { db } from "@workspace/db";
-import { membersTable, onboardingStateTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { onboardingStateTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 export type SendResult =
   | { ok: true; sid: string }
@@ -20,49 +20,40 @@ export function isTwilioConfigured(): boolean {
 }
 
 /**
- * Resolves the primary admin phone for a household, but ONLY when the
- * household has completed WhatsApp verification through the token flow.
+ * Resolves the verified WhatsApp destination for a household.
  *
- * Returning null (instead of an unverified phone) ensures that every
- * outbound send path — briefing, classifier notifications, and webhook
- * replies to explicit-approval items — cannot deliver household data to
- * an unproven destination.
+ * Returns ONLY the exact phone number that completed the token verification
+ * flow for this household — stored as `whatsapp_verified_phone` on the
+ * `onboarding_state` row at the time the webhook confirmed the token.
+ *
+ * This binding prevents delivery to a different stored admin phone that
+ * was never proven to belong to this household: the verified phone and the
+ * delivery destination are always the same value from the same DB row.
+ *
+ * Returning null (instead of falling back to any other phone) ensures that
+ * every outbound send path — briefing, classifier notifications, and webhook
+ * replies — cannot deliver household data to an unproven destination.
  */
 export async function resolveHouseholdAdminPhone(
   householdId: number,
 ): Promise<string | null> {
-  // Gate on server-recorded verification, not any client-supplied claim.
   const [state] = await db
-    .select({ whatsapp_verified: onboardingStateTable.whatsapp_verified })
+    .select({
+      whatsapp_verified: onboardingStateTable.whatsapp_verified,
+      whatsapp_verified_phone: onboardingStateTable.whatsapp_verified_phone,
+    })
     .from(onboardingStateTable)
     .where(eq(onboardingStateTable.household_id, householdId))
     .limit(1);
 
-  if (!state?.whatsapp_verified) {
-    logger.warn(
-      { householdId },
-      "resolveHouseholdAdminPhone: WhatsApp not verified — skipping notify",
-    );
-    return null;
-  }
-
-  const adminMembers = await db
-    .select()
-    .from(membersTable)
-    .where(
-      and(
-        eq(membersTable.household_id, householdId),
-        eq(membersTable.role, "admin"),
-      ),
-    )
-    .limit(5);
-
-  const phone = adminMembers.find((m) => m.phone)?.phone ?? null;
+  const phone = state?.whatsapp_verified
+    ? (state.whatsapp_verified_phone ?? null)
+    : null;
 
   if (!phone) {
     logger.warn(
-      { householdId },
-      "resolveHouseholdAdminPhone: no admin member with phone found — skipping notify",
+      { householdId, verified: state?.whatsapp_verified ?? false },
+      "resolveHouseholdAdminPhone: no verified phone on record — skipping notify",
     );
   }
 
