@@ -179,6 +179,12 @@ export async function sendHouseholdBriefing(
   const result = await sendWhatsApp(adminPhone, message);
 
   if (!result.ok) {
+    // Revert the cooldown claim so last_briefing_sent_at reflects the last
+    // *successful* delivery rather than a failed attempt.
+    await db
+      .update(householdsTable)
+      .set({ last_briefing_sent_at: claimed[0].prev ?? null })
+      .where(eq(householdsTable.id, householdId));
     logger.warn({ householdId, error: result.error }, "Briefing send failed");
     return { ok: false, reason: "send_failed", error: result.error };
   }
