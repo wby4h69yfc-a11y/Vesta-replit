@@ -719,6 +719,21 @@ paths:
         "204":
           description: Deleted
 
+  /contacts/consent-due:
+    get:
+      operationId: getContactsConsentDue
+      tags: [contacts]
+      summary: List contacts whose consent check-in is due within the next 14 days
+      responses:
+        "200":
+          description: List of contacts with upcoming consent check-in
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contact"
+
   /contacts/{id}/request-consent:
     post:
       operationId: requestContactConsent
@@ -763,6 +778,25 @@ paths:
                 $ref: "#/components/schemas/ConsentRateLimitError"
 
   # ── Privacy (LGPD) ────────────────────────────────────────────────
+  /privacy/export/summary:
+    get:
+      operationId: getPrivacyExportSummary
+      tags: [privacy]
+      summary: Returns item counts and estimated file size before a full export
+      responses:
+        "200":
+          description: Export summary with item counts and estimated size
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrivacyExportSummary"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /privacy/export:
     get:
       operationId: exportPrivacyData
@@ -1744,6 +1778,9 @@ components:
         consent_withdrawn_at:
           type: ["string", "null"]
           format: date-time
+        consent_check_in_due_at:
+          type: ["string", "null"]
+          format: date-time
         last_consent_requested_at:
           type: ["string", "null"]
           format: date-time
@@ -1769,6 +1806,34 @@ components:
         next_allowed_at:
           type: string
           format: date-time
+
+    PrivacyExportSummary:
+      type: object
+      required: [members, contacts, inbox_items, suggested_actions, events, tasks, rules, patterns, memory_staging, audit_log, estimated_size_kb]
+      properties:
+        members:
+          type: integer
+        contacts:
+          type: integer
+        inbox_items:
+          type: integer
+        suggested_actions:
+          type: integer
+        events:
+          type: integer
+        tasks:
+          type: integer
+        rules:
+          type: integer
+        patterns:
+          type: integer
+        memory_staging:
+          type: integer
+        audit_log:
+          type: integer
+        estimated_size_kb:
+          type: integer
+          description: Rough estimate of the exported JSON size in kilobytes
 
     PrivacyExport:
       type: object

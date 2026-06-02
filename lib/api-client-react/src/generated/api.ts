@@ -66,6 +66,7 @@ import type {
   PatternObservation,
   PlanStatus,
   PrivacyExport,
+  PrivacyExportSummary,
   Rule,
   RuleInput,
   RuleUpdate,
@@ -3065,6 +3066,81 @@ export const useDeleteContact = <
 };
 
 /**
+ * @summary List contacts whose consent check-in is due within the next 14 days
+ */
+export const getGetContactsConsentDueUrl = () => {
+  return `/api/contacts/consent-due`;
+};
+
+export const getContactsConsentDue = async (
+  options?: RequestInit,
+): Promise<Contact[]> => {
+  return customFetch<Contact[]>(getGetContactsConsentDueUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetContactsConsentDueQueryKey = () => {
+  return [`/api/contacts/consent-due`] as const;
+};
+
+export const getGetContactsConsentDueQueryOptions = <
+  TData = Awaited<ReturnType<typeof getContactsConsentDue>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getContactsConsentDue>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetContactsConsentDueQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getContactsConsentDue>>
+  > = ({ signal }) => getContactsConsentDue({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getContactsConsentDue>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetContactsConsentDueQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getContactsConsentDue>>
+>;
+export type GetContactsConsentDueQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List contacts whose consent check-in is due within the next 14 days
+ */
+
+export function useGetContactsConsentDue<
+  TData = Awaited<ReturnType<typeof getContactsConsentDue>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getContactsConsentDue>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetContactsConsentDueQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Send a WhatsApp consent request to a contact (LGPD)
  */
 export const getRequestContactConsentUrl = (id: number) => {
@@ -3149,6 +3225,82 @@ export const useRequestContactConsent = <
 > => {
   return useMutation(getRequestContactConsentMutationOptions(options));
 };
+
+/**
+ * @summary Returns item counts and estimated file size before a full export
+ */
+export const getGetPrivacyExportSummaryUrl = () => {
+  return `/api/privacy/export/summary`;
+};
+
+export const getPrivacyExportSummary = async (
+  options?: RequestInit,
+): Promise<PrivacyExportSummary> => {
+  return customFetch<PrivacyExportSummary>(getGetPrivacyExportSummaryUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPrivacyExportSummaryQueryKey = () => {
+  return [`/api/privacy/export/summary`] as const;
+};
+
+export const getGetPrivacyExportSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPrivacyExportSummary>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPrivacyExportSummary>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetPrivacyExportSummaryQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPrivacyExportSummary>>
+  > = ({ signal }) => getPrivacyExportSummary({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPrivacyExportSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPrivacyExportSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPrivacyExportSummary>>
+>;
+export type GetPrivacyExportSummaryQueryError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Returns item counts and estimated file size before a full export
+ */
+
+export function useGetPrivacyExportSummary<
+  TData = Awaited<ReturnType<typeof getPrivacyExportSummary>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPrivacyExportSummary>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPrivacyExportSummaryQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Export all household data as JSON (LGPD Art. 18 V)

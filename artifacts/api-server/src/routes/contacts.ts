@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { contactsTable, inboxItemsTable, householdsTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, lte, gte } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 import { sendWhatsApp } from "../lib/whatsapp";
 import { replyConsentRequest } from "../lib/wa-reply-composer";
@@ -71,14 +71,20 @@ router.patch("/contacts/:id", async (req, res) => {
     if (!contact) return res.status(404).json({ error: "Not found" });
 
     // Derive consent timestamps from status transitions.
-    const consentGrantedAt =
-      consent_status === "consented" && contact.consent_status !== "consented"
-        ? new Date()
-        : contact.consent_granted_at;
-    const consentWithdrawnAt =
-      consent_status === "revoked" && contact.consent_status !== "revoked"
-        ? new Date()
-        : contact.consent_withdrawn_at;
+    const isGranting = consent_status === "consented" && contact.consent_status !== "consented";
+    const isRevoking = consent_status === "revoked" && contact.consent_status !== "revoked";
+
+    const consentGrantedAt = isGranting ? new Date() : contact.consent_granted_at;
+    const consentWithdrawnAt = isRevoking ? new Date() : contact.consent_withdrawn_at;
+
+    // Set check-in due 12 months from now when consent is granted; clear it when revoked.
+    const twelveMonthsFromNow = new Date();
+    twelveMonthsFromNow.setFullYear(twelveMonthsFromNow.getFullYear() + 1);
+    const consentCheckInDueAt = isGranting
+      ? twelveMonthsFromNow
+      : isRevoking
+        ? null
+        : contact.consent_check_in_due_at;
 
     const [updated] = await db
       .update(contactsTable)
@@ -92,6 +98,7 @@ router.patch("/contacts/:id", async (req, res) => {
           consent_status,
           consent_granted_at: consentGrantedAt,
           consent_withdrawn_at: consentWithdrawnAt,
+          consent_check_in_due_at: consentCheckInDueAt,
         }),
       })
       .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)))
@@ -122,9 +129,9 @@ router.post("/contacts/:id/request-consent", async (req, res) => {
       return res.status(400).json({ error: "Contact has no phone number" });
     }
 
-    if (contact.consent_status !== "pending") {
+    if (contact.consent_status !== "pending" && contact.consent_status !== "consented") {
       return res.status(409).json({
-        error: "Consent request can only be sent when consent_status is 'pending'",
+        error: "Consent request can only be sent when consent_status is 'pending' or 'consented'",
         consent_status: contact.consent_status ?? null,
       });
     }
@@ -157,9 +164,15 @@ router.post("/contacts/:id/request-consent", async (req, res) => {
       req.log.warn({ contactId: id, error: sendResult.error }, "WhatsApp consent request failed");
     }
 
+    // If renewing an already-consented contact, reset to pending so they must re-confirm.
+    const isRenewal = contact.consent_status === "consented";
+
     const [updated] = await db
       .update(contactsTable)
-      .set({ last_consent_requested_at: new Date() })
+      .set({
+        last_consent_requested_at: new Date(),
+        ...(isRenewal && { consent_status: "pending" }),
+      })
       .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)))
       .returning();
 
@@ -181,6 +194,34 @@ router.delete("/contacts/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete contact");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/contacts/consent-due", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const hid = getHouseholdId(req);
+    const now = new Date();
+    const in14Days = new Date(now);
+    in14Days.setDate(in14Days.getDate() + 14);
+
+    const contacts = await db
+      .select()
+      .from(contactsTable)
+      .where(
+        and(
+          eq(contactsTable.household_id, hid),
+          eq(contactsTable.consent_status, "consented"),
+          gte(contactsTable.consent_check_in_due_at, now),
+          lte(contactsTable.consent_check_in_due_at, in14Days),
+        ),
+      )
+      .orderBy(contactsTable.consent_check_in_due_at);
+
+    res.json(contacts);
+  } catch (err) {
+    req.log.error({ err }, "Failed to list contacts with consent due");
     res.status(500).json({ error: "Internal server error" });
   }
 });

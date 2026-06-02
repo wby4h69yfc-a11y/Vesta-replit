@@ -733,6 +733,7 @@ export const ListContactsResponseItem = zod.object({
     .nullish(),
   consent_granted_at: zod.coerce.date().nullish(),
   consent_withdrawn_at: zod.coerce.date().nullish(),
+  consent_check_in_due_at: zod.coerce.date().nullish(),
   last_consent_requested_at: zod.coerce.date().nullish(),
   created_at: zod.coerce.date().optional(),
 });
@@ -801,6 +802,7 @@ export const UpdateContactResponse = zod.object({
     .nullish(),
   consent_granted_at: zod.coerce.date().nullish(),
   consent_withdrawn_at: zod.coerce.date().nullish(),
+  consent_check_in_due_at: zod.coerce.date().nullish(),
   last_consent_requested_at: zod.coerce.date().nullish(),
   created_at: zod.coerce.date().optional(),
 });
@@ -811,6 +813,40 @@ export const UpdateContactResponse = zod.object({
 export const DeleteContactParams = zod.object({
   id: zod.coerce.number(),
 });
+
+/**
+ * @summary List contacts whose consent check-in is due within the next 14 days
+ */
+export const GetContactsConsentDueResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  phone: zod.string().nullish(),
+  category: zod.enum([
+    "escola",
+    "saude",
+    "casa",
+    "diarista",
+    "portaria",
+    "sindico",
+    "social",
+    "servicos",
+    "familia",
+    "outros",
+  ]),
+  aliases: zod.array(zod.string()).optional(),
+  notes: zod.string().nullish(),
+  consent_status: zod
+    .enum(["not_required", "pending", "consented", "revoked"])
+    .nullish(),
+  consent_granted_at: zod.coerce.date().nullish(),
+  consent_withdrawn_at: zod.coerce.date().nullish(),
+  consent_check_in_due_at: zod.coerce.date().nullish(),
+  last_consent_requested_at: zod.coerce.date().nullish(),
+  created_at: zod.coerce.date().optional(),
+});
+export const GetContactsConsentDueResponse = zod.array(
+  GetContactsConsentDueResponseItem,
+);
 
 /**
  * @summary Send a WhatsApp consent request to a contact (LGPD)
@@ -843,10 +879,30 @@ export const RequestContactConsentResponse = zod.object({
       .nullish(),
     consent_granted_at: zod.coerce.date().nullish(),
     consent_withdrawn_at: zod.coerce.date().nullish(),
+    consent_check_in_due_at: zod.coerce.date().nullish(),
     last_consent_requested_at: zod.coerce.date().nullish(),
     created_at: zod.coerce.date().optional(),
   }),
   whatsapp_sent: zod.boolean(),
+});
+
+/**
+ * @summary Returns item counts and estimated file size before a full export
+ */
+export const GetPrivacyExportSummaryResponse = zod.object({
+  members: zod.number(),
+  contacts: zod.number(),
+  inbox_items: zod.number(),
+  suggested_actions: zod.number(),
+  events: zod.number(),
+  tasks: zod.number(),
+  rules: zod.number(),
+  patterns: zod.number(),
+  memory_staging: zod.number(),
+  audit_log: zod.number(),
+  estimated_size_kb: zod
+    .number()
+    .describe("Rough estimate of the exported JSON size in kilobytes"),
 });
 
 /**
@@ -930,6 +986,7 @@ export const ExportPrivacyDataResponse = zod.object({
           .nullish(),
         consent_granted_at: zod.coerce.date().nullish(),
         consent_withdrawn_at: zod.coerce.date().nullish(),
+        consent_check_in_due_at: zod.coerce.date().nullish(),
         last_consent_requested_at: zod.coerce.date().nullish(),
         created_at: zod.coerce.date().optional(),
       }),

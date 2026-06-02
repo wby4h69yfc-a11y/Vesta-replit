@@ -334,6 +334,8 @@ export interface Contact {
   /** @nullable */
   consent_withdrawn_at?: string | null;
   /** @nullable */
+  consent_check_in_due_at?: string | null;
+  /** @nullable */
   last_consent_requested_at?: string | null;
   created_at?: string;
 }
@@ -346,6 +348,21 @@ export interface ConsentRequestResponse {
 export interface ConsentRateLimitError {
   error: string;
   next_allowed_at: string;
+}
+
+export interface PrivacyExportSummary {
+  members: number;
+  contacts: number;
+  inbox_items: number;
+  suggested_actions: number;
+  events: number;
+  tasks: number;
+  rules: number;
+  patterns: number;
+  memory_staging: number;
+  audit_log: number;
+  /** Rough estimate of the exported JSON size in kilobytes */
+  estimated_size_kb: number;
 }
 
 export type InboxItemSource =
