@@ -719,6 +719,21 @@ paths:
         "204":
           description: Deleted
 
+  /contacts/consent-due:
+    get:
+      operationId: getContactsConsentDue
+      tags: [contacts]
+      summary: List contacts whose consent check-in is due within the next 14 days
+      responses:
+        "200":
+          description: List of contacts with upcoming consent check-in
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contact"
+
   /contacts/{id}/request-consent:
     post:
       operationId: requestContactConsent
@@ -1761,6 +1776,9 @@ components:
           type: ["string", "null"]
           format: date-time
         consent_withdrawn_at:
+          type: ["string", "null"]
+          format: date-time
+        consent_check_in_due_at:
           type: ["string", "null"]
           format: date-time
         last_consent_requested_at:

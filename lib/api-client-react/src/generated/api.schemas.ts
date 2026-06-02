@@ -334,6 +334,8 @@ export interface Contact {
   /** @nullable */
   consent_withdrawn_at?: string | null;
   /** @nullable */
+  consent_check_in_due_at?: string | null;
+  /** @nullable */
   last_consent_requested_at?: string | null;
   created_at?: string;
 }

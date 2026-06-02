@@ -17,6 +17,7 @@ import {
   useListRules, useCreateRule, useToggleRule, useDeleteRule,
   useListPatterns, useAcceptPattern,
   useListContacts, useUpdateContact, useRequestContactConsent,
+  useGetContactsConsentDue,
   useListAuditLog,
   useDeleteAccount,
   exportPrivacyData,
@@ -24,6 +25,7 @@ import {
   type PrivacyExportSummary,
   getListMembersQueryKey,
   getListRulesQueryKey, getListPatternsQueryKey, getListContactsQueryKey,
+  getGetContactsConsentDueQueryKey,
   type Member,
   type PatternObservation,
 } from "@workspace/api-client-react";
@@ -1375,6 +1377,7 @@ function PrivacyDashboard() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { data: contacts } = useListContacts();
+  const { data: consentDueContacts = [] } = useGetContactsConsentDue();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
@@ -1394,6 +1397,7 @@ function PrivacyDashboard() {
     mutation: {
       onSuccess: (data) => {
         void qc.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        void qc.invalidateQueries({ queryKey: getGetContactsConsentDueQueryKey() });
         toast({ description: data.whatsapp_sent ? "Solicitação enviada por WhatsApp." : "Contato atualizado (WhatsApp não configurado)." });
       },
       onError: () => toast({ description: "Erro ao solicitar consentimento.", variant: "destructive" }),
@@ -1514,6 +1518,56 @@ function PrivacyDashboard() {
           style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
           <p className="text-sm" style={{ color: V.muted }}>Nenhum contato externo cadastrado.</p>
           <p className="text-xs mt-1" style={{ color: V.muted }}>Adicione diaristas na aba Família.</p>
+        </div>
+      )}
+
+      {/* Consent renewal alerts */}
+      {consentDueContacts.length > 0 && (
+        <div className="rounded-2xl overflow-hidden mb-4"
+          style={{ background: "#FFFBEB", border: "1px solid #FDE68A" }}>
+          <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" style={{ color: "#D97706" }} />
+            <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#92400E" }}>
+              Renovação de consentimento
+            </p>
+          </div>
+          {consentDueContacts.map((contact, i) => {
+            const dueAt = contact.consent_check_in_due_at
+              ? new Date(contact.consent_check_in_due_at)
+              : null;
+            const daysUntilDue = dueAt
+              ? Math.ceil((dueAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+              : null;
+            return (
+              <div key={contact.id} className="flex items-center gap-3 px-4 py-3"
+                style={{ borderTop: "1px solid #FDE68A" }}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ background: "#FEF3C7" }}>
+                  <Clock className="h-4 w-4" style={{ color: "#D97706" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: "#92400E" }}>{contact.name}</p>
+                  <p className="text-xs" style={{ color: "#B45309" }}>
+                    {daysUntilDue !== null
+                      ? daysUntilDue <= 0
+                        ? "Consentimento venceu hoje"
+                        : `Vence em ${daysUntilDue} dia${daysUntilDue === 1 ? "" : "s"}`
+                      : "Consentimento vence em breve"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => requestConsent.mutate({ id: contact.id })}
+                  disabled={requestConsent.isPending}
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold shrink-0 disabled:opacity-50"
+                  style={{ background: "#D97706", color: "white" }}>
+                  Renovar
+                </button>
+              </div>
+            );
+          })}
+          <p className="px-4 py-2 text-[10px]" style={{ color: "#B45309", borderTop: "1px solid #FDE68A" }}>
+            Uma mensagem será enviada por WhatsApp pedindo nova confirmação.
+          </p>
         </div>
       )}
 

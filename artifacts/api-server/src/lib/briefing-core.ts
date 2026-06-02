@@ -1,5 +1,5 @@
 import { db } from "@workspace/db";
-import { calendarEventsTable, householdsTable, onboardingStateTable, tasksTable } from "@workspace/db";
+import { calendarEventsTable, contactsTable, householdsTable, onboardingStateTable, tasksTable } from "@workspace/db";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "./whatsapp";
 import { logger } from "./logger";
@@ -83,6 +83,21 @@ export async function sendHouseholdBriefing(
       ),
     );
 
+  const in14Days = new Date(now);
+  in14Days.setDate(in14Days.getDate() + 14);
+
+  const consentDueContacts = await db
+    .select({ name: contactsTable.name })
+    .from(contactsTable)
+    .where(
+      and(
+        eq(contactsTable.household_id, householdId),
+        eq(contactsTable.consent_status, "consented"),
+        gte(contactsTable.consent_check_in_due_at, now),
+        lte(contactsTable.consent_check_in_due_at, in14Days),
+      ),
+    );
+
   const [onboardingState] = await db
     .select({ whatsapp_verified: onboardingStateTable.whatsapp_verified })
     .from(onboardingStateTable)
@@ -146,6 +161,15 @@ export async function sendHouseholdBriefing(
     }
   } else {
     lines.push("✅ Nenhuma tarefa pendente.");
+  }
+
+  if (consentDueContacts.length > 0) {
+    lines.push("");
+    lines.push("⚠️ *Renovação de consentimento (LGPD):*");
+    for (const c of consentDueContacts) {
+      lines.push(`• ${c.name} — consentimento vence em breve`);
+    }
+    lines.push("_Acesse Casa → Privacidade para renovar._");
   }
 
   lines.push("");
