@@ -1735,8 +1735,8 @@ function PrivacidadeTab() {
 /* ── Page ────────────────────────────────────────────────────────────────── */
 export default function CasaPage() {
   const [tab, setTab] = useState<Tab>("inicio");
-  const { data: suggestedPatterns } = useListPatterns({ status: "suggested" });
-  const patternCount = suggestedPatterns?.length ?? 0;
+  const { data: allPatterns } = useListPatterns();
+  const patternCount = allPatterns?.filter((p) => p.status === "suggested" || p.status === "threshold_met").length ?? 0;
   return (
     <div className="animate-fade-in-up">
       <div className="sticky top-0 z-10 px-4 pt-4" style={{ background: V.ivory }}>
