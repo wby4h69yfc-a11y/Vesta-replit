@@ -1527,6 +1527,10 @@ components:
         timezone:
           type: string
           description: IANA timezone name for this household (e.g. "America/Sao_Paulo"). Defaults to "America/Sao_Paulo".
+        last_briefing_sent_at:
+          type: ["string", "null"]
+          format: date-time
+          description: Timestamp of the last successfully delivered daily briefing. Null if no briefing has been sent yet.
         created_at:
           type: string
           format: date-time

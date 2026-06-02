@@ -935,6 +935,12 @@ export const ExportPrivacyDataResponse = zod.object({
         .describe(
           'IANA timezone name for this household (e.g. \"America\/Sao_Paulo\"). Defaults to \"America\/Sao_Paulo\".',
         ),
+      last_briefing_sent_at: zod.coerce
+        .date()
+        .nullish()
+        .describe(
+          "Timestamp of the last successfully delivered daily briefing. Null if no briefing has been sent yet.",
+        ),
       created_at: zod.coerce.date().optional(),
     })
     .nullish(),
@@ -1332,6 +1338,12 @@ export const GetHouseholdResponse = zod.object({
     .describe(
       'IANA timezone name for this household (e.g. \"America\/Sao_Paulo\"). Defaults to \"America\/Sao_Paulo\".',
     ),
+  last_briefing_sent_at: zod.coerce
+    .date()
+    .nullish()
+    .describe(
+      "Timestamp of the last successfully delivered daily briefing. Null if no briefing has been sent yet.",
+    ),
   created_at: zod.coerce.date().optional(),
 });
 
@@ -1383,6 +1395,12 @@ export const UpdateHouseholdResponse = zod.object({
     .optional()
     .describe(
       'IANA timezone name for this household (e.g. \"America\/Sao_Paulo\"). Defaults to \"America\/Sao_Paulo\".',
+    ),
+  last_briefing_sent_at: zod.coerce
+    .date()
+    .nullish()
+    .describe(
+      "Timestamp of the last successfully delivered daily briefing. Null if no briefing has been sent yet.",
     ),
   created_at: zod.coerce.date().optional(),
 });

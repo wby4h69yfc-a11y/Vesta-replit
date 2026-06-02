@@ -74,6 +74,11 @@ export interface Household {
   briefing_hour?: number;
   /** IANA timezone name for this household (e.g. "America/Sao_Paulo"). Defaults to "America/Sao_Paulo". */
   timezone?: string;
+  /**
+   * Timestamp of the last successfully delivered daily briefing. Null if no briefing has been sent yet.
+   * @nullable
+   */
+  last_briefing_sent_at?: string | null;
   created_at?: string;
 }
 

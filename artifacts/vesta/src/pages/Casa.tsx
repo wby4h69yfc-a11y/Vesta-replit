@@ -466,6 +466,11 @@ function BriefingHourSelector() {
                 {" "}
                 <span style={{ color: V.muted }}>(horário de {tzLabel})</span>
               </p>
+              <p className="text-xs mt-0.5" style={{ color: V.muted }}>
+                {household?.last_briefing_sent_at
+                  ? <>Último resumo enviado: <span className="font-medium">{formatRelativeTime(household.last_briefing_sent_at)}</span></>
+                  : "Nenhum resumo enviado ainda"}
+              </p>
             </div>
           </div>
 
