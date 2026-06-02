@@ -852,7 +852,15 @@ function FamiliaTab() {
       {/* Adults */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: V.muted }}>Adultos</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: V.muted }}>Adultos</h2>
+            {lim?.adults !== null && lim?.adults !== undefined && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: adultsAtLimit ? "#FEE2E2" : V.beige, color: adultsAtLimit ? "#991B1B" : V.muted }}>
+                {usg?.adults ?? 0}/{lim.adults}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button onClick={() => { setShowInvite(!showInvite); if (formMode !== "none") closeForm(); }}
               className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full"
@@ -918,7 +926,15 @@ function FamiliaTab() {
       {/* Children */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: V.muted }}>Crianças</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: V.muted }}>Crianças</h2>
+            {lim?.children !== null && lim?.children !== undefined && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: childrenAtLimit ? "#FEE2E2" : V.beige, color: childrenAtLimit ? "#991B1B" : V.muted }}>
+                {usg?.children ?? 0}/{lim.children}
+              </span>
+            )}
+          </div>
           {childrenAtLimit ? (
             <button
               onClick={() => openAddGated("child")}
@@ -1131,9 +1147,17 @@ function RegrasTab() {
     <div className="space-y-5 py-6">
       {showUpgrade && <UpgradePrompt limitLabel={upgradeLabel} onClose={() => setShowUpgrade(false)} />}
       <div className="flex items-center justify-between">
-        <p className="text-xs" style={{ color: V.muted }}>
-          Regras ensinam a Vesta a agir automaticamente em situações recorrentes.
-        </p>
+        <div>
+          <p className="text-xs" style={{ color: V.muted }}>
+            Regras ensinam a Vesta a agir automaticamente em situações recorrentes.
+          </p>
+          {rulesLimit !== null && (
+            <p className="text-[10px] mt-0.5 font-semibold"
+              style={{ color: rulesAtLimit ? "#991B1B" : V.muted }}>
+              {rulesUsage}/{rulesLimit} regras usadas
+            </p>
+          )}
+        </div>
         {rulesAtLimit ? (
           <button
             onClick={() => { setUpgradeLabel(`Plano gratuito: máximo de ${rulesLimit} regras inteligentes.`); setShowUpgrade(true); }}
