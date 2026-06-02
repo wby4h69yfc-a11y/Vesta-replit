@@ -19,12 +19,13 @@ export type BriefingResult =
  * Performs the atomic cooldown claim, assembles the message, and sends it.
  * Returns a typed result so callers decide how to surface the outcome.
  *
+ * Delivery is only attempted when a verified phone is on record for the
+ * household — no client-supplied or member-table fallback is accepted.
+ *
  * @param householdId - target household
- * @param fallbackPhone - optional phone from req.user (HTTP path only)
  */
 export async function sendHouseholdBriefing(
   householdId: number,
-  fallbackPhone?: string | null,
 ): Promise<BriefingResult> {
   const now = new Date();
 
@@ -112,10 +113,7 @@ export async function sendHouseholdBriefing(
     return { ok: false, reason: "not_verified" };
   }
 
-  let adminPhone: string | null = await resolveHouseholdAdminPhone(householdId);
-  if (!adminPhone && fallbackPhone) {
-    adminPhone = fallbackPhone;
-  }
+  const adminPhone: string | null = await resolveHouseholdAdminPhone(householdId);
 
   if (!adminPhone) {
     await db
