@@ -405,24 +405,28 @@ function localHourToUTC(localHour: number, tz: string): number {
   return localHour; // fallback for sub-hour offsets
 }
 
+const TZ_OPTIONS = Object.entries(TZ_LABELS).map(([value, label]) => ({ value, label }));
+
 function BriefingHourSelector() {
   const { data: household } = useGetHousehold();
   const updateHousehold = useUpdateHousehold();
   const { toast } = useToast();
 
-  const tz = household?.timezone ?? "America/Sao_Paulo";
-  const tzLabel = TZ_LABELS[tz] ?? "horário local";
+  const savedTz = household?.timezone ?? "America/Sao_Paulo";
+  const tzLabel = TZ_LABELS[savedTz] ?? "horário local";
 
   // briefing_hour is stored in UTC; convert to local for display.
   const savedUTC = household?.briefing_hour ?? 7;
-  const savedLocal = utcHourToLocal(savedUTC, tz);
+  const savedLocal = utcHourToLocal(savedUTC, savedTz);
 
   const [selectedLocal, setSelectedLocal] = useState<number>(savedLocal);
+  const [selectedTz, setSelectedTz] = useState<string>(savedTz);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setSelectedLocal(utcHourToLocal(household?.briefing_hour ?? 7, tz));
-  }, [household?.briefing_hour, tz]);
+    setSelectedLocal(utcHourToLocal(household?.briefing_hour ?? 7, savedTz));
+    setSelectedTz(savedTz);
+  }, [household?.briefing_hour, savedTz]);
 
   function formatHour(h: number) {
     const period = h < 12 ? "AM" : "PM";
@@ -431,11 +435,12 @@ function BriefingHourSelector() {
   }
 
   async function handleSave() {
-    const utcHour = localHourToUTC(selectedLocal, tz);
+    const utcHour = localHourToUTC(selectedLocal, selectedTz);
     try {
-      await updateHousehold.mutateAsync({ data: { briefing_hour: utcHour } });
+      await updateHousehold.mutateAsync({ data: { briefing_hour: utcHour, timezone: selectedTz } });
       setSaved(true);
-      toast({ title: "Horário salvo", description: `Resumo diário às ${formatHour(selectedLocal)} (horário de ${tzLabel})` });
+      const label = TZ_LABELS[selectedTz] ?? selectedTz;
+      toast({ title: "Configurações salvas", description: `Resumo diário às ${formatHour(selectedLocal)} (horário de ${label})` });
       setTimeout(() => setSaved(false), 2500);
     } catch {
       toast({ title: "Erro ao salvar", description: "Tente novamente.", variant: "destructive" });
@@ -443,7 +448,7 @@ function BriefingHourSelector() {
   }
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
-  const isDirty = selectedLocal !== savedLocal;
+  const isDirty = selectedLocal !== savedLocal || selectedTz !== savedTz;
 
   return (
     <section>
@@ -451,8 +456,9 @@ function BriefingHourSelector() {
         Resumo diário
       </h2>
       <div className="rounded-3xl overflow-hidden" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
-        <div className="px-5 py-4">
-          <div className="flex items-center gap-3 mb-4">
+        <div className="px-5 py-4 space-y-4">
+          {/* Header */}
+          <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#EAF1E5" }}>
               <Bell className="h-4 w-4" style={{ color: V.primary }} />
             </div>
@@ -474,28 +480,49 @@ function BriefingHourSelector() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Timezone selector */}
+          <div>
+            <p className="text-xs font-medium mb-1.5" style={{ color: V.muted }}>Fuso horário</p>
             <select
-              value={selectedLocal}
-              onChange={(e) => setSelectedLocal(Number(e.target.value))}
-              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium border-0 outline-none appearance-none"
+              value={selectedTz}
+              onChange={(e) => setSelectedTz(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl text-sm font-medium border-0 outline-none appearance-none"
               style={{ background: V.beige, color: V.ink, cursor: "pointer" }}
             >
-              {hours.map((h) => (
-                <option key={h} value={h}>
-                  {formatHour(h)}
+              {TZ_OPTIONS.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label} ({value})
                 </option>
               ))}
             </select>
+          </div>
 
-            <button
-              onClick={() => void handleSave()}
-              disabled={updateHousehold.isPending || !isDirty}
-              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50 shrink-0"
-              style={{ background: saved ? "#059669" : V.primary }}
-            >
-              {updateHousehold.isPending ? "…" : saved ? "Salvo ✓" : "Salvar"}
-            </button>
+          {/* Hour selector + save */}
+          <div>
+            <p className="text-xs font-medium mb-1.5" style={{ color: V.muted }}>Horário</p>
+            <div className="flex items-center gap-3">
+              <select
+                value={selectedLocal}
+                onChange={(e) => setSelectedLocal(Number(e.target.value))}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium border-0 outline-none appearance-none"
+                style={{ background: V.beige, color: V.ink, cursor: "pointer" }}
+              >
+                {hours.map((h) => (
+                  <option key={h} value={h}>
+                    {formatHour(h)}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                onClick={() => void handleSave()}
+                disabled={updateHousehold.isPending || !isDirty}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50 shrink-0"
+                style={{ background: saved ? "#059669" : V.primary }}
+              >
+                {updateHousehold.isPending ? "…" : saved ? "Salvo ✓" : "Salvar"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
