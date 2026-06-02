@@ -1,1037 +1,803 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import {
-  ArrowRight, Calendar, Camera, Check, ChevronDown,
-  Home, Lock, Mail, Menu, MessageCircle, Mic, MoreHorizontal,
-  Play, Plus, Send, ShieldCheck, Sparkles, Wrench, X,
+  Mic, Check, Calendar, MessageCircle, List, Users, Hand, Lock,
+  Eye, Server, SlidersHorizontal, Shield, Plus, X, CheckCircle,
 } from "lucide-react";
+import "./landing-v3.css";
 
-/* ── Design tokens ── */
-const V = {
-  primary:  "#0E3B2E",
-  deep:     "#08251E",
-  sage:     "#6F856F",
-  ivory:    "#F7F4EA",
-  cream:    "#FFFDF6",
-  warm:     "#F1EBDD",
-  softSage: "#DDE8D8",
-  gold:     "#D9B95F",
-  ink:      "#12231C",
-  muted:    "#5F6B61",
-};
-
-/* ── Badge ── */
-function VBadge({ children, white }: { children: React.ReactNode; white?: boolean }) {
+/* ── Hearth SVG mark (Vesta brand) ── */
+function HearthMark({ className = "", style = {} }: { className?: string; style?: React.CSSProperties }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-4 py-1.5 text-[11px] font-semibold tracking-[0.16em] ${white ? "" : "bg-[#EAF1E5] text-[#0E3B2E]"}`}
-      style={white ? { background: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.85)" } : {}}>
-      {children}
-    </span>
+    <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" className={className} style={style} aria-hidden="true">
+      <path fill="currentColor" fillRule="evenodd"
+        d="M14 70 Q8 70 8 64 L8 39 A32 32 0 0 1 72 39 L72 64 Q72 70 66 70 Z M40 30 A17 17 0 0 0 23 47 L23 64 Q23 66 25 66 L55 66 Q57 66 57 64 L57 47 A17 17 0 0 0 40 30 Z" />
+    </svg>
   );
 }
 
-/* ── Intake cards ── */
-function IntakeCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+/* ── WhatsApp icon ── */
+function IconWave({ className = "", style }: { className?: string; style?: React.CSSProperties }) {
   return (
-    <div className="rounded-3xl p-5 backdrop-blur"
-      style={{ background: "rgba(255,253,246,0.95)", border: "1px solid rgba(14,59,46,0.1)", boxShadow: "0 20px 50px rgba(24,38,30,0.08)" }}>
-      <div className="mb-3 flex items-center gap-2">
-        {icon}
-        <p className="text-sm font-bold" style={{ color: V.ink }}>{title}</p>
-      </div>
-      <div className="text-sm leading-relaxed" style={{ color: "#3D4A40" }}>{children}</div>
-    </div>
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style} aria-hidden="true">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+      <path d="M12.004 2C6.477 2 2 6.477 2 12c0 1.785.47 3.458 1.29 4.905L2 22l5.235-1.273A9.956 9.956 0 0012.004 22C17.53 22 22 17.523 22 12S17.53 2 12.004 2zm0 18.173a8.17 8.17 0 01-4.154-1.13l-.297-.178-3.104.755.785-2.999-.196-.31A8.173 8.173 0 1112.004 20.173z"/>
+    </svg>
   );
 }
 
-/* ── WhatsApp mockup ── */
-function WhatsAppMockup() {
-  const bars = [3, 6, 9, 5, 11, 7, 4, 9, 6, 3, 8, 5, 10, 7, 4, 9, 6, 3, 8, 5, 7];
-  return (
-    <div className="relative mx-auto h-[590px] w-[302px] rounded-[46px] border-[8px] border-[#111] shadow-[0_30px_80px_rgba(0,0,0,0.28)]">
-      {/* Notch */}
-      <div className="absolute left-1/2 top-2 z-20 h-7 w-28 -translate-x-1/2 rounded-full bg-black" />
+const WAITLIST_ENDPOINT = "https://feqykyiyqzkmepfeehmg.supabase.co/functions/v1/waitlist-signup";
+const EMAIL_RE = /^\S+@\S+\.\S+$/;
 
-      {/* WhatsApp badge */}
-      <a className="absolute -top-3 -right-3 z-30 hidden h-9 -rotate-12 items-center gap-1 rounded-full bg-[#25D366] pl-2 pr-3 text-[11px] font-bold text-white shadow-lg transition hover:-rotate-6 hover:scale-[1.06] hover:bg-[#1FBE5C] lg:inline-flex cursor-pointer">
-        <MessageCircle className="h-3.5 w-3.5" fill="white" strokeWidth={0} />
-        WhatsApp
-      </a>
-
-      <div className="flex h-full flex-col overflow-hidden rounded-[36px] bg-[#ECE5DD]">
-        {/* WA header */}
-        <div className="flex items-center gap-3 bg-[#075E54] px-4 pb-3 pt-12 text-white">
-          <div className="grid h-9 w-9 place-items-center rounded-full bg-[#075E54]" style={{ border: "1.5px solid rgba(255,255,255,0.3)" }}>
-            <Home className="h-4 w-4" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-bold">Vesta</p>
-            <p className="text-[11px] text-white/60">online · responde em segundos</p>
-          </div>
-          <MoreHorizontal className="lucide lucide-ellipsis h-4 w-4 text-white/80" />
-        </div>
-
-        {/* Chat */}
-        <div className="flex flex-1 flex-col justify-end gap-3 px-4 pb-4 pt-4">
-          <div className="mb-2 flex justify-center">
-            <span className="rounded-full px-3 py-0.5 text-[11px]" style={{ background: "rgba(255,255,255,0.65)", color: "#666" }}>hoje</span>
-          </div>
-
-          {/* Incoming voice */}
-          <div className="flex max-w-[88%] items-center gap-2 rounded-2xl rounded-tl-none px-3 py-2.5" style={{ background: "white" }}>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: V.primary }}>
-              <Play className="h-3 w-3 fill-[#0E3B2E] text-[#0E3B2E]" fill="white" color="white" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-end gap-[2px] h-7">
-                {bars.map((h, i) => (
-                  <div key={i} className="w-[2.5px] rounded-full"
-                    style={{ height: `${h * 2.3}px`, background: i < 9 ? V.primary : "#C8C8C8" }} />
-                ))}
-              </div>
-            </div>
-            <span className="text-[10px] shrink-0" style={{ color: "#999" }}>0:14</span>
-          </div>
-
-          {/* Outgoing text — from user */}
-          <div className="self-end flex flex-col items-end">
-            <div className="rounded-2xl rounded-tr-none px-3 py-2 max-w-[88%]" style={{ background: "#D9FDD3" }}>
-              <p className="text-xs leading-relaxed" style={{ color: V.ink }}>
-                "Marca a consulta da Bia com a pediatra essa semana, de tarde..."
-              </p>
-              <div className="flex items-center justify-end gap-0.5 mt-0.5">
-                <span className="text-[10px]" style={{ color: "#999" }}>09:14</span>
-                <Check className="h-3 w-3" style={{ color: "#53BDEB" }} strokeWidth={2.5} />
-                <Check className="h-3 w-3 -ml-1.5" style={{ color: "#53BDEB" }} strokeWidth={2.5} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Input bar */}
-        <div className="flex items-center gap-2 bg-[#F0F0F0] px-2 py-2">
-          <div className="flex flex-1 items-center gap-2 rounded-full bg-white px-3 py-1.5">
-            <Plus className="h-3.5 w-3.5 text-[#6F856F]" />
-            <span className="flex-1 text-[11px] text-[#9AA59C]">Mensagem</span>
-            <Camera className="h-3.5 w-3.5 text-[#6F856F]" />
-          </div>
-          <div className="flex h-8 w-8 items-center justify-center rounded-full" style={{ background: V.primary }}>
-            <Mic className="h-4 w-4 text-white" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+async function submitWaitlist(payload: Record<string, unknown>): Promise<boolean> {
+  try {
+    const r = await fetch(WAITLIST_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
 }
 
-/* ── Nav ── */
-function Nav({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; setMobileOpen: (v: boolean) => void }) {
-  const links: [string, string][] = [
-    ["Como funciona", "#como-funciona"],
-    ["Concierge",     "#concierge"],
-    ["Planos",        "#planos"],
-    ["Lista de espera","#lista-de-espera"],
-  ];
-  return (
-    <header className="sticky top-0 z-50"
-      style={{ background: "rgba(247,244,234,0.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(14,59,46,0.08)" }}>
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#0E3B2E]/20">
-            <Home className="lucide lucide-house h-6 w-6 text-[#0E3B2E]" strokeWidth={1.8} />
-          </div>
-          <span className="text-2xl font-semibold tracking-tight" style={{ color: V.ink }}>vesta</span>
-        </div>
-
-        <nav className="hidden items-center gap-9 text-sm font-medium text-[#12231C] md:flex">
-          {links.map(([label, href]) => (
-            <a key={label} href={href} className="hover:text-[#0E3B2E] transition-colors">{label}</a>
-          ))}
-        </nav>
-
-        <div className="hidden items-center gap-4 md:flex">
-          <Link href="/app" className="text-sm font-semibold hover:opacity-60 transition-opacity" style={{ color: V.ink }}>Entrar</Link>
-          <Link href="/app"
-            className="inline-flex items-center gap-2 rounded-full bg-[#0E3B2E] px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_18px_40px_rgba(14,59,46,0.18)] transition hover:bg-[#08251E]">
-            Entrar na lista
-          </Link>
-        </div>
-
-        <button className="md:hidden" onClick={() => setMobileOpen(!mobileOpen)}>
-          {mobileOpen
-            ? <X className="h-6 w-6" style={{ color: V.primary }} />
-            : <Menu className="lucide lucide-menu h-6 w-6 text-[#0E3B2E]" />}
-        </button>
-      </div>
-
-      {mobileOpen && (
-        <div className="border-t px-6 pb-6 md:hidden" style={{ borderColor: "rgba(14,59,46,0.08)" }}>
-          <div className="space-y-4 pt-4">
-            {links.map(([l, h]) => (
-              <a key={l} href={h} className="block text-sm font-medium" style={{ color: V.ink }} onClick={() => setMobileOpen(false)}>{l}</a>
-            ))}
-          </div>
-          <Link href="/app"
-            className="mt-5 flex w-full items-center justify-center rounded-full bg-[#0E3B2E] py-3 text-sm font-semibold text-white">
-            Entrar na lista
-          </Link>
-        </div>
-      )}
-    </header>
-  );
-}
-
-/* ── Hero ── */
-function Hero() {
-  return (
-    <section className="mx-auto grid max-w-7xl items-center gap-12 px-6 pb-10 pt-10 lg:grid-cols-[1fr_1.25fr]">
-      {/* Left */}
-      <div>
-        <VBadge>PARA QUEM SEGURA A CASA</VBadge>
-
-        <h1 className="mt-7 max-w-xl font-serif text-5xl font-semibold leading-[1.0] tracking-[-0.04em] text-[#12231C] md:text-6xl lg:text-[64px]">
-          A casa não<br />
-          precisa morar{" "}
-          <span className="font-serif italic text-[#6F856F]">só<br />
-          na sua</span> cabeça.
-        </h1>
-
-        <p className="mt-5 max-w-xl font-serif text-3xl leading-tight tracking-[-0.03em] text-[#6F856F] md:text-4xl">
-          Começa com suas regras. Aprende com o tempo.
-        </p>
-
-        <p className="mt-7 max-w-xl text-lg leading-8 text-[#4D5A50]">
-          A Vesta é um sistema operacional discreto da casa. Ela organiza o que chega no WhatsApp, e-mail, foto ou voz pra você confirmar — e delega pra quem precisa, sem cobrança, sem app de tarefas pra família.
-        </p>
-
-        <div className="mt-4 inline-flex max-w-xl items-center gap-2 rounded-full border border-[#0E3B2E]/15 bg-[#FFFDF6] px-4 py-2 text-[12.5px] font-semibold text-[#3D4A40]">
-          Não é <strong>&nbsp;mais um app de tarefas, calendário ou checklist</strong>&nbsp;da família.
-        </div>
-
-        <div className="mt-9 flex max-w-xl flex-wrap items-center gap-4">
-          <Link href="/app"
-            className="inline-flex items-center gap-2 rounded-full bg-[#0E3B2E] px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_18px_40px_rgba(14,59,46,0.18)] transition hover:bg-[#08251E]">
-            Tire uma coisa da cabeça <ArrowRight className="h-4 w-4" />
-          </Link>
-          <a href="#como-funciona"
-            className="inline-flex items-center gap-2 text-[13.5px] font-semibold text-[#12231C] hover:text-[#0E3B2E]">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#0E3B2E]/30">
-              <Play className="h-3 w-3 fill-[#0E3B2E] text-[#0E3B2E]" />
-            </span>
-            Ver como funciona
-          </a>
-        </div>
-
-        <div className="mt-4 flex max-w-xl flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-[#5F6B61]">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#D9B95F]" />
-            <strong className="font-semibold text-[#12231C]">Restam 47 vagas</strong>&nbsp;na fase 2
-          </span>
-          <span>·</span>
-          <span>Trava preço por 12 meses</span>
-        </div>
-
-        <div className="mt-5 flex items-center gap-2 text-[13px] text-[#5F6B61]">
-          <ShieldCheck className="lucide lucide-shield-check h-4 w-4 text-[#6F856F]" />
-          Confirmação sempre com você. Seus dados nunca são vendidos.
-        </div>
-
-        <div className="mt-10 flex items-center gap-5">
-          <div className="flex -space-x-3">
-            {["#8FAB8E", "#6F856F", "#B8A090", "#4A7060"].map((bg, i) => (
-              <div key={i} className="h-11 w-11 rounded-full border-2 border-[#F7F4EA]" style={{ background: bg }} />
-            ))}
-          </div>
-          <div className="text-[12.5px] text-[#5F6B61]">
-            <strong className="font-semibold text-[#12231C]">50+ famílias</strong>&nbsp;Famílias selecionadas já estão testando a Vesta.
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <a href="#lista-de-espera"
-            className="mt-6 inline-flex items-center gap-2.5 rounded-full border border-[#0E3B2E]/15 bg-[#FFFDF6]/80 px-3.5 py-2 text-[12.5px] text-[#3D4A40] transition hover:border-[#0E3B2E]/30">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#6F856F]/60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#6F856F]" />
-            </span>
-            <strong>1000+ famílias</strong>&nbsp;já na lista · próxima onda em junho
-            <ArrowRight className="lucide lucide-arrow-right h-3.5 w-3.5 text-[#6F856F]" />
-          </a>
-        </div>
-      </div>
-
-      {/* Right — floating cards + phone */}
-      <div className="relative min-h-[660px]">
-        <div className="absolute left-2 top-12 hidden w-44 lg:block">
-          <IntakeCard icon={<MessageCircle className="lucide lucide-message-circle h-5 w-5 text-green-600" />} title="Grupo da escola">
-            Festa junina dia 24/05. Quem pode ajudar com as barracas? 🎉
-          </IntakeCard>
-        </div>
-        <div className="absolute left-10 top-64 hidden w-48 lg:block">
-          <IntakeCard icon={<Mail className="lucide lucide-mail h-5 w-5 text-blue-500" />} title="E-mail da escola">
-            Autorização para passeio pedagógico em anexo.
-          </IntakeCard>
-        </div>
-        <div className="absolute bottom-24 left-0 hidden w-44 lg:block">
-          <IntakeCard icon={<Camera className="lucide lucide-camera h-5 w-5 text-[#B58445]" />} title="Foto do bilhete">
-            Trazer 1kg de alimento não perecível até 20/06.
-          </IntakeCard>
-        </div>
-
-        <div className="absolute left-[280px] top-[185px] hidden h-px w-20 rotate-12 bg-[#0E3B2E]/40 lg:block" />
-        <div className="absolute left-[300px] top-[365px] hidden h-px w-20 rotate-[28deg] bg-[#0E3B2E]/40 lg:block" />
-
-        <div className="relative z-10 mx-auto pt-4 lg:ml-[230px]">
-          <WhatsAppMockup />
-        </div>
-
-        <div className="absolute bottom-32 right-4 hidden rounded-2xl px-4 py-3 text-sm font-medium text-white shadow-md lg:block"
-          style={{ background: V.primary }}>
-          Menos cobrança.<br />Mais combinados.
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Integrations ── */
-function Integrations() {
-  const items = [
-    { label: "Google Calendar", desc: "Vesta cria, edita e cancela eventos no seu Google.",          icon: <Calendar className="h-5 w-5 text-blue-500" /> },
-    { label: "Apple Calendar",  desc: "Sincroniza ao calendário compartilhado do iCloud.",            icon: <Calendar className="h-5 w-5 text-red-500" /> },
-    { label: "Outlook",         desc: "Compromissos do trabalho convivem com os da casa.",            icon: <Mail className="h-5 w-5 text-blue-600" /> },
-    { label: "WhatsApp",        desc: "Encaminhe mensagens; a Vesta entende e organiza.",             icon: <MessageCircle className="h-5 w-5 text-[#25D366]" /> },
-    { label: "E-mail",          desc: "Encaminha pra um endereço; vira combinado direto.",            icon: <Mail className="h-5 w-5 text-[#6F856F]" /> },
-    { label: "iCloud",          desc: "Fotos de bilhetes e listas viram tarefa automática.",          icon: <Send className="h-5 w-5 text-sky-400" /> },
-  ];
-  return (
-    <section className="mx-auto max-w-7xl px-6 py-8">
-      <div className="rounded-3xl px-8 py-10" style={{ background: "rgba(255,253,246,0.7)", border: "1px solid rgba(14,59,46,0.10)", boxShadow: "0 2px 12px rgba(14,59,46,0.06)" }}>
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="font-serif text-2xl font-semibold tracking-tight text-[#12231C]">
-              Conversa com o que sua família já usa
-              <span className="font-serif italic text-[#6F856F]">.</span>
-            </p>
-            <p className="mt-1 text-sm text-[#5F6B61]">Sincronização nos dois sentidos. Sem novo app pra ninguém.</p>
-          </div>
-        </div>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((i) => (
-            <div key={i.label} className="flex items-start gap-3">
-              <div className="mt-0.5 shrink-0">{i.icon}</div>
-              <div>
-                <p className="text-sm font-bold" style={{ color: V.ink }}>{i.label}</p>
-                <p className="text-xs leading-5" style={{ color: V.muted }}>{i.desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Como funciona ── */
-function HowItWorks() {
-  const steps = [
-    { num: "01", icon: <Send className="h-8 w-8" />,      title: "Você manda do jeito que dá",      text: "WhatsApp, e-mail, foto, áudio ou texto. Sem formulário, sem categoria." },
-    { num: "02", icon: <Sparkles className="h-8 w-8" />,   title: "A Vesta entende e organiza",      text: "Identifica o que é, prazo, categoria e quem deveria fazer." },
-    { num: "03", icon: <Check className="h-8 w-8" />,      title: "Você aprova ou ajusta",           text: "Em um toque: confirma, edita ou delega para alguém da casa." },
-    { num: "04", icon: <Calendar className="h-8 w-8" />,   title: "Vai pra vida real",               text: "Calendário, lista, lembrete — e a Vesta acompanha até resolver." },
-  ];
-
-  const rules = [
-    "Quem pode aprovar o quê (você, parceiro, ninguém).",
-    "O que vai pro calendário automaticamente — e o que sempre passa por você.",
-    "Quais categorias a Vesta pode delegar sem perguntar.",
-    "Quem recebe quais lembretes e em qual canal.",
-    "Quando a Vesta pode falar com prestadores em seu nome.",
-  ];
-
-  return (
-    <section id="como-funciona" className="scroll-mt-24 mx-auto max-w-7xl px-6 pb-6 pt-10">
-      <div className="rounded-[2rem] px-8 py-14" style={{ background: "#F1EBDD" }}>
-        <VBadge>COMO FUNCIONA</VBadge>
-        <h2 className="mb-3 mt-4 max-w-xl font-serif text-3xl font-semibold tracking-[-0.03em] text-[#12231C] md:text-4xl">
-          Quatro passos. Nenhum esforço a mais.
-        </h2>
-        <p className="mb-12 max-w-lg text-base leading-7 text-[#5F6B61]">
-          Você não precisa mudar como sua família se comunica. A Vesta entra no meio do caos que já existe.
-        </p>
-
-        <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-4">
-          {steps.map((s) => (
-            <div key={s.num}>
-              <div className="mb-5 flex h-24 items-center justify-center rounded-3xl shadow-sm"
-                style={{ background: "#FFFDF6", color: V.primary }}>
-                {s.icon}
-              </div>
-              <p className="mb-1 text-xs font-bold tracking-widest" style={{ color: V.sage }}>{s.num}</p>
-              <h3 className="mb-2 text-base font-bold" style={{ color: V.ink }}>{s.title}</h3>
-              <p className="text-sm leading-7" style={{ color: "#4D5A50" }}>{s.text}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Regras da Casa ── */
-function Rules() {
-  const rules = [
-    "Quem pode aprovar o quê (você, parceiro, ninguém).",
-    "O que vai pro calendário automaticamente — e o que sempre passa por você.",
-    "Quais categorias a Vesta pode delegar sem perguntar.",
-    "Quem recebe quais lembretes e em qual canal.",
-    "Quando a Vesta pode falar com prestadores em seu nome.",
-  ];
-  return (
-    <section className="mx-auto max-w-7xl px-6 py-16">
-      <div className="grid gap-12 lg:grid-cols-[1fr_1.1fr] lg:items-center">
-        <div>
-          <VBadge>REGRAS DA CASA</VBadge>
-          <h2 className="mt-5 mb-4 font-serif text-3xl font-semibold tracking-[-0.03em] text-[#12231C] md:text-4xl">
-            Você decide as regras.{" "}
-            <span className="font-serif italic text-[#6F856F]">A Vesta segue.</span>
-          </h2>
-          <p className="mb-8 max-w-sm text-base leading-8 text-[#5F6B61]">
-            Nada acontece sem combinar. Você define o limite de autonomia da Vesta e ajusta quando quiser — sem mexer em código, sem chamar suporte.
-          </p>
-          <a href="#lista-de-espera"
-            className="inline-flex items-center gap-2 rounded-full border border-[#0E3B2E]/20 px-5 py-2.5 text-sm font-semibold transition hover:bg-[#EAF1E5]"
-            style={{ color: V.primary }}>
-            Ver exemplos de regras <ArrowRight className="h-3.5 w-3.5" />
-          </a>
-        </div>
-        <div className="rounded-2xl p-8" style={{ background: "#FFFDF6", border: "1px solid rgba(14,59,46,0.08)" }}>
-          <p className="mb-5 text-xs font-bold tracking-widest text-[#6F856F]">VOCÊ ESCOLHE</p>
-          <ul className="space-y-4">
-            {rules.map((r) => (
-              <li key={r} className="flex items-start gap-3 text-sm leading-6" style={{ color: V.ink }}>
-                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full" style={{ background: "#DDE8D8" }}>
-                  <Check className="h-3 w-3" style={{ color: V.primary }} />
-                </div>
-                {r}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Como a Vesta evolui ── */
-function VestaEvolution() {
-  const phases = [
-    {
-      tag: "DIA 1",
-      title: "Você define as regras",
-      text: "Quem confirma o quê, quais canais a Vesta escuta, o que vai direto pro calendário. A Vesta começa fazendo só o que você combinou.",
-    },
-    {
-      tag: "SEMANAS 2 A 4",
-      title: "Ela aprende o jeito da casa",
-      text: "Com o tempo, entende seus horários, quem cuida de quê, quais mensagens viram tarefa e quais só ficam registradas. Sem você precisar configurar.",
-    },
-    {
-      tag: "MÊS 2 EM DIANTE",
-      title: "Sugere antes de você pedir",
-      text: 'Antecipa padrões: "vou agendar a próxima vacina?", "reabasteço a feira de sexta?". Você só confirma — ou ajusta a regra pra próxima.',
-    },
-  ];
-
-  return (
-    <section className="scroll-mt-24 mx-auto max-w-7xl px-6 py-12">
-      <div className="grid gap-12 rounded-[2rem] p-10 md:p-16 lg:grid-cols-[1.15fr_1fr]"
-        style={{ background: "#FFFDF6", border: "1px solid rgba(14,59,46,0.08)" }}>
-        <div>
-          <VBadge>COMO A VESTA EVOLUI COM SUA CASA</VBadge>
-          <h2 className="mt-5 mb-4 font-serif text-3xl font-semibold tracking-[-0.03em] text-[#12231C] md:text-4xl">
-            Começa com suas regras.{" "}
-            <span className="font-serif italic text-[#6F856F]">Aprende com o tempo.</span>
-          </h2>
-          <p className="max-w-sm text-base leading-8 text-[#5F6B61]">
-            A Vesta não chega tomando decisões. Ela entra discreta, segue o que você combinou e vai ganhando contexto na medida em que você confia.
-          </p>
-        </div>
-        <div className="grid gap-2.5">
-          {phases.map((p, i) => (
-            <div key={p.tag} className="rounded-2xl p-6"
-              style={{ background: i === 0 ? "#EAF1E5" : i === 1 ? "#F1EBDD" : "#F7F4EA", border: "1px solid rgba(14,59,46,0.06)" }}>
-              <p className="mb-2 text-[10px] font-bold tracking-widest" style={{ color: V.sage }}>{p.tag}</p>
-              <h3 className="mb-1.5 font-serif text-base font-semibold" style={{ color: V.ink }}>{p.title}</h3>
-              <p className="text-sm leading-6" style={{ color: "#4D5A50" }}>{p.text}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Privacy ── */
-function Privacy() {
-  const items = [
-    {
-      icon: <Lock className="h-5 w-5" style={{ color: V.primary }} />,
-      title: "Criptografia ponta-a-ponta no que importa",
-      text: "Mensagens, fotos e contexto da família são criptografados em trânsito e em repouso.",
-    },
-    {
-      icon: <ShieldCheck className="h-5 w-5" style={{ color: V.primary }} />,
-      title: "OpenAI processa, mas não treina com seus dados",
-      text: "Mensagens são enviadas à OpenAI para classificação via API. A OpenAI não usa dados de API para treinar modelos. Seus dados nunca viram dataset.",
-    },
-    {
-      icon: <Check className="h-5 w-5" style={{ color: V.primary }} />,
-      title: "Hospedagem nos EUA, conformidade com a LGPD",
-      text: "Servidores na nuvem Replit (EUA). Você exporta ou apaga todos os seus dados a qualquer momento, conforme a LGPD.",
-    },
-    {
-      icon: <Sparkles className="h-5 w-5" style={{ color: V.primary }} />,
-      title: "Você decide canal por canal",
-      text: "Conecta o que quiser, desconecta quando quiser. A Vesta nunca lê o que você não autorizou.",
-    },
-  ];
-
-  return (
-    <section className="scroll-mt-24 mx-auto max-w-7xl px-6 py-16">
-      <div className="grid items-center gap-10 rounded-[2rem] px-10 py-14 md:p-16 lg:grid-cols-[1fr_1.4fr]"
-        style={{ background: V.primary }}>
-        <div>
-          <VBadge white>PRIVACIDADE DA CASA</VBadge>
-          <h2 className="mt-5 mb-5 font-serif text-3xl font-semibold leading-tight tracking-[-0.03em] text-white md:text-4xl">
-            O que é da sua casa fica na sua casa.
-          </h2>
-          <p className="mb-8 max-w-sm text-base leading-8" style={{ color: "rgba(255,255,255,0.68)" }}>
-            A Vesta foi pensada por gente que também é mãe, pai e parceiro. A gente entende que rotina de família é íntimo — e tratamos assim, do código à operação.
-          </p>
-          <a href="#"
-            className="inline-flex items-center gap-2 text-sm font-semibold"
-            style={{ color: "rgba(255,255,255,0.70)" }}>
-            Ler a política completa <ArrowRight className="h-3.5 w-3.5" />
-          </a>
-        </div>
-        <div className="grid gap-5 sm:grid-cols-2">
-          {items.map((item) => (
-            <div key={item.title} className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.08)" }}>
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "rgba(255,255,255,0.15)" }}>
-                {item.icon}
-              </div>
-              <h3 className="mb-2 text-sm font-bold text-white">{item.title}</h3>
-              <p className="text-xs leading-6" style={{ color: "rgba(255,255,255,0.60)" }}>{item.text}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Concierge ── */
-function Concierge() {
-  const requests = [
-    "Encontrar eletricista pra terça",
-    "Comprar presente da Lia até sábado",
-    "Agendar manutenção da casa",
-    "Cotar dedetização do quintal",
-    "Reservar atividade infantil",
-    "Comparar 3 orçamentos de pintura",
-  ];
-  return (
-    <section id="concierge" className="scroll-mt-24 mx-auto max-w-7xl px-6 py-12">
-      <div className="relative overflow-hidden rounded-[2rem] px-10 py-14" style={{ background: "#F1EBDD" }}>
-        <div className="relative z-10 grid gap-12 lg:grid-cols-[1fr_1.1fr] items-start">
-          <div>
-            <VBadge>CONCIERGE · ADD-ON PREMIUM</VBadge>
-            <h2 className="mt-5 mb-5 font-serif text-3xl font-semibold leading-tight tracking-[-0.03em] text-[#12231C] md:text-4xl">
-              O que você prefere não fazer
-              <span className="font-serif italic text-[#6F856F]">, a Vesta resolve.</span>
-            </h2>
-            <p className="mb-6 max-w-md text-base leading-8 text-[#5F6B61]">
-              Ajuda externa quando fizer sentido — não pra terceirizar sua vida. Você descreve em uma frase, a gente cota, agenda e acompanha. Você confirma antes de qualquer execução.
-            </p>
-            <div className="mb-8 inline-flex flex-col gap-1 rounded-2xl px-6 py-4" style={{ background: "rgba(14,59,46,0.07)" }}>
-              <p className="text-xs font-bold tracking-widest text-[#6F856F]">PREÇO</p>
-              <p className="text-2xl font-bold text-[#12231C]">R$ 49<span className="text-lg font-normal">/mês</span></p>
-              <p className="text-xs text-[#5F6B61]">+ taxa por pedido resolvido</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-4">
-              <Link href="/app"
-                className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white transition"
-                style={{ background: V.primary }}>
-                Pedir ao Concierge <ArrowRight className="h-4 w-4" />
-              </Link>
-              <p className="text-xs text-[#5F6B61]">Pessoa real revisa · seg–sáb</p>
-            </div>
-          </div>
-
-          <div>
-            <p className="mb-4 text-[10px] font-bold tracking-widest text-[#6F856F]">PEDIDOS COMUNS</p>
-            <div className="grid grid-cols-2 gap-3">
-              {requests.map((r) => (
-                <div key={r} className="flex items-start gap-2.5 rounded-xl px-4 py-3"
-                  style={{ background: "rgba(14,59,46,0.06)" }}>
-                  <Wrench className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#6F856F]" />
-                  <p className="text-sm leading-snug text-[#12231C]">{r}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Pricing ── */
-function Pricing() {
-  const plans = [
-    {
-      label: "Grátis pra sempre",
-      price: "R$ 0",
-      priceNote: null,
-      desc: "2 adultos + 1 criança · 3 categorias · 30 dias de histórico · 3 regras.",
-      cta: "Começar grátis",
-      href: "/app",
-      highlight: false,
-      badge: null,
-    },
-    {
-      label: "Premium",
-      price: "R$ 29,90",
-      priceNote: "/mês ou R$ 279/ano",
-      desc: "Família ilimitada, papelzinho, diarista LGPD, Pix automático e digest semanal.",
-      cta: "Entrar na lista",
-      href: "/app",
-      highlight: true,
-      badge: "MAIS ESCOLHIDO",
-    },
-    {
-      label: "Concierge (add-on Premium)",
-      price: "R$ 49",
-      priceNote: "/mês + taxa",
-      desc: "Pessoa real cota, agenda e compra — você confirma antes. Indicar profissional segue grátis.",
-      cta: "Quero saber mais",
-      href: "#concierge",
-      highlight: false,
-      badge: null,
-    },
-  ];
-
-  return (
-    <section id="planos" className="scroll-mt-24 mx-auto max-w-7xl px-6 py-12">
-      <VBadge>PLANOS</VBadge>
-      <h2 className="mt-4 mb-2 font-serif text-3xl font-semibold tracking-[-0.03em] text-[#12231C] md:text-4xl">
-        Preço justo,{" "}
-        <span className="font-serif italic text-[#6F856F]">no seu tempo.</span>
-      </h2>
-      <p className="mb-14 text-sm text-[#5F6B61]">
-        Cancela quando quiser. Fundadora trava preço por 12 meses.
-      </p>
-
-      <div className="grid gap-5 md:grid-cols-3">
-        {plans.map((plan) => (
-          <div key={plan.label} className="flex flex-col rounded-[2rem] p-8"
-            style={{
-              background: plan.highlight ? V.primary : "#FFFDF6",
-              border: plan.highlight ? "none" : "1px solid rgba(14,59,46,0.10)",
-              boxShadow: plan.highlight ? "0 24px 60px rgba(14,59,46,0.22)" : "0 2px 12px rgba(14,59,46,0.06)",
-            }}>
-            {plan.badge && (
-              <div className="mb-4">
-                <span className="rounded-full px-3 py-1 text-[10px] font-bold tracking-widest"
-                  style={{ background: "rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.9)" }}>
-                  {plan.badge}
-                </span>
-              </div>
-            )}
-            <p className="text-base font-bold" style={{ color: plan.highlight ? "rgba(255,255,255,0.9)" : V.ink }}>{plan.label}</p>
-            <p className="mt-6 font-serif text-4xl font-semibold" style={{ color: plan.highlight ? "white" : V.ink }}>{plan.price}</p>
-            {plan.priceNote && (
-              <p className="mt-1 text-xs" style={{ color: plan.highlight ? "rgba(255,255,255,0.55)" : V.muted }}>{plan.priceNote}</p>
-            )}
-            <p className="mt-4 mb-8 flex-1 text-sm leading-6" style={{ color: plan.highlight ? "rgba(255,255,255,0.70)" : V.muted }}>
-              {plan.desc}
-            </p>
-            <Link href={plan.href}
-              className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
-              style={plan.highlight
-                ? { background: "#FFFDF6", color: V.primary }
-                : { background: "transparent", color: V.primary, border: "1px solid rgba(14,59,46,0.20)" }}>
-              {plan.cta}
-            </Link>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/* ── Testimonials ── */
-function Testimonials() {
-  const quotes = [
-    {
-      text: "Antes eu era a planilha, o calendário e o lembrete da casa. Hoje a Vesta segura isso e a gente conversa sobre o que importa.",
-      name: "Juliana, 38",
-      sub: "Mãe do Theo e da Bia · São Paulo",
-      initial: "J",
-      avatarBg: V.sage,
-    },
-    {
-      text: "Moro sozinha mas a casa também tem rotina: faxina, mercado, conta de luz. A Vesta resolve sem virar mais um app pra abrir.",
-      name: "Renata, 31",
-      sub: "Solo · Rio de Janeiro",
-      initial: "R",
-      avatarBg: "#8FAB8E",
-    },
-    {
-      text: "A gente parou de cobrar um ao outro. O combinado chega pra quem tem que fazer, com prazo e contexto. Mudou o clima de casa.",
-      name: "Marcos & Leo",
-      sub: "Casal · Belo Horizonte",
-      initial: "M",
-      avatarBg: V.gold,
-    },
-  ];
-
-  return (
-    <section className="mx-auto max-w-7xl px-6 py-12">
-      <div className="mb-4">
-        <VBadge>QUEM SEGURA A CASA</VBadge>
-      </div>
-      <h2 className="mb-2 font-serif text-3xl font-semibold tracking-[-0.03em] text-[#12231C] md:text-4xl">
-        Quem já está vivendo a Vesta.
-      </h2>
-      <p className="mb-12 text-sm text-[#5F6B61]">
-        Histórias reais de famílias do piloto. Nomes preservados quando pedido.
-      </p>
-      <div className="grid gap-5 md:grid-cols-3">
-        {quotes.map((q) => (
-          <div key={q.name} className="flex flex-col rounded-[2rem] p-8"
-            style={{ background: "#FFFDF6", border: "1px solid rgba(14,59,46,0.09)" }}>
-            <p className="mb-5 font-serif text-4xl leading-none text-[#6F856F]">"</p>
-            <blockquote className="flex-1 font-serif text-lg font-semibold leading-snug tracking-[-0.02em] text-[#12231C]">
-              {q.text}
-            </blockquote>
-            <div className="mt-8 flex items-center gap-4">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold"
-                style={{ background: q.avatarBg, color: q.avatarBg === V.gold ? V.deep : "white" }}>
-                {q.initial}
-              </div>
-              <div>
-                <p className="text-sm font-semibold" style={{ color: V.ink }}>{q.name}</p>
-                <p className="text-xs" style={{ color: V.muted }}>{q.sub}</p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/* ── Waitlist CTA ── */
-function WaitlistCTA() {
+/* ── Waitlist form ── */
+function WaitlistForm({ id = "waitlist-form" }: { id?: string }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [size, setSize] = useState<string | null>(null);
+  const [lar, setLar] = useState("filhos");
+  const [nameErr, setNameErr] = useState(false);
+  const [emailErr, setEmailErr] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [netErr, setNetErr] = useState(false);
   const [done, setDone] = useState(false);
-  const sizeOpts = ["Moro sozinho(a)", "Eu + parceiro(a)", "Família com filhos", "Multigeracional"];
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (email) setDone(true);
+    const badName = !name.trim();
+    const badEmail = !EMAIL_RE.test(email.trim());
+    setNameErr(badName);
+    setEmailErr(badEmail);
+    if (badName || badEmail) return;
+    setPending(true);
+    setNetErr(false);
+    const ok = await submitWaitlist({ email: email.trim(), name: name.trim(), lar, source: "landing-form" });
+    setPending(false);
+    if (ok) setDone(true);
+    else setNetErr(true);
+  }
+
+  if (done) {
+    return (
+      <div className="form-card" style={{ textAlign: "center", padding: "40px 30px" }}>
+        <CheckCircle style={{ width: 48, height: 48, color: "var(--approval)", margin: "0 auto 16px", display: "block" }} />
+        <h3 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontVariationSettings: '"SOFT" 100,"opsz" 30' }}>
+          Você está na lista.
+        </h3>
+        <p style={{ fontSize: 14, color: "var(--fg-muted)", marginTop: 8, lineHeight: 1.6 }}>
+          A gente chama na sua vez. Enquanto isso, fica por perto — é onde a gente conta o que vem primeiro.
+        </p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 18, flexWrap: "wrap" }}>
+          <a className="btn btn--primary btn--sm" href="https://instagram.com/vestaoai" target="_blank" rel="noopener">Seguir @vestaoai</a>
+          <a className="btn btn--secondary btn--sm"
+            href={`https://wa.me/?text=${encodeURIComponent("Achei a Vesta — uma assistente da família no WhatsApp. Entra na lista: https://vestaoai.com.br")}`}
+            target="_blank" rel="noopener">Contar pra uma amiga</a>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <section id="lista-de-espera" className="scroll-mt-24 mx-auto max-w-7xl px-6 py-16">
-      <div className="grid overflow-hidden rounded-[2rem] bg-[#FFFDF6] shadow-sm md:grid-cols-[1fr_1.35fr]"
-        style={{ border: "1px solid rgba(14,59,46,0.09)" }}>
-        {/* Left */}
-        <div className="p-10 md:p-12" style={{ borderRight: "1px solid rgba(14,59,46,0.09)" }}>
-          <VBadge>VAGAS LIMITADAS · ONDA DE JULHO</VBadge>
-          <h2 className="mt-5 mb-4 font-serif text-3xl font-semibold tracking-[-0.03em] text-[#12231C]">
-            Entra na lista. A gente chama na sua vez.
-          </h2>
-          <p className="mb-8 max-w-sm text-base leading-8 text-[#5F6B61]">
-            Estamos abrindo a Vesta em ondas pequenas pra cuidar de cada família com calma. Quem entra agora ganha condições de fundadora e ajuda a moldar o produto.
-          </p>
-          <div className="mb-8 space-y-3">
-            {[
-              { text: "Acesso antes do lançamento público",       active: true },
-              { text: "Preço de fundadora trancado por 12 meses", active: true },
-              { text: "Conversa direta com o time da Vesta",      active: false },
-            ].map(({ text, active }, i) => (
-              <div key={text} className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-                  style={{
-                    background: i === 0 ? V.primary : i === 1 ? V.sage : "rgba(14,59,46,0.18)",
-                    color: active ? "white" : V.muted,
-                  }}>
-                  {i + 1}
-                </span>
-                <p className="text-sm leading-6" style={{ color: active ? V.ink : V.muted }}>{text}</p>
-              </div>
+    <div className="form-card" id={id}>
+      <form onSubmit={handleSubmit} noValidate>
+        <div className={`field${nameErr ? " field--error" : ""}`}>
+          <label htmlFor="nome">Seu nome</label>
+          <input id="nome" type="text" autoComplete="name" value={name}
+            onChange={e => { setName(e.target.value); if (e.target.value.trim()) setNameErr(false); }} />
+          <span className="field__err">Como a gente te chama?</span>
+        </div>
+        <div className={`field${emailErr ? " field--error" : ""}`}>
+          <label htmlFor="email">E-mail</label>
+          <input id="email" type="email" inputMode="email" autoComplete="email" value={email}
+            onChange={e => { setEmail(e.target.value); if (EMAIL_RE.test(e.target.value.trim())) setEmailErr(false); }} />
+          <span className="field__err">Confere o e-mail? Parece faltar algo.</span>
+        </div>
+        <div className="field">
+          <label>Quantas pessoas moram com você?</label>
+          <div className="choices" role="radiogroup">
+            {([["solo","Moro sozinho(a)"],["casal","Eu + parceiro(a)"],["filhos","Família com filhos"],["multi","Multigeracional"]] as const).map(([v,l]) => (
+              <label key={v} className="choice">
+                <input type="radio" name="lar" value={v} checked={lar === v} onChange={() => setLar(v)} />
+                <span>{l}</span>
+              </label>
             ))}
           </div>
-          <p className="text-xs text-[#5F6B61]">
-            Quando entrar, seu primeiro passo é criar a primeira regra da casa. Leva 2 minutos.
-          </p>
-          <div className="mt-5">
-            <a href="#"
-              className="inline-flex items-center gap-2.5 rounded-full border border-[#0E3B2E]/15 bg-[#FFFDF6]/80 px-3.5 py-2 text-[12.5px] text-[#3D4A40] transition hover:border-[#0E3B2E]/30">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#6F856F]/60" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-[#6F856F]" />
-              </span>
-              <strong>1000+ famílias</strong>&nbsp;já na lista · próxima onda em junho
-            </a>
-          </div>
         </div>
+        <button type="submit" className="btn btn--primary btn--lg" style={{ width: "100%", marginTop: 8 }}
+          aria-busy={pending ? "true" : undefined}>
+          <span className="btn__spin" aria-hidden="true" />
+          <span>{pending ? "Entrando…" : "Quero entrar na lista"}</span>
+        </button>
+        {netErr && <p className="form__neterr">Ops, algo travou aqui. Tenta de novo em instantes?</p>}
+      </form>
+      <div className="form__or">ou</div>
+      <a className="btn btn--wa btn--lg"
+        href="#lista"
+        onClick={e => { e.preventDefault(); document.getElementById("nome")?.focus(); }}>
+        <IconWave style={{ width: 20, height: 20 } as React.CSSProperties} />
+        Começar pelo WhatsApp
+      </a>
+      <p className="form__fine">
+        Sem spam. Você só recebe quando a sua vez chegar. Ao continuar, você concorda com a nossa{" "}
+        <a href="https://vestaoai.com.br/privacidade">política de privacidade</a>.
+      </p>
+    </div>
+  );
+}
 
-        {/* Right — form */}
-        <div className="flex flex-col justify-center p-10 md:p-12">
-          <div className="mx-auto w-full max-w-sm rounded-3xl p-8 shadow-md" style={{ background: "white" }}>
-            {done ? (
-              <div className="py-4 text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
-                  style={{ background: "#DDE8D8" }}>
-                  <Check className="h-6 w-6" style={{ color: V.primary }} />
-                </div>
-                <h3 className="mb-2 font-serif text-xl font-bold" style={{ color: V.ink }}>Você entrou na lista!</h3>
-                <p className="text-sm leading-6 text-[#5F6B61]">
-                  A gente entra em contato assim que sua vaga abrir. Fique de olho no e-mail.
-                </p>
+/* ── Exit-intent modal ── */
+function ExitModal() {
+  const [open, setOpen] = useState(false);
+  const [done, setDone] = useState(false);
+  const [exitEmail, setExitEmail] = useState("");
+  const [emailErr, setEmailErr] = useState(false);
+  const [pending, setPending] = useState(false);
+  const seenKey = "vesta_exit_seen";
+
+  useEffect(() => {
+    try { if (localStorage.getItem(seenKey)) return; } catch { /* ignore */ }
+    let armed = false, moved = false;
+    const armTimer = setTimeout(() => { armed = true; }, 8000);
+    const onScroll = () => { if (window.scrollY > 120) moved = true; };
+    const onMove = (e: MouseEvent) => { if (e.clientY > 140) moved = true; };
+    const onOut = (e: MouseEvent) => {
+      if (armed && moved && window.innerWidth > 760 && !e.relatedTarget && e.clientY <= 0) {
+        try { localStorage.setItem(seenKey, "1"); } catch { /* ignore */ }
+        setOpen(true);
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    document.addEventListener("mousemove", onMove, { passive: true });
+    document.addEventListener("mouseout", onOut);
+    return () => {
+      clearTimeout(armTimer);
+      window.removeEventListener("scroll", onScroll);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseout", onOut);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  if (!open) return null;
+
+  async function handleExitSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!EMAIL_RE.test(exitEmail.trim())) { setEmailErr(true); return; }
+    setEmailErr(false);
+    setPending(true);
+    const ok = await submitWaitlist({ email: exitEmail.trim(), source: "exit-intent" });
+    setPending(false);
+    if (ok) { setDone(true); setTimeout(() => setOpen(false), 2800); }
+    else setEmailErr(true);
+  }
+
+  return (
+    <div className="exitmodal is-open" role="dialog" aria-modal="true" aria-labelledby="exit-title">
+      <div className="exitmodal__scrim" onClick={() => setOpen(false)} />
+      <div className="exitmodal__card">
+        <button className="exitmodal__close" onClick={() => setOpen(false)} aria-label="Fechar">
+          <X style={{ width: 18, height: 18 }} />
+        </button>
+        {done ? (
+          <div>
+            <HearthMark style={{ width: 42, height: 42, color: "var(--brand)", margin: "0 auto 16px", display: "block" }} />
+            <h3 id="exit-title">Você está na lista. ♥</h3>
+            <p>A gente chama na sua vez. Pode fechar a aba tranquila.</p>
+          </div>
+        ) : (
+          <>
+            <HearthMark style={{ width: 42, height: 42, color: "var(--brand)", margin: "0 auto 16px", display: "block" }} />
+            <h3 id="exit-title">Antes de ir — <em>tira uma coisa da cabeça?</em></h3>
+            <p>Entra na lista e a gente te chama na próxima onda. Sem pressa, sem spam.</p>
+            <form className="exitmodal__form" onSubmit={handleExitSubmit} noValidate>
+              <div className={`exitmodal__field${emailErr ? " field--error" : ""}`}>
+                <input type="email" inputMode="email" placeholder="Seu melhor e-mail" value={exitEmail}
+                  onChange={e => { setExitEmail(e.target.value); if (EMAIL_RE.test(e.target.value.trim())) setEmailErr(false); }} />
+                <button type="submit" className="btn btn--primary" aria-busy={pending ? "true" : undefined}>
+                  <span className="btn__spin" aria-hidden="true" />
+                  <span>{pending ? "Entrando…" : "Entrar"}</span>
+                </button>
               </div>
-            ) : (
-              <form onSubmit={handleSubmit}>
-                <div className="mb-4">
-                  <label className="mb-1.5 block text-xs font-semibold text-[#12231C]">Seu nome</label>
-                  <input type="text" value={name} onChange={(e) => setName(e.target.value)}
-                    placeholder="Como quer ser chamada?" required
-                    className="w-full rounded-2xl border px-4 py-3 text-sm outline-none transition-all"
-                    style={{ borderColor: "rgba(14,59,46,0.20)", background: "#F7F4EA", color: V.ink }} />
+              {emailErr && <span className="field__err" style={{ display: "block", marginTop: 8, textAlign: "left" }}>Confere o e-mail? Parece faltar algo.</span>}
+            </form>
+            <p className="exitmodal__fine">1.000+ famílias já na lista · próxima onda em junho</p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Main landing component ── */
+export default function Landing() {
+  const navRef = useRef<HTMLElement>(null);
+  const [navStuck, setNavStuck] = useState(false);
+  const [mobarOn, setMobarOn] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => {
+      setNavStuck(window.scrollY > 8);
+      setMobarOn(window.scrollY > 620);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  return (
+    <div className="lv3" id="top">
+      <a className="skip" href="#main">Ir para o conteúdo</a>
+
+      {/* ── NAV ── */}
+      <header>
+        <nav ref={navRef} className={`nav${navStuck ? " is-stuck" : ""}`} aria-label="Navegação principal">
+          <div className="wrap nav__row">
+            <a className="brand" href="#top" aria-label="Vesta — início">
+              <HearthMark className="brand__mark" />
+              <span className="brand__name">Vesta</span>
+            </a>
+            <nav className="nav__links" aria-label="Seções">
+              <a href="#produto">Produto</a>
+              <a href="#recursos">Recursos</a>
+              <a href="#planos">Planos</a>
+            </nav>
+            <div className="nav__right">
+              <Link href="/app" className="nav__signin">Entrar</Link>
+              <a className="btn btn--primary" href="#lista" style={{ padding: "10px 20px", fontSize: 14 }}>
+                Entrar na lista
+              </a>
+            </div>
+          </div>
+        </nav>
+      </header>
+
+      <main id="main">
+
+        {/* ── HERO ── */}
+        <section className="hero">
+          <div className="wrap">
+            <div className="hero__grid">
+              <div>
+                <div className="eyebrow">Assistente familiar · WhatsApp</div>
+                <h1>A casa não precisa morar <em>só na sua cabeça.</em></h1>
+                <p className="hero__sub">
+                  Você manda um recado — escola, boleto, áudio, bilhete — e a Vesta vira ação. Sempre com a sua confirmação.
+                </p>
+                <div className="hero__cta">
+                  <a className="btn btn--primary btn--lg" href="#lista">Entrar na lista</a>
+                  <a className="btn btn--ghost" href="#como">Ver como funciona →</a>
                 </div>
-                <div className="mb-4">
-                  <label className="mb-1.5 block text-xs font-semibold text-[#12231C]">E-mail</label>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                    placeholder="voce@familia.com" required
-                    className="w-full rounded-2xl border px-4 py-3 text-sm outline-none transition-all"
-                    style={{ borderColor: "rgba(14,59,46,0.20)", background: "#F7F4EA", color: V.ink }} />
+                <div className="hero__proof">
+                  <div className="avatars">
+                    <span className="av1">J</span>
+                    <span className="av2">M</span>
+                    <span className="av3">R</span>
+                    <span className="av4">A</span>
+                  </div>
+                  <p><b>1.000+ famílias</b> já pararam de carregar tudo sozinhas · próxima onda em junho</p>
                 </div>
-                <div className="mb-6">
-                  <p className="mb-2 text-xs font-semibold text-[#12231C]">Quantas pessoas moram com você?</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {sizeOpts.map((o) => (
-                      <button key={o} type="button" onClick={() => setSize(o)}
-                        className="rounded-xl px-3 py-2 text-xs font-medium text-left transition-all"
-                        style={{
-                          background: size === o ? V.primary : "#F7F4EA",
-                          color: size === o ? "white" : V.ink,
-                          border: size === o ? "none" : "1px solid rgba(14,59,46,0.15)",
-                        }}>
-                        {o}
-                      </button>
-                    ))}
+              </div>
+
+              <div className="stage" aria-hidden="true">
+                <div className="stage__photo" />
+                <span className="script stage__script">
+                  a casa toda.<br /><span className="heart">♥</span>
+                </span>
+                <div className="stage__card">
+                  <span className="stage__card__chip">
+                    <span className="dot" />
+                    Sugerido · agora
+                  </span>
+                  <div className="stage__card__t">Marcar pediatra — Bia</div>
+                  <div className="stage__card__m">Quinta, 8 jun · + lembrete: boleto escola (vence 10/jun)</div>
+                  <div className="stage__card__row">
+                    <span className="stage__card__b stage__card__b--p">Aprovar</span>
+                    <span className="stage__card__b stage__card__b--g">Mudar</span>
                   </div>
                 </div>
-                <button type="submit"
-                  className="flex w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-semibold text-white transition hover:bg-[#08251E]"
-                  style={{ background: V.primary }}>
-                  Quero entrar na lista <ArrowRight className="h-4 w-4" />
-                </button>
-                <p className="mt-4 text-center text-xs text-[#5F6B61]">
-                  Sem spam. Você só recebe quando a sua vez chegar.
-                </p>
-                <p className="mt-2 text-center text-xs text-[#5F6B61]">
-                  Ao continuar, você concorda com a nossa{" "}
-                  <a href="#" className="underline">política de privacidade</a>.
-                </p>
-              </form>
-            )}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── FAQ ── */
-function FAQ() {
-  const [open, setOpen] = useState<number | null>(null);
-  const items = [
-    {
-      q: "É só mais um app de agenda?",
-      a: "Não. A agenda mostra o que já foi decidido. A Vesta entra antes — no recado do WhatsApp, na pendência da casa, na tarefa que alguém precisa pegar e no lembrete que não pode passar batido.",
-    },
-    {
-      q: "Quem da família precisa instalar?",
-      a: "Só quem vai aprovar. Os outros participam pelo WhatsApp ou recebem os lembretes normalmente — sem instalar nada.",
-    },
-    {
-      q: "A Vesta lê tudo do meu WhatsApp?",
-      a: "Não. A Vesta só lê o que você encaminha pra ela ou o que acontece em grupos onde você a adicionou. Ela não tem acesso às suas conversas pessoais.",
-    },
-    {
-      q: "O Concierge é humano ou IA?",
-      a: "Os pedidos são triados por IA, mas revisados por uma pessoa real antes de qualquer execução. Você sempre sabe quem está cuidando.",
-    },
-    {
-      q: "Em que horário e cidades o Concierge atende?",
-      a: "Segunda a sábado, durante o horário comercial. Atualmente nas principais capitais e regiões metropolitanas do Brasil.",
-    },
-    {
-      q: "Meus dados são usados pra treinar IA?",
-      a: "Não. Mensagens são enviadas à OpenAI via API para classificação, mas a OpenAI não usa dados de API para treinar modelos. Seus dados nunca viram dataset.",
-    },
-    {
-      q: "Quanto vai custar?",
-      a: "O plano grátis é para sempre em R$0. O Premium custa R$29,90/mês ou R$279/ano. O Concierge é um add-on por R$49/mês + taxa por pedido resolvido. Quem entra agora como fundadora trava o preço por 12 meses.",
-    },
-    {
-      q: "Quando vou conseguir entrar?",
-      a: "Estamos abrindo em ondas pequenas. Entre na lista de espera e a gente te avisa quando sua vez chegar — normalmente em algumas semanas.",
-    },
-  ];
-
-  return (
-    <section className="mx-auto max-w-4xl px-6 py-16">
-      <VBadge>PERGUNTAS FREQUENTES</VBadge>
-      <h2 className="mb-12 mt-4 font-serif text-3xl font-semibold tracking-[-0.03em] text-[#12231C] md:text-4xl">
-        O que toda família pergunta primeiro.
-      </h2>
-      <div className="space-y-2">
-        {items.map((item, i) => (
-          <div key={item.q} className="overflow-hidden rounded-2xl" style={{ border: "1px solid rgba(14,59,46,0.10)" }}>
-            <button onClick={() => setOpen(open === i ? null : i)}
-              className="flex w-full items-center justify-between px-6 py-5 text-left text-sm font-semibold transition-colors"
-              style={{ background: open === i ? "#FFFDF6" : "white", color: V.ink }}>
-              {item.q}
-              <ChevronDown className="h-4 w-4 shrink-0 transition-transform text-[#6F856F]"
-                style={{ transform: open === i ? "rotate(180deg)" : "rotate(0deg)" }} />
-            </button>
-            {open === i && (
-              <div className="px-6 pb-5 text-sm leading-7 text-[#5F6B61]"
-                style={{ background: "#FFFDF6" }}>
-                {item.a}
               </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/* ── Final CTA ── */
-function FinalCTA() {
-  return (
-    <section className="mx-auto max-w-7xl px-6 pb-20">
-      <div className="flex flex-col items-center rounded-[2rem] py-16 text-center"
-        style={{ background: V.primary }}>
-        <p className="mb-3 font-serif text-sm tracking-widest" style={{ color: "rgba(255,255,255,0.45)" }}>
-          — Manifesto Vesta
-        </p>
-        <h2 className="mb-3 font-serif text-3xl font-semibold tracking-[-0.03em] text-white md:text-4xl">
-          A casa aprende. Você respira.
-        </h2>
-        <p className="mb-2 text-base" style={{ color: "rgba(255,255,255,0.65)" }}>
-          Pronta pra sentir sua casa mais leve?
-        </p>
-        <p className="mb-8 text-sm" style={{ color: "rgba(255,255,255,0.50)" }}>
-          Entra na lista. A gente chama na sua vez — e você começa pelo plano grátis.
-        </p>
-        <Link href="/app"
-          className="inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-sm font-semibold transition hover:scale-105"
-          style={{ background: "#FFFDF6", color: V.primary, boxShadow: "0 12px 30px rgba(0,0,0,0.20)" }}>
-          Entrar na lista <ArrowRight className="h-4 w-4" />
-        </Link>
-      </div>
-    </section>
-  );
-}
-
-/* ── Footer ── */
-function Footer() {
-  return (
-    <footer className="border-t py-12" style={{ borderColor: "rgba(14,59,46,0.10)", background: "#F7F4EA" }}>
-      <div className="mx-auto max-w-7xl px-6">
-        <div className="grid gap-10 md:grid-cols-[1.8fr_1fr_1fr_1fr]">
-          <div>
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#0E3B2E]/20">
-                <Home className="lucide lucide-house h-6 w-6 text-[#0E3B2E]" strokeWidth={1.8} />
-              </div>
-              <span className="text-2xl font-semibold tracking-tight" style={{ color: V.ink }}>vesta</span>
             </div>
-            <p className="max-w-xs text-sm leading-7 text-[#5F6B61]">
-              O sistema operacional discreto da casa. Captura, organiza e delega — pra família andar sem cobrança.
+          </div>
+        </section>
+
+        {/* ── PRODUCT SHOWCASE ── */}
+        <section className="showcase" id="produto">
+          <div className="wrap">
+            <div className="shead shead--c">
+              <div className="eyebrow">Como é por dentro</div>
+              <h2>Você manda do seu jeito. <em>A Vesta cuida do resto.</em></h2>
+            </div>
+            <div className="showcase__row">
+              <div className="showcase__col showcase__col--l">
+                <div className="callout">
+                  <div className="callout__h"><Mic /> Captura inteligente</div>
+                  <p>De voz, texto, foto ou recado. A Vesta entende e organiza.</p>
+                </div>
+                <div className="callout">
+                  <div className="callout__h"><Check /> Regras que aprendem</div>
+                  <p>A Vesta conhece a rotina e sugere o quê, quando e pra quem.</p>
+                </div>
+              </div>
+
+              <div className="phone" aria-hidden="true">
+                <div className="phone__screen">
+                  <div className="wa-head">
+                    <HearthMark className="brand__mark" />
+                    <span className="wa-head__t">Vesta</span>
+                    <span className="wa-head__s"><span className="dot" /> online</span>
+                  </div>
+                  <div className="bub bub--meta">Você repassou · 1 toque</div>
+                  <div className="bub bub--in">Mãe, preciso marcar a pediatra da Bia pra quinta. E não esquece o boleto da escola que vence dia 10. 🙏</div>
+                  <div className="arrowdown">a Vesta organizou</div>
+                  <div className="appcard">
+                    <span className="appcard__chip"><span className="dot" /> Sugerido · agora</span>
+                    <div className="appcard__t">Marcar pediatra — Bia</div>
+                    <div className="appcard__m">Quinta, 8 jun · + lembrete: boleto escola (vence 10/jun)</div>
+                    <div className="appcard__row">
+                      <span className="appcard__btn appcard__btn--p">Aprovar</span>
+                      <span className="appcard__btn appcard__btn--g">Mudar</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="showcase__col showcase__col--r">
+                <div className="callout">
+                  <div className="callout__h"><Calendar /> No calendário certo</div>
+                  <p>Escreve no lugar certo: Google, iCal, Outlook e mais.</p>
+                </div>
+                <div className="callout">
+                  <div className="callout__h"><MessageCircle /> Onde a casa já conversa</div>
+                  <p>A Vesta vive no WhatsApp da família. Sem aprender ferramenta nova.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── INTEGRATION BAR ── */}
+        <div className="integbar">
+          <div className="wrap integbar__row">
+            <span className="integbar__lead">Conecte uma vez o que a família já usa</span>
+            <span className="integbar__item"><IconWave style={{ width: 20, height: 20, color: "var(--approval-deep)" } as React.CSSProperties} /> WhatsApp</span>
+            <span className="integbar__item"><Calendar style={{ width: 20, height: 20, color: "var(--approval-deep)" }} /> Google Calendar</span>
+            <span className="integbar__item"><Calendar style={{ width: 20, height: 20, color: "var(--approval-deep)" }} /> Apple Calendar</span>
+            <span className="integbar__item"><Calendar style={{ width: 20, height: 20, color: "var(--approval-deep)" }} /> Outlook</span>
+            <span className="integbar__item" style={{ color: "var(--fg-soft)" }}>+ mais</span>
+          </div>
+        </div>
+
+        {/* ── INVISIBLE WORK BAND ── */}
+        <section className="band">
+          <div className="wrap">
+            <div className="eyebrow">O trabalho que ninguém vê</div>
+            <h2>Você não está desorganizada. <em>Você é o sistema.</em></h2>
+            <p className="band__lede">
+              É um banco de dados que só existe na sua cabeça — sem backup, sem equipe, sem folga. E quando uma coisa escapa, todo mundo pergunta por que <em>você</em> esqueceu.
             </p>
-            <p className="mt-4 text-xs" style={{ color: "#aaa" }}>São Paulo · Brasil</p>
+            <div className="band__pile">
+              {[
+                "o médico que a criança foi e o que receitou",
+                "o dia que a diarista não pode vir",
+                "o vencimento de cada conta",
+                "a reunião da escola na quinta",
+                "o remédio que não pode faltar",
+                "o passaporte que vence em julho",
+                "a fruta que o filho do meio não come",
+                "a senha do wifi de 3 anos atrás",
+                "quem busca quem, e a que horas",
+                "o presente do aniversário de sábado",
+                "quando acaba o gás",
+                "o que faltou no mercado",
+              ].map((t) => <span key={t}>{t}</span>)}
+            </div>
+            <div className="band__turn">
+              <HearthMark className="hearth-sm" />
+              <div className="band__foot">
+                A Vesta tira esse peso de uma pessoa só.<br />
+                <em>Menos cobrança. Mais combinados.</em>
+              </div>
+            </div>
           </div>
+        </section>
 
-          <div>
-            <p className="mb-4 text-xs font-bold tracking-widest text-[#12231C]">PRODUTO</p>
-            <ul className="space-y-2.5">
-              {[["Como funciona","#como-funciona"],["Concierge","#concierge"],["Planos","#planos"],["Lista de espera","#lista-de-espera"]].map(([l,h]) => (
-                <li key={l}><a href={h} className="text-sm hover:opacity-70 transition-opacity text-[#5F6B61]">{l}</a></li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <p className="mb-4 text-xs font-bold tracking-widest text-[#12231C]">CASA</p>
-            <ul className="space-y-2.5">
-              {["Privacidade","Termos de uso"].map((l) => (
-                <li key={l}><a href="#" className="text-sm hover:opacity-70 transition-opacity text-[#5F6B61]">{l}</a></li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <p className="mb-4 text-xs font-bold tracking-widest text-[#12231C]">FALE COM A GENTE</p>
-            <p className="mb-2 text-xs font-semibold text-[#5F6B61]">Contato</p>
-            <ul className="space-y-1.5">
-              {["contato@vesta.casa","privacidade@vesta.casa"].map((e) => (
-                <li key={e}><a href={`mailto:${e}`} className="text-sm hover:opacity-70 transition-opacity text-[#5F6B61]">{e}</a></li>
-              ))}
-            </ul>
+        {/* ── PHOTO BAND ── */}
+        <div className="photoband" role="img" aria-label="Família brasileira na correria da manhã de escola, dividindo as tarefas">
+          <div className="photoband__cap">
+            <div className="wrap">
+              <span className="script">Para a casa toda. Não só para uma pessoa. ♥</span>
+            </div>
           </div>
         </div>
 
-        <div className="mt-10 flex flex-wrap items-center justify-between gap-4 border-t pt-8"
-          style={{ borderColor: "rgba(14,59,46,0.08)" }}>
-          <p className="text-xs" style={{ color: "#aaa" }}>
-            © 2026 Vesta Tecnologia Ltda. Todos os direitos reservados. Feito com cuidado para famílias brasileiras.
-          </p>
+        {/* ── FEATURE GRID ── */}
+        <section id="recursos">
+          <div className="wrap">
+            <div className="shead shead--c">
+              <div className="eyebrow">Tudo em um só lugar</div>
+              <h2>Tudo que uma família precisa. <em>Em um só lugar.</em></h2>
+            </div>
+            <div className="feat-grid">
+              {[
+                { icon: <Mic />, title: "Entra do jeito que a vida manda", desc: "Mensagem, e-mail, foto ou áudio: você repassa do jeito que dá e a Vesta entende. Sem formulário, sem triagem." },
+                { icon: <List />, title: "Organiza e prioriza", desc: "A Vesta transforma o caos em planos claros, com prazos e prioridades." },
+                { icon: <Users />, title: "Delega sem estresse", desc: "O combinado vai pra pessoa certa, com contexto e sem cobrança." },
+                { icon: <Calendar />, title: "Escreve no lugar certo", desc: "Compromissos e lembretes no calendário certo, sempre atualizados." },
+                { icon: <Hand />, title: "Resolve por você", desc: "Peça ajuda quando precisar. A Vesta encontra, agenda e acompanha." },
+                { icon: <Lock />, title: "Privacidade inegociável", desc: "Seus dados são seus. Seguros, privados e nunca compartilhados." },
+              ].map(({ icon, title, desc }) => (
+                <div key={title} className="fcard">
+                  <div className="fcard__ic">{icon}</div>
+                  <h3>{title}</h3>
+                  <p>{desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── COMO FUNCIONA ── */}
+        <section id="como" style={{ background: "var(--surface-soft)" }}>
+          <div className="wrap">
+            <div className="shead">
+              <div className="eyebrow">Como funciona</div>
+              <h2>Você conecta uma vez. <em>Depois, é só aprovar.</em></h2>
+              <p>A parte cansativa nunca foi mandar — é separar, lembrar e cobrar. Isso a Vesta tira de você. Seu trabalho recorrente vira um só: aprovar.</p>
+            </div>
+            <div className="steps">
+              {[
+                { n: "01", title: "Conecte a casa, uma vez", desc: "Ligue sua agenda e deixe o e-mail da escola cair direto na Vesta. Configura uma vez e pronto." },
+                { n: "02", title: "Manda num toque, sem organizar", desc: "O recado, a foto, o áudio — você só repassa. Quem tria, entende e monta o plano é a Vesta. Você nunca classifica nada." },
+                { n: "03", title: "Você só aprova", desc: "Um toque: confirma, ajusta ou delega. Esse é o único passo que continua com você." },
+                { n: "04", title: "A Vesta cuida do resto", desc: "Escreve no calendário, avisa quem precisa e acompanha até resolver." },
+              ].map(({ n, title, desc }) => (
+                <div key={n} className="step">
+                  <div className="step__n">{n}</div>
+                  <h3>{title}</h3>
+                  <p>{desc}</p>
+                  <div className="step__line" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── RULES + PHOTO ── */}
+        <section id="regras">
+          <div className="wrap split">
+            <div>
+              <div className="eyebrow">Regras da casa</div>
+              <h2 style={{ fontSize: 38, marginTop: 14, fontVariationSettings: '"SOFT" 100,"opsz" 40' }}>
+                Você decide as regras. <em>A Vesta segue.</em>
+              </h2>
+              <p style={{ color: "var(--fg-muted)", marginTop: 14, fontSize: 16, lineHeight: 1.6, maxWidth: "42ch" }}>
+                Nada acontece sem combinar. Você define o limite de autonomia da Vesta e ajusta quando quiser — sem mexer em código, sem chamar suporte.
+              </p>
+              <ul className="rules-list">
+                {[
+                  "Quem pode aprovar o quê — você, o parceiro, ou ninguém.",
+                  "O que vai pro calendário automaticamente — e o que sempre passa por você.",
+                  "Quais categorias a Vesta pode delegar sem perguntar.",
+                  "Quem recebe quais lembretes e em qual canal.",
+                ].map((item) => (
+                  <li key={item}>
+                    <span className="ck"><Check style={{ width: 13, height: 13 }} /></span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="photoslot" />
+          </div>
+        </section>
+
+        {/* ── TIMELINE ── */}
+        <section style={{ background: "var(--surface-soft)" }}>
+          <div className="wrap">
+            <div className="shead">
+              <div className="eyebrow">Como a Vesta evolui com a sua casa</div>
+              <h2>Começa com suas regras. <em>Aprende com o tempo.</em></h2>
+              <p>A Vesta não chega tomando decisões. Entra discreta, segue o que você combinou e vai ganhando contexto na medida em que você confia.</p>
+            </div>
+            <div className="rail">
+              <div className="tcard">
+                <div className="tcard__when">No começo</div>
+                <h3>Você define as regras</h3>
+                <p>Quem confirma o quê, quais canais a Vesta escuta, o que vai direto pro calendário. Ela começa fazendo só o que você combinou.</p>
+              </div>
+              <div className="tcard">
+                <div className="tcard__when">Com o uso</div>
+                <h3>Ela aprende o jeito da casa</h3>
+                <p>Vai entendendo seus horários, quem cuida de quê, quais mensagens viram tarefa e quais só ficam registradas.</p>
+              </div>
+              <div className="tcard">
+                <div className="tcard__when">Com o tempo</div>
+                <h3>Sugere antes de você pedir</h3>
+                <p>Aos poucos, antecipa padrões: "agendo a próxima vacina?", "reabasteço a feira de sexta?". Você só confirma — ou ajusta a regra.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── PRIVACY ── */}
+        <section id="privacidade" className="priv">
+          <div className="wrap">
+            <div className="shead">
+              <div className="eyebrow">Privacidade da casa</div>
+              <h2>O que é da sua casa <em>fica na sua casa.</em></h2>
+              <p>A Vesta foi pensada por gente que também é mãe, pai e parceiro. Rotina de família é íntimo — e a gente trata assim, do código à operação.</p>
+            </div>
+            <div className="priv__grid">
+              {[
+                { icon: <Lock className="pcard__ic" />, title: "Criptografia no que importa", desc: "Mensagens, fotos e contexto da família são protegidos em trânsito e em repouso." },
+                { icon: <Eye className="pcard__ic" />, title: "Não treinamos IA com seus dados", desc: "Sua casa não vira dataset. Nada do que entra na Vesta sai pra alimentar IA externa." },
+                { icon: <Server className="pcard__ic" />, title: "Hospedagem no Brasil, sob a LGPD", desc: "Servidores na região Brasil e DPO designado. Você exporta ou apaga tudo a qualquer momento." },
+                { icon: <SlidersHorizontal className="pcard__ic" />, title: "Você decide canal por canal", desc: "Conecta o que quiser, desconecta quando quiser. A Vesta nunca lê o que você não autorizou." },
+              ].map(({ icon, title, desc }) => (
+                <div key={title} className="pcard">
+                  {icon}
+                  <h3>{title}</h3>
+                  <p>{desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── PLANS ── */}
+        <section id="planos">
+          <div className="wrap">
+            <div className="shead shead--c">
+              <div className="eyebrow">Planos</div>
+              <h2>Preço justo, <em>no seu tempo.</em></h2>
+              <p>Cancela quando quiser. Quem entra agora trava o preço de fundadora por 12 meses.</p>
+            </div>
+            <div className="plans">
+              <div className="plan">
+                <div className="plan__name">Grátis pra sempre</div>
+                <div className="plan__price">R$ 0</div>
+                <div className="plan__desc">Pra tirar a primeira coisa da cabeça e sentir como é.</div>
+                <ul className="plan__feats">
+                  {["2 adultos + 1 criança","3 categorias","30 dias de histórico","3 regras da casa"].map(f => (
+                    <li key={f}><Check className="ck" /> {f}</li>
+                  ))}
+                </ul>
+                <a className="btn btn--secondary plan__cta" href="#lista">Começar grátis</a>
+              </div>
+
+              <div className="plan plan--feature">
+                <span className="plan__flag">Mais escolhido</span>
+                <div className="plan__name">Premium</div>
+                <div className="plan__price">R$ 29,90<small> /mês</small></div>
+                <div className="plan__desc">A casa inteira na Vesta — sem limites no que importa no dia a dia.</div>
+                <ul className="plan__feats">
+                  {["Família completa, sem limite de membros","Categorias e histórico ampliados","Regras ilimitadas e delegação","Sugestões que aprendem com a casa"].map(f => (
+                    <li key={f}><Check className="ck" /> {f}</li>
+                  ))}
+                </ul>
+                <a className="btn btn--primary plan__cta" href="#lista">Entrar na lista</a>
+                <div className="plan__note">Preço de fundadora travado por 12 meses.</div>
+              </div>
+
+              <div className="plan">
+                <div className="plan__name">
+                  Concierge <span style={{ fontSize: 12, color: "var(--fg-soft)", fontFamily: "var(--font-mono)" }}>add-on</span>
+                </div>
+                <div className="plan__price">R$ 49<small> /mês + taxa</small></div>
+                <div className="plan__desc">O que você prefere não fazer, uma pessoa real resolve — você confirma antes da execução.</div>
+                <ul className="plan__feats">
+                  {["Pessoa real cota, agenda e acompanha","Taxa só por pedido resolvido","Atendimento de seg a sáb","Complemento do plano Premium"].map(f => (
+                    <li key={f}><Check className="ck" /> {f}</li>
+                  ))}
+                </ul>
+                <a className="btn btn--secondary plan__cta" href="#lista">Quero saber mais</a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── TESTIMONIALS ── */}
+        <section style={{ background: "var(--surface-soft)" }}>
+          <div className="wrap">
+            <div className="shead shead--c">
+              <div className="eyebrow">Quem segura a casa</div>
+              <h2>Não é mágica. <em>É terça, 18h.</em></h2>
+              <p>Histórias reais de famílias do piloto. Nomes preservados quando pedido.</p>
+            </div>
+            <div className="tg">
+              <div className="quote quote--lead">
+                <div className="quote__mark">"</div>
+                <p>Terça, 18h, no meio da reunião. A Vesta me lembrou da consulta da Bia que eu tinha deixado passar — e já tinha achado dois horários. Eu só toquei em <em>aprovar.</em></p>
+                <div className="quote__who">
+                  <span className="quote__av" style={{ background: "var(--brand)" }}>J</span>
+                  <div>
+                    <div className="quote__name">Juliana, 38</div>
+                    <div className="quote__role">Mãe do Theo e da Bia · São Paulo</div>
+                  </div>
+                </div>
+              </div>
+              <div className="quote">
+                <div className="quote__mark">"</div>
+                <p>A gente parou de cobrar um ao outro. O combinado chega pra quem tem que fazer, com prazo e contexto.</p>
+                <div className="quote__who">
+                  <span className="quote__av" style={{ background: "var(--approval)" }}>M</span>
+                  <div>
+                    <div className="quote__name">Marcos &amp; Leo</div>
+                    <div className="quote__role">Casal · Belo Horizonte</div>
+                  </div>
+                </div>
+              </div>
+              <div className="quote">
+                <div className="quote__mark">"</div>
+                <p>Pela primeira vez eu não sou a única que sabe de tudo. Isso mudou o clima da casa.</p>
+                <div className="quote__who">
+                  <span className="quote__av" style={{ background: "var(--approval-deep)" }}>R</span>
+                  <div>
+                    <div className="quote__name">Renata, 41</div>
+                    <div className="quote__role">Mãe da Sofia · Rio de Janeiro</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── WAITLIST ── */}
+        <section id="lista" className="signup">
+          <div className="wrap signup__grid">
+            <div>
+              <div className="eyebrow">Vagas limitadas · onda de junho</div>
+              <h2>Deixe de ser <em>o sistema da casa.</em></h2>
+              <p style={{ color: "rgba(253,251,246,.78)", marginTop: 18, maxWidth: "46ch", lineHeight: 1.7 }}>
+                A Vesta abre em ondas pequenas, pra cuidar de cada família com calma. Entre agora e, na sua vez, a primeira coisa some da sua cabeça em 2 minutos.
+              </p>
+              <ul className="signup__benefits">
+                {[
+                  "Sua primeira regra da casa, no dia em que entrar",
+                  "Preço de fundadora travado por 12 meses",
+                  "Linha direta com quem está construindo",
+                ].map(b => (
+                  <li key={b}><Check className="ck" /> {b}</li>
+                ))}
+              </ul>
+              <p className="signup__wave"><b>1.000+</b> famílias já pararam de carregar tudo sozinhas · próxima onda em junho</p>
+            </div>
+            <WaitlistForm />
+          </div>
+        </section>
+
+        {/* ── TRUST STRIP ── */}
+        <div className="trust">
+          <div className="wrap trust__row">
+            <div className="trust__item"><Shield /> <span>Seus dados. Sua família. <b>Sua confiança.</b></span></div>
+            <div className="trust__item"><Server /> <span>Hospedado no Brasil · <b>conforme a LGPD</b></span></div>
+            <div className="trust__script">Feita para famílias reais. Como a sua.</div>
+          </div>
         </div>
+
+        {/* ── FAQ ── */}
+        <section>
+          <div className="wrap">
+            <div className="shead shead--c">
+              <div className="eyebrow">Perguntas frequentes</div>
+              <h2>O que toda família <em>pergunta primeiro.</em></h2>
+            </div>
+            <div className="faq">
+              {[
+                { q: "É só mais um app de agenda?", a: "Não. A Vesta não é um app de tarefas, calendário ou checklist. Ela vive no WhatsApp que a família já usa, entende o recado que chega e transforma em ação — escrevendo no calendário que você já tem, quando você confirma." },
+                { q: "Quem da família precisa instalar?", a: "Você usa a Vesta pelo WhatsApp que já tem — sem aprender ferramenta nova. As outras pessoas da casa não instalam nada: só recebem o que foi combinado, pelo canal que você definir." },
+                { q: "A Vesta lê tudo do meu WhatsApp?", a: "Não. A Vesta só lê o que você encaminha pra ela. Você decide canal por canal o que ela enxerga — e desconecta quando quiser." },
+                { q: "O Concierge é humano ou IA?", a: "Humano. Uma pessoa real cota, agenda e acompanha o pedido. A Vesta organiza; você confirma antes de qualquer execução. O Concierge é um add-on do Premium, por R$ 49/mês + taxa por pedido resolvido." },
+                { q: "Meus dados são usados pra treinar IA?", a: "Nunca. Sua casa não vira dataset. Nada do que entra na Vesta sai pra alimentar IA externa, e tudo segue a LGPD com hospedagem no Brasil." },
+                { q: "Quanto vai custar?", a: "Tem plano grátis pra sempre. O Premium custa R$ 29,90/mês e o Concierge é um add-on por R$ 49/mês + taxa por pedido. Quem entra pela lista agora trava o preço de fundadora por 12 meses." },
+                { q: "Quando vou conseguir entrar?", a: "A Vesta abre em ondas pequenas. A próxima é em junho. Entrando na lista, a gente chama você na sua vez — sem pressa, pra cuidar de cada família com calma." },
+              ].map(({ q, a }) => (
+                <details key={q}>
+                  <summary>
+                    {q}
+                    <Plus className="pm" style={{ width: 20, height: 20 }} />
+                  </summary>
+                  <p>{a}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── FOUNDER ── */}
+        <section className="founder">
+          <div className="wrap">
+            <div className="founder__card">
+              <div className="founder__photo">V</div>
+              <div>
+                <div className="eyebrow">De quem está construindo</div>
+                <p className="founder__q" style={{ marginTop: 12 }}>
+                  "Eu vivia sendo a agenda, o sistema e o lembrete da minha casa — e nenhum app foi feito pra isso. Construí a Vesta pra tirar esse peso de uma pessoa só. A casa é de todo mundo; o trabalho de lembrar também devia ser."
+                </p>
+                <div className="founder__sig"><b>— Gio</b>, fundador(a) da Vesta</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── MANIFESTO ── */}
+        <section className="manifesto">
+          <div className="wrap">
+            <HearthMark className="hearth" />
+            <p>A casa aprende. <em>Você respira.</em></p>
+            <a className="btn btn--primary btn--lg" href="#lista">Entrar na lista</a>
+          </div>
+        </section>
+
+      </main>
+
+      {/* ── FOOTER ── */}
+      <footer className="foot">
+        <div className="wrap">
+          <div className="foot__grid">
+            <div className="foot__brand">
+              <a className="brand" href="#top" aria-label="Vesta">
+                <HearthMark className="brand__mark" />
+                <span className="brand__name">Vesta</span>
+              </a>
+              <p>A assistente inteligente da família. Captura, organiza e delega — para um dia a dia mais leve.</p>
+            </div>
+            <div>
+              <h4>Produto</h4>
+              <ul>
+                <li><a href="#recursos">Recursos</a></li>
+                <li><a href="#como">Como funciona</a></li>
+                <li><a href="#planos">Planos</a></li>
+                <li><a href="#lista">Lista de espera</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4>Casa</h4>
+              <ul>
+                <li><a href="https://vestaoai.com.br/privacidade">Privacidade</a></li>
+                <li><a href="https://vestaoai.com.br/termos">Termos de uso</a></li>
+                <li><a href="#lista">Começar agora</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4>Contato</h4>
+              <ul>
+                <li><a href="mailto:hello@vestaoai.com.br">hello@vestaoai.com.br</a></li>
+                <li><a href="mailto:privacidade@vestaoai.com.br">privacidade@vestaoai.com.br</a></li>
+                <li><a href="https://instagram.com/vestaoai">Instagram · @vestaoai</a></li>
+              </ul>
+            </div>
+          </div>
+          <div className="foot__legal">
+            <span>São Paulo · Brasil · Feito com cuidado para famílias brasileiras.</span>
+            <span>© 2026 Vesta</span>
+          </div>
+        </div>
+      </footer>
+
+      {/* ── STICKY MOBILE BAR ── */}
+      <div className={`mobar${mobarOn ? " is-on" : ""}`}>
+        <a className="btn btn--primary" href="#lista">Tire uma coisa da cabeça</a>
       </div>
-    </footer>
-  );
-}
 
-/* ── Root ── */
-export default function Landing() {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  return (
-    <div className="min-h-screen font-sans" style={{ background: "#F7F4EA", color: V.ink }}>
-      <Nav mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
-      <Hero />
-      <Integrations />
-      <HowItWorks />
-      <Rules />
-      <Concierge />
-      <VestaEvolution />
-      <Privacy />
-      <Pricing />
-      <Testimonials />
-      <WaitlistCTA />
-      <FAQ />
-      <FinalCTA />
-      <Footer />
+      {/* ── EXIT-INTENT MODAL ── */}
+      <ExitModal />
     </div>
   );
 }

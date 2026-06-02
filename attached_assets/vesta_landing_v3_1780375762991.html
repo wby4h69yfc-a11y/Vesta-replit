@@ -1,0 +1,1153 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vesta — A casa não precisa morar só na sua cabeça</title>
+<meta name="description" content="A assistente inteligente da família. Vive no WhatsApp: você manda um recado — escola, boleto, áudio, bilhete — e ela vira ação, sempre com a sua confirmação.">
+<meta name="author" content="Vesta">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:site_name" content="Vesta">
+<meta property="og:title" content="Vesta — A casa não precisa morar só na sua cabeça">
+<meta property="og:description" content="A assistente inteligente da família. Você manda um recado, a Vesta transforma em ação — sempre com a sua confirmação.">
+<meta property="og:url" content="https://www.vestaoai.com.br/">
+<meta property="og:image" content="https://www.vestaoai.com.br/img/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Vesta — a casa não precisa morar só na sua cabeça. A assistente da família no WhatsApp.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Vesta — A casa não precisa morar só na sua cabeça">
+<meta name="twitter:description" content="A assistente inteligente da família. Você manda um recado, a Vesta transforma em ação — sempre com a sua confirmação.">
+<meta name="twitter:image" content="https://www.vestaoai.com.br/img/og-image.jpg">
+
+<!-- Favicon: the hearth mark on Bone -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Crect%20width%3D%2280%22%20height%3D%2280%22%20rx%3D%2218%22%20fill%3D%22%23FDFBF6%22/%3E%3Cpath%20fill%3D%22%23D9532C%22%20fill-rule%3D%22evenodd%22%20d%3D%22M14%2070%20Q8%2070%208%2064%20L8%2039%20A32%2032%200%200%201%2072%2039%20L72%2064%20Q72%2070%2066%2070%20Z%20M40%2030%20A17%2017%200%200%200%2023%2047%20L23%2064%20Q23%2066%2025%2066%20L55%2066%20Q57%2066%2057%2064%20L57%2047%20A17%2017%200%200%200%2040%2030%20Z%22/%3E%3C/svg%3E">
+
+<!-- JSON-LD · Organization + Product, for search/sharing -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Vesta",
+  "url": "https://www.vestaoai.com.br/",
+  "description": "A assistente inteligente da família. Vive no WhatsApp: você manda um recado e ela vira ação, sempre com a sua confirmação.",
+  "areaServed": "BR",
+  "sameAs": ["https://instagram.com/vestaoai"],
+  "email": "hello@vestaoai.com.br"
+}
+</script>
+
+<!-- Analytics (privacy-first, LGPD-friendly). TODO: uncomment when domain is live on Plausible (no cookie banner needed). -->
+<!-- <script defer data-domain="vestaoai.com.br" src="https://plausible.io/js/script.js"></script> -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..600,0..100;1,9..144,300..600,0..100&display=swap">
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap">
+
+<style>
+/* ============================================================
+   Vesta — landing v3 · warm documentary art direction
+   tokens from colors_and_type.css (v9 Edition II)
+   palette discipline held: Persimmon + Wood + warm neutrals only
+   ============================================================ */
+:root{
+  --bg:#FDFBF6; --surface-soft:#F1EADB; --surface-medium:#E8DEC8; --surface-deep:#1F1A14;
+  --border:#E8DEC8; --border-strong:#D8CCBC;
+  --fg:#1F1A14; --fg-muted:#6E6258; --fg-soft:#7E715F; --fg-inverse:#FDFBF6;
+  --brand:#D9532C; --brand-deep:#B23F1E; --brand-soft:#F4DDD0; --brand-fg:#FDFBF6;
+  --approval:#9C7A4F; --approval-deep:#5A4326; --approval-soft:#E7D8C0;
+  --font-display:"Fraunces","Iowan Old Style","Georgia",serif;
+  --font-body:"General Sans","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --radius-2:10px; --radius-3:14px; --radius-4:20px; --radius-full:999px;
+  --shadow-1:0 1px 2px rgba(31,26,20,.04); --shadow-2:0 6px 18px rgba(31,26,20,.07); --shadow-3:0 16px 44px rgba(31,26,20,.12);
+  --ease:cubic-bezier(0.22,0.61,0.36,1); --dur-fast:120ms; --dur-base:180ms; --dur-mid:260ms; --dur-slow:400ms;
+  --focus-ring:0 0 0 2px rgba(217,83,44,.28);
+  --maxw:1180px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{font-family:var(--font-body); color:var(--fg); background:var(--bg); font-size:16px; line-height:1.5;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;}
+h1,h2,h3{font-family:var(--font-display); font-weight:500; letter-spacing:-0.01em; line-height:1.12; font-variation-settings:"SOFT" 100,"opsz" 64;}
+em{font-style:italic; color:var(--brand); font-weight:400;}
+/* Headline emphasis drops to its own line — the phrase is the punchline, never split mid-thought.
+   Scoped to display headings + manifesto; inline <em> in body copy stays inline. */
+h1 em, h2 em, .manifesto p em{display:block;}
+a{color:inherit; text-decoration:none;}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px;}
+.eyebrow{font-family:var(--font-mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--brand); font-weight:500;}
+.skip{position:absolute; left:-999px; top:8px; z-index:100; background:var(--brand); color:var(--brand-fg); padding:10px 16px; border-radius:10px; font-weight:500;}
+.skip:focus{left:8px;}
+.script{font-family:var(--font-display); font-style:italic; font-weight:400; font-variation-settings:"SOFT" 100,"opsz" 36;}
+section{padding:92px 0;}
+@media(max-width:760px){section{padding:56px 0;}}
+
+/* buttons */
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:9px; padding:14px 24px;
+  border-radius:var(--radius-full); font-family:var(--font-body); font-weight:500; font-size:16px; line-height:1;
+  border:1px solid transparent; cursor:pointer; transition:background var(--dur-base) var(--ease),
+  border-color var(--dur-base) var(--ease), transform var(--dur-fast) var(--ease);}
+.btn:focus-visible{outline:none; box-shadow:var(--focus-ring);}
+.btn:active{transform:scale(0.985);}
+.btn--primary{background:var(--brand); color:var(--brand-fg);}
+.btn--primary:hover{background:var(--brand-deep);}
+.btn--secondary{background:transparent; color:var(--fg); border-color:var(--border-strong);}
+.btn--secondary:hover{border-color:var(--fg); background:var(--surface-soft);}
+.btn--ghost{background:transparent; color:var(--fg); padding-left:6px;}
+.btn--ghost:hover{color:var(--brand);}
+.btn--lg{padding:17px 30px; font-size:18px;}
+.btn .play{width:34px;height:34px;border-radius:999px;background:var(--brand);color:var(--brand-fg);display:inline-flex;align-items:center;justify-content:center;}
+.btn--ghost:hover .play{background:var(--brand-deep);}
+
+/* nav */
+.nav{position:sticky; top:0; z-index:50; background:color-mix(in oklab, var(--bg) 85%, transparent);
+  backdrop-filter:saturate(140%) blur(10px); border-bottom:1px solid transparent; transition:border-color var(--dur-base) var(--ease);}
+.nav.is-stuck{border-bottom-color:var(--border);}
+.nav__row{display:flex; align-items:center; gap:26px; height:68px;}
+.brand{display:flex; align-items:center; gap:10px;}
+.brand__mark{width:28px; height:28px; color:var(--brand);}
+.brand__name{font-family:var(--font-display); font-size:25px; font-weight:500; line-height:1; font-variation-settings:"SOFT" 100,"opsz" 24;}
+.nav__links{display:flex; gap:26px; font-size:14px; color:var(--fg); margin-left:10px;}
+.nav__links a:hover{color:var(--brand);}
+.nav__right{margin-left:auto; display:flex; align-items:center; gap:18px;}
+.nav__signin{font-size:14px; color:var(--fg);}
+.nav__signin:hover{color:var(--brand);}
+@media(max-width:820px){.nav__links,.nav__signin{display:none;} .nav__right{margin-left:auto;}}
+
+/* ===== HERO ===== */
+.hero{padding:56px 0 84px; position:relative; overflow:hidden;}
+.hero::before{content:''; position:absolute; inset:0 0 auto auto; width:60%; height:100%;
+  background:radial-gradient(120% 90% at 85% 30%, color-mix(in oklab, var(--approval) 13%, transparent) 0%, transparent 60%); pointer-events:none; z-index:0;}
+.hero__grid{display:grid; grid-template-columns:0.92fr 1.08fr; gap:48px; align-items:center; position:relative; z-index:1;}
+.hero h1{font-size:64px; font-weight:300; letter-spacing:-0.028em; font-variation-settings:"SOFT" 100,"opsz" 96; max-width:13ch;}
+.hero__sub{font-family:var(--font-display); font-weight:400; font-size:21px; line-height:1.45; color:var(--fg); margin-top:24px; max-width:42ch; font-variation-settings:"SOFT" 100,"opsz" 28;}
+.hero__cta{display:flex; align-items:center; gap:18px; margin-top:32px; flex-wrap:wrap;}
+.hero__proof{display:flex; align-items:center; gap:14px; margin-top:34px;}
+.avatars{display:flex;}
+.avatars span{width:38px;height:38px;border-radius:999px;border:2px solid var(--bg);margin-left:-10px;
+  display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:500;font-size:14px;color:var(--brand-fg);font-variation-settings:"SOFT" 100,"opsz" 14;}
+.avatars span:first-child{margin-left:0;}
+.av1{background:#C97A52;} .av2{background:var(--approval);} .av3{background:var(--brand);} .av4{background:var(--approval-deep);}
+.hero__proof p{font-size:13px; color:var(--fg-muted); line-height:1.45; max-width:24ch;}
+.hero__proof b{color:var(--fg); font-weight:600;}
+
+/* hero stage: the family photo, clean and unobstructed */
+.stage{position:relative; min-height:520px; border-radius:24px; overflow:hidden; box-shadow:var(--shadow-3);}
+.stage__photo{position:absolute; inset:0;
+  /* Warm documentary hero — family setting the table together (§7/§8 casting). Gradient is fallback. */
+  background:
+    image-set(url('img/hero-familia.webp') 1x),
+    radial-gradient(80% 70% at 70% 25%, color-mix(in oklab, var(--brand-soft) 70%, transparent), transparent 70%),
+    linear-gradient(135deg, var(--surface-medium) 0%, var(--approval-soft) 55%, var(--surface-soft) 100%);
+  background-size:cover; background-position:center;}
+.stage__script{position:absolute; right:20px; bottom:18px; z-index:4; font-size:22px; color:var(--bg); transform:rotate(-4deg); text-shadow:0 1px 12px rgba(31,26,20,.55); max-width:9ch; line-height:1.12; text-align:right;}
+.stage__script .heart{font-style:normal;}
+/* Hero transformation chip — a real approval, settling onto the scene */
+@keyframes settleIn{0%{opacity:0; transform:translateY(10px);}100%{opacity:1; transform:translateY(0);}}
+.stage__card{position:absolute; left:18px; bottom:18px; z-index:5; width:248px; max-width:62%;
+  background:color-mix(in oklab, var(--bg) 96%, transparent); backdrop-filter:blur(6px);
+  border:1px solid var(--border); border-radius:14px; padding:13px 14px; box-shadow:var(--shadow-3);
+  animation:settleIn var(--dur-slow) var(--ease) both; animation-delay:.5s;}
+.stage__card__chip{display:inline-flex; align-items:center; gap:5px; font-family:var(--font-mono); font-size:9px; letter-spacing:.06em; text-transform:uppercase; color:var(--approval-deep);}
+.stage__card__chip .dot{width:5px;height:5px;background:var(--approval);}
+.stage__card__t{font-family:var(--font-display); font-size:14px; font-weight:500; line-height:1.25; margin-top:6px; font-variation-settings:"SOFT" 100,"opsz" 20;}
+.stage__card__m{font-size:11px; color:var(--fg-muted); margin-top:2px;}
+.stage__card__row{display:flex; gap:6px; margin-top:10px;}
+.stage__card__b{padding:6px 12px; border-radius:8px; font-size:11px; font-weight:600;}
+.stage__card__b--p{background:var(--brand); color:var(--brand-fg);}
+.stage__card__b--g{background:transparent; color:var(--fg); border:1px solid var(--border-strong);}
+@media(max-width:980px){.stage__card{left:12px; bottom:12px; width:220px;}}
+@media(prefers-reduced-motion:reduce){.stage__card{animation:none;}}
+
+/* product showcase: phone + floating callouts, on its own ground (no overlap) */
+.showcase{background:var(--surface-soft);}
+.showcase__row{position:relative; display:grid; grid-template-columns:1fr auto 1fr; gap:28px; align-items:center; max-width:920px; margin:48px auto 0;}
+.showcase__col{display:flex; flex-direction:column; gap:18px;}
+.showcase__col--l{align-items:flex-end; text-align:right;}
+.showcase .callout{position:static; width:100%; max-width:240px;}
+.showcase .callout__h{justify-content:inherit;}
+.phone{width:248px; background:var(--surface-deep); border-radius:34px; padding:7px; box-shadow:var(--shadow-3); margin:0 auto; justify-self:center;}
+/* WhatsApp→card transformation inside the phone */
+.wa-head{display:flex; align-items:center; gap:8px; padding:2px 4px 10px; border-bottom:1px solid var(--border);}
+.wa-head .brand__mark{width:20px;height:20px;}
+.wa-head__t{font-family:var(--font-display); font-size:14px; font-weight:500; font-variation-settings:"SOFT" 100,"opsz" 20;}
+.wa-head__s{font-size:9px; color:var(--approval-deep); margin-left:auto; display:flex; align-items:center; gap:4px;}
+.bub{max-width:86%; padding:9px 11px; border-radius:13px; font-size:11.5px; line-height:1.4;}
+.bub--in{align-self:flex-start; background:var(--surface-soft); color:var(--fg); border-bottom-left-radius:4px;}
+.bub--meta{font-family:var(--font-mono); font-size:8px; letter-spacing:.05em; color:var(--fg-soft); align-self:flex-start; padding-left:3px; text-transform:uppercase;}
+.arrowdown{display:flex; align-items:center; justify-content:center; gap:6px; font-family:var(--font-mono); font-size:8px; letter-spacing:.08em; text-transform:uppercase; color:var(--brand); margin:2px 0;}
+.arrowdown::before,.arrowdown::after{content:''; height:1px; flex:1; background:linear-gradient(90deg,transparent,var(--brand-soft));}
+.arrowdown::after{background:linear-gradient(90deg,var(--brand-soft),transparent);}
+.appcard{background:var(--bg); border:1px solid var(--brand-soft); border-radius:13px; padding:12px; box-shadow:var(--shadow-1); margin-top:auto;}
+.appcard__chip{display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:999px; font-size:9px; font-weight:600; letter-spacing:.04em; background:var(--brand-soft); color:var(--brand-deep);}
+.appcard__chip .dot{width:5px;height:5px;background:var(--brand);}
+.appcard__t{font-family:var(--font-display); font-size:13.5px; font-weight:500; margin-top:7px; line-height:1.3; font-variation-settings:"SOFT" 100,"opsz" 24;}
+.appcard__m{font-size:10.5px; color:var(--fg-muted); margin-top:2px;}
+.appcard__row{display:flex; gap:6px; margin-top:11px;}
+.appcard__btn{padding:7px 12px; border-radius:8px; font-size:11px; font-weight:600;}
+.appcard__btn--p{background:var(--brand); color:var(--brand-fg);}
+.appcard__btn--g{background:transparent; color:var(--fg); border:1px solid var(--border-strong);}
+.phone__screen{background:var(--bg); border-radius:28px; padding:16px 14px; display:flex; flex-direction:column; gap:11px; min-height:486px;}
+.phone__hi{font-family:var(--font-display); font-size:18px; font-weight:500; font-variation-settings:"SOFT" 100,"opsz" 24;}
+.phone__hi small{display:block; font-family:var(--font-body); font-size:11px; color:var(--fg-muted); font-weight:400; margin-top:2px;}
+.phone__day{display:flex; align-items:center; justify-content:space-between; font-family:var(--font-mono); font-size:10px; letter-spacing:.06em; color:var(--fg-muted); text-transform:uppercase; padding-top:8px; border-top:1px solid var(--border);}
+.tline{display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--border);}
+.tline:last-child{border-bottom:none;}
+.tdot{width:8px;height:8px;border-radius:3px;background:var(--approval-soft);flex-shrink:0;}
+.tline--p .tdot{background:var(--brand);}
+.tline__t{font-size:12.5px; font-weight:500; line-height:1.2;}
+.tline__s{font-size:10.5px; color:var(--fg-muted); margin-top:1px;}
+.tag{margin-left:auto; font-family:var(--font-mono); font-size:8.5px; letter-spacing:.04em; text-transform:uppercase; padding:3px 7px; border-radius:999px; background:var(--surface-soft); color:var(--fg-muted); white-space:nowrap;}
+.tag--brand{background:var(--brand-soft); color:var(--brand-deep);}
+.tag--wood{background:var(--approval-soft); color:var(--approval-deep);}
+.phone__nav{display:flex; justify-content:space-around; align-items:center; padding-top:10px; margin-top:auto; border-top:1px solid var(--border); color:var(--fg-soft);}
+.phone__nav svg{width:19px;height:19px;}
+.phone__nav .on{color:var(--brand);}
+.phone__fab{width:30px;height:30px;border-radius:999px;background:var(--brand);color:var(--brand-fg);display:flex;align-items:center;justify-content:center;}
+.phone__fab svg{width:16px;height:16px;color:var(--brand-fg);}
+
+.callout{background:var(--bg); border:1px solid var(--border); border-radius:14px; padding:14px 16px; box-shadow:var(--shadow-1);}
+.callout__h{display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600;}
+.callout__h svg{width:18px;height:18px;color:var(--brand); flex-shrink:0;}
+.callout p{font-size:12px; color:var(--fg-muted); line-height:1.5; margin-top:6px;}
+@media(max-width:980px){
+  .hero__grid{grid-template-columns:1fr; gap:36px;}
+  .hero h1{font-size:48px;}
+  .stage{min-height:0; aspect-ratio:16/10;}
+}
+@media(max-width:760px){
+  .showcase__row{grid-template-columns:1fr; gap:16px; margin-top:32px;}
+  .showcase__col--l{align-items:stretch; text-align:left; order:2;}
+  .showcase__col--r{order:3;}
+  .showcase .callout{max-width:none;}
+  .phone{order:1;}
+  .stage__script{font-size:18px;}
+}
+
+/* integration bar */
+.integbar{background:var(--surface-soft); border-top:1px solid var(--border); border-bottom:1px solid var(--border);}
+.integbar__row{display:flex; align-items:center; justify-content:center; gap:14px 30px; padding:22px 0; flex-wrap:wrap;}
+.integbar__lead{font-size:13px; color:var(--fg-muted); margin-right:6px;}
+.integbar__item{display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:var(--fg);}
+.integbar__item svg{width:20px;height:20px;color:var(--approval-deep);}
+
+/* section head */
+.shead{max-width:46ch;}
+.shead--c{margin:0 auto; text-align:center;}
+.shead h2{font-size:38px; margin-top:14px; font-variation-settings:"SOFT" 100,"opsz" 40;}
+.shead p{color:var(--fg-muted); margin-top:14px; font-size:16px; line-height:1.6;}
+@media(max-width:760px){.shead h2{font-size:30px;}}
+
+/* invisible-work band — the crescendo: heavier, tighter, then a real exhale */
+.band{background:#0B0805; color:var(--fg-inverse); padding:104px 0;}
+.band .eyebrow{color:var(--brand);}
+.band h2{font-size:52px; color:var(--fg-inverse); max-width:16ch; margin-top:16px; font-weight:500; letter-spacing:-0.02em; line-height:1.05; font-variation-settings:"SOFT" 100,"opsz" 72;}
+.band h2 em{color:var(--brand);}
+.band__lede{color:rgba(253,251,246,.74); margin-top:22px; max-width:50ch; font-size:17px; line-height:1.7;}
+/* the burden, rendered as an overwhelming pile — overlapping chips, slightly chaotic */
+.band__pile{margin-top:38px; display:flex; flex-wrap:wrap; gap:9px; max-width:780px;}
+.band__pile span{font-size:13.5px; line-height:1.3; color:rgba(253,251,246,.82); background:rgba(253,251,246,.05); border:1px solid rgba(253,251,246,.10); border-radius:999px; padding:8px 14px;}
+.band__pile span:nth-child(3n){transform:rotate(-1.2deg);} .band__pile span:nth-child(4n){transform:rotate(1deg);} .band__pile span:nth-child(5n){transform:rotate(-0.6deg);}
+.band__turn{margin-top:48px; padding-top:36px; border-top:1px solid rgba(253,251,246,.14); display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;}
+.band__turn .hearth-sm{width:26px;height:26px;color:var(--brand); align-self:center;}
+.band__foot{font-family:var(--font-display); font-size:30px; font-weight:300; color:var(--fg-inverse); font-variation-settings:"SOFT" 100,"opsz" 40; line-height:1.1;}
+.band__foot em{font-style:italic; color:var(--approval-soft);}
+@media(max-width:680px){.band{padding:64px 0;} .band h2{font-size:34px;} .band__foot{font-size:23px;}}
+
+/* full-bleed photo band — warm documentary breather */
+.photoband{position:relative; height:440px; background-size:cover; background-position:center 30%;}
+.photoband::after{content:''; position:absolute; inset:0; background:linear-gradient(0deg, rgba(31,26,20,.42) 0%, rgba(31,26,20,.06) 45%, transparent 100%);}
+.photoband__cap{position:absolute; left:0; right:0; bottom:0; z-index:1;}
+.photoband__cap .wrap{padding-bottom:28px;}
+.photoband__cap .script{color:var(--bg); font-size:30px; text-shadow:0 1px 14px rgba(31,26,20,.5); font-family:var(--font-display); font-style:italic; font-variation-settings:"SOFT" 100,"opsz" 36;}
+@media(max-width:760px){.photoband{height:300px;} .photoband__cap .script{font-size:23px;}}
+
+/* feature row — inspiration's 6-card "tudo em um só lugar", on-palette */
+.feat-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:18px; margin-top:48px;}
+.fcard{background:var(--bg); border:1px solid var(--border); border-radius:18px; padding:26px; transition:border-color var(--dur-base) var(--ease), transform var(--dur-base) var(--ease);}
+.fcard:hover{border-color:var(--border-strong); transform:translateY(-2px);}
+.fcard__ic{width:54px;height:54px;border-radius:14px;background:var(--brand-soft);color:var(--brand-deep);display:flex;align-items:center;justify-content:center;margin-bottom:18px;}
+.fcard:nth-child(even) .fcard__ic{background:var(--approval-soft);color:var(--approval-deep);}
+.fcard__ic svg{width:26px;height:26px;}
+.fcard h3{font-size:19px; font-variation-settings:"SOFT" 100,"opsz" 24;}
+.fcard p{font-size:14px; color:var(--fg-muted); margin-top:9px; line-height:1.6;}
+@media(max-width:860px){.feat-grid{grid-template-columns:1fr 1fr;}}
+@media(max-width:520px){.feat-grid{grid-template-columns:1fr;}}
+
+/* como funciona steps */
+.steps{display:grid; grid-template-columns:repeat(4,1fr); gap:20px; margin-top:48px;}
+.step__n{font-family:var(--font-mono); font-size:12px; color:var(--brand); letter-spacing:.1em;}
+.step h3{font-size:19px; margin-top:12px; font-variation-settings:"SOFT" 100,"opsz" 24;}
+.step p{font-size:14px; color:var(--fg-muted); margin-top:8px; line-height:1.6;}
+.step__line{height:2px; background:var(--surface-medium); margin-top:18px; position:relative;}
+.step__line::before{content:''; position:absolute; left:0; top:0; height:2px; width:26px; background:var(--brand);}
+@media(max-width:860px){.steps{grid-template-columns:1fr 1fr;}}
+@media(max-width:480px){.steps{grid-template-columns:1fr;}}
+
+/* rules split with photo */
+.split{display:grid; grid-template-columns:1fr 1fr; gap:56px; align-items:center;}
+.rules-list{list-style:none; display:flex; flex-direction:column; gap:14px; margin-top:18px;}
+.rules-list li{display:flex; gap:12px; align-items:flex-start; font-size:15px; line-height:1.5;}
+.rules-list .ck{flex-shrink:0; width:22px; height:22px; border-radius:999px; background:var(--brand-soft); color:var(--brand-deep); display:flex; align-items:center; justify-content:center;}
+.rules-list .ck svg{width:13px;height:13px;}
+.photoslot{position:relative; border-radius:20px; overflow:hidden; min-height:380px; box-shadow:var(--shadow-2);
+  /* Two dads, school-morning routine (§7/§8 casting). Gradient is fallback. */
+  background:
+    image-set(url('img/regras-pai.webp') 1x),
+    linear-gradient(135deg, var(--approval-soft) 0%, var(--surface-soft) 60%, var(--brand-soft) 130%);
+  background-size:cover; background-position:center;
+  display:flex; align-items:flex-end; padding:18px;}
+.photoslot::after{content:''; position:absolute; inset:0; background-image:repeating-linear-gradient(135deg, transparent 0 15px, rgba(31,26,20,.025) 15px 16px); pointer-events:none;}
+@media(max-width:820px){.split{grid-template-columns:1fr; gap:32px;} .photoslot{min-height:280px;}}
+
+/* timeline */
+.rail{margin-top:48px; display:grid; grid-template-columns:repeat(3,1fr); gap:24px;}
+.tcard{background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:26px;}
+.tcard__when{font-family:var(--font-mono); font-size:11px; letter-spacing:.1em; color:var(--brand); text-transform:uppercase;}
+.tcard:nth-child(3) .tcard__when{color:var(--approval-deep);}
+.tcard h3{font-size:19px; margin-top:12px; font-variation-settings:"SOFT" 100,"opsz" 24;}
+.tcard p{font-size:14px; color:var(--fg-muted); margin-top:10px; line-height:1.6;}
+@media(max-width:820px){.rail{grid-template-columns:1fr;}}
+
+/* privacy */
+.priv{background:var(--surface-soft);}
+.priv__grid{display:grid; grid-template-columns:repeat(4,1fr); gap:18px; margin-top:44px;}
+.pcard{background:var(--bg); border:1px solid var(--border); border-radius:14px; padding:22px;}
+.pcard__ic{width:24px;height:24px;color:var(--approval); margin-bottom:12px;}
+.pcard h3{font-size:16px; font-variation-settings:"SOFT" 100,"opsz" 20;}
+.pcard p{font-size:13px; color:var(--fg-muted); margin-top:7px; line-height:1.55;}
+@media(max-width:860px){.priv__grid{grid-template-columns:1fr 1fr;}}
+@media(max-width:480px){.priv__grid{grid-template-columns:1fr;}}
+
+/* plans */
+.plans{display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:48px; align-items:stretch;}
+.plan{background:var(--bg); border:1px solid var(--border); border-radius:18px; padding:30px 26px; display:flex; flex-direction:column;}
+.plan--feature{border-color:var(--brand); box-shadow:var(--shadow-2); position:relative;}
+.plan__flag{position:absolute; top:-11px; left:26px; background:var(--brand); color:var(--brand-fg); font-size:11px; font-weight:600; letter-spacing:.04em; padding:4px 12px; border-radius:999px;}
+.plan__name{font-family:var(--font-display); font-size:20px; font-weight:500; font-variation-settings:"SOFT" 100,"opsz" 24;}
+.plan__price{font-family:var(--font-display); font-size:38px; font-weight:500; margin-top:12px; line-height:1; font-variation-settings:"SOFT" 100,"opsz" 40;}
+.plan__price small{font-size:15px; color:var(--fg-muted); font-family:var(--font-body); font-weight:400;}
+.plan__desc{font-size:14px; color:var(--fg-muted); margin-top:14px; line-height:1.6; flex:1;}
+.plan__feats{list-style:none; margin:16px 0 0; display:flex; flex-direction:column; gap:8px;}
+.plan__feats li{display:flex; gap:9px; align-items:flex-start; font-size:13px; line-height:1.45;}
+.plan__feats .ck{color:var(--approval); flex-shrink:0; width:16px;height:16px; margin-top:1px;}
+.plan__cta{margin-top:22px;}
+.plan__note{font-size:12px; color:var(--fg-soft); margin-top:12px;}
+@media(max-width:860px){.plans{grid-template-columns:1fr;}}
+
+/* testimonials with warm photo */
+.tg{display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:48px;}
+.quote{background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:26px; display:flex; flex-direction:column;}
+.quote--lead{grid-column:1 / -1; background:var(--surface-deep); color:var(--fg-inverse); border-color:transparent;}
+.quote--lead p{font-size:24px; line-height:1.4; color:var(--fg-inverse); max-width:30ch;}
+.quote--lead em{color:var(--brand);}
+.quote--lead .quote__name{color:var(--fg-inverse);}
+.quote--lead .quote__role{color:rgba(253,251,246,.6);}
+.quote--lead .quote__av{background:var(--brand) !important; color:var(--brand-fg);}
+@media(max-width:860px){.quote--lead p{font-size:20px;}}
+.quote__mark{color:var(--brand); font-family:var(--font-display); font-size:40px; line-height:.5; font-style:italic;}
+.quote p{font-family:var(--font-display); font-size:17px; line-height:1.4; margin-top:18px; font-variation-settings:"SOFT" 100,"opsz" 22; flex:1;}
+.quote__who{display:flex; align-items:center; gap:12px; margin-top:20px;}
+.quote__av{width:42px;height:42px;border-radius:999px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-weight:500; color:var(--brand-fg); font-variation-settings:"SOFT" 100,"opsz" 16;}
+.quote__name{font-size:13px; font-weight:600;}
+.quote__role{font-size:12px; color:var(--fg-muted);}
+@media(max-width:860px){.tg{grid-template-columns:1fr;}}
+
+/* waitlist */
+.signup{background:var(--surface-deep); color:var(--fg-inverse);}
+.signup .eyebrow{color:var(--brand);}
+.signup__grid{display:grid; grid-template-columns:1fr 1fr; gap:56px; align-items:start;}
+.signup h2{font-size:40px; color:var(--fg-inverse); max-width:16ch; margin-top:16px; font-weight:300; font-variation-settings:"SOFT" 100,"opsz" 56;}
+.signup h2 em{color:var(--brand);}
+.signup__benefits{list-style:none; margin-top:26px; display:flex; flex-direction:column; gap:12px;}
+.signup__benefits li{display:flex; gap:11px; align-items:flex-start; font-size:15px; color:rgba(253,251,246,.85);}
+.signup__benefits .ck{color:var(--approval); flex-shrink:0; width:18px;height:18px; margin-top:2px;}
+.signup__wave{margin-top:26px; font-size:14px; color:rgba(253,251,246,.7);}
+.signup__wave b{color:var(--fg-inverse);}
+.form{background:var(--bg); color:var(--fg); border-radius:20px; padding:30px; box-shadow:var(--shadow-3);}
+.field{display:flex; flex-direction:column; gap:6px; margin-bottom:16px;}
+.field label{font-size:12px; font-weight:500; color:var(--fg-muted); letter-spacing:.02em;}
+.field input{width:100%; padding:13px 14px; font-family:var(--font-body); font-size:16px; color:var(--fg); background:var(--bg); border:1px solid var(--border-strong); border-radius:10px; transition:border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease);}
+.field input:focus{outline:none; border-color:var(--brand); box-shadow:var(--focus-ring);}
+/* inline validation — uses the design system's error pattern */
+.field--error input{border-color:var(--brand); box-shadow:0 0 0 2px rgba(217,83,44,.18);}
+.field__err{display:none; font-size:12px; color:var(--brand-deep); margin-top:2px;}
+.field--error .field__err{display:block;}
+/* button pending state */
+.btn[aria-busy="true"]{opacity:.75; cursor:wait; pointer-events:none;}
+.btn__spin{display:none; width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:999px;animation:spin .6s linear infinite;}
+.btn[aria-busy="true"] .btn__spin{display:inline-block;}
+.btn[aria-busy="true"] .btn__label{opacity:.85;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.choices{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+.choice{position:relative;}
+.choice input{position:absolute; opacity:0; inset:0; cursor:pointer;}
+.choice span{display:block; text-align:center; padding:11px 8px; font-size:13px; border:1px solid var(--border-strong); border-radius:10px; cursor:pointer; transition:all var(--dur-base) var(--ease);}
+.choice input:checked + span{border-color:var(--brand); background:var(--brand-soft); color:var(--brand-deep); font-weight:500;}
+.choice input:focus-visible + span{box-shadow:var(--focus-ring);}
+.form__submit{width:100%; margin-top:8px;}
+.hp{position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;}
+.form__neterr{font-size:13px; color:var(--brand-deep); margin-top:10px; text-align:center;}
+.form__or{display:flex; align-items:center; gap:12px; margin:18px 0; font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--fg-soft);}
+.form__or::before,.form__or::after{content:''; height:1px; flex:1; background:var(--border);}
+.btn--wa{width:100%; background:var(--surface-deep); color:var(--fg-inverse); gap:10px;}
+.btn--wa:hover{background:#000;}
+.btn--wa svg{width:20px;height:20px;}
+.form__fine{font-size:12px; color:var(--fg-soft); margin-top:14px; line-height:1.5; text-align:center;}
+.form__fine a{color:var(--fg-muted); text-decoration:underline;}
+.form__success{display:none; text-align:center; padding:18px 6px;}
+.form__success svg{width:48px;height:48px;color:var(--approval); margin:0 auto 12px;}
+.form__success h3{font-size:24px; font-variation-settings:"SOFT" 100,"opsz" 30;}
+.form__success p{font-size:14px; color:var(--fg-muted); margin-top:8px; line-height:1.6;}
+.form__success-cta{display:flex; gap:8px; justify-content:center; margin-top:18px; flex-wrap:wrap;}
+.is-done .form__body{display:none;}
+.is-done .form__success{display:block;}
+@media(max-width:820px){.signup__grid{grid-template-columns:1fr; gap:36px;} .signup h2{font-size:32px;}}
+
+/* trust strip */
+.trust{border-top:1px solid var(--border);}
+.trust__row{display:flex; align-items:center; justify-content:space-between; gap:24px; padding:30px 0; flex-wrap:wrap;}
+.trust__item{display:flex; align-items:center; gap:10px; font-size:14px; color:var(--fg-muted);}
+.trust__item svg{width:22px;height:22px;color:var(--approval);}
+.trust__item b{color:var(--fg); font-weight:600;}
+.trust__script{font-family:var(--font-display); font-style:italic; font-size:22px; color:var(--brand); font-variation-settings:"SOFT" 100,"opsz" 28;}
+
+/* faq */
+.faq{max-width:760px; margin:44px auto 0;}
+.faq details{border-bottom:1px solid var(--border); padding:18px 0;}
+.faq summary{font-family:var(--font-display); font-size:18px; font-weight:500; cursor:pointer; list-style:none; display:flex; justify-content:space-between; align-items:center; gap:16px; min-height:44px; font-variation-settings:"SOFT" 100,"opsz" 22;}
+.faq summary::-webkit-details-marker{display:none;}
+.faq summary .pm{color:var(--brand); transition:transform var(--dur-base) var(--ease); flex-shrink:0;}
+.faq details[open] summary .pm{transform:rotate(45deg);}
+.faq p{font-size:15px; color:var(--fg-muted); margin-top:12px; line-height:1.65;}
+
+/* founder note */
+.founder{background:var(--bg);}
+.founder__card{display:grid; grid-template-columns:auto 1fr; gap:28px; align-items:center; max-width:860px; margin:0 auto; background:var(--surface-soft); border:1px solid var(--border); border-radius:20px; padding:32px;}
+.founder__photo{width:104px; height:104px; border-radius:999px; background:linear-gradient(135deg,var(--approval-soft),var(--brand-soft)); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:34px; color:var(--approval-deep); font-variation-settings:"SOFT" 100,"opsz" 40; overflow:hidden; flex-shrink:0;}
+.founder__photo img{width:100%;height:100%;object-fit:cover;}
+.founder__q{font-family:var(--font-display); font-size:20px; line-height:1.45; font-variation-settings:"SOFT" 100,"opsz" 28;}
+.founder__sig{font-size:13px; color:var(--fg-muted); margin-top:14px;}
+.founder__sig b{color:var(--fg); font-weight:600;}
+@media(max-width:620px){.founder__card{grid-template-columns:1fr; text-align:center; padding:26px;} .founder__photo{margin:0 auto;}}
+
+/* manifesto */
+.manifesto{text-align:center; background:var(--surface-soft);}
+.manifesto .hearth{width:48px;height:48px;color:var(--brand); margin:0 auto 24px;}
+.manifesto p{font-family:var(--font-display); font-size:46px; font-weight:300; line-height:1.1; letter-spacing:-0.02em; font-variation-settings:"SOFT" 100,"opsz" 72; max-width:18ch; margin:0 auto;}
+.manifesto p em{color:var(--brand);}
+.manifesto .btn{margin-top:36px;}
+@media(max-width:760px){.manifesto p{font-size:34px;}}
+
+/* footer */
+.foot{background:var(--surface-deep); color:rgba(253,251,246,.7); padding:56px 0 36px;}
+.foot__grid{display:grid; grid-template-columns:1.6fr 1fr 1fr 1fr; gap:32px;}
+.foot__brand .brand__name{color:var(--fg-inverse);}
+.foot__brand p{font-size:13px; margin-top:14px; max-width:34ch; line-height:1.6;}
+.foot h4{font-family:var(--font-mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--brand); margin-bottom:14px;}
+.foot ul{list-style:none; display:flex; flex-direction:column; gap:9px;}
+.foot a{font-size:13px;}
+.foot a:hover{color:var(--fg-inverse);}
+.foot__legal{border-top:1px solid rgba(253,251,246,.12); margin-top:40px; padding-top:22px; font-size:12px; color:rgba(253,251,246,.5); display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap;}
+@media(max-width:760px){.foot__grid{grid-template-columns:1fr 1fr;}}
+
+/* exit-intent modal — gentle, dismissible, once per visitor, desktop only */
+.exitmodal{position:fixed; inset:0; z-index:80; display:none; align-items:center; justify-content:center; padding:24px;}
+.exitmodal.is-open{display:flex;}
+.exitmodal__scrim{position:absolute; inset:0; background:rgba(31,26,20,.42); backdrop-filter:blur(2px); opacity:0; transition:opacity var(--dur-mid) var(--ease);}
+.exitmodal.is-open .exitmodal__scrim{opacity:1;}
+.exitmodal__card{position:relative; background:var(--bg); border-radius:20px; box-shadow:var(--shadow-3); max-width:440px; width:100%; padding:36px 32px 30px; text-align:center; transform:translateY(8px); opacity:0; transition:transform var(--dur-slow) var(--ease), opacity var(--dur-slow) var(--ease);}
+.exitmodal.is-open .exitmodal__card{transform:translateY(0); opacity:1;}
+.exitmodal__close{position:absolute; top:14px; right:14px; width:32px; height:32px; border-radius:999px; border:none; background:transparent; color:var(--fg-muted); cursor:pointer; display:flex; align-items:center; justify-content:center;}
+.exitmodal__close:hover{background:var(--surface-soft); color:var(--fg);}
+.exitmodal__close svg{width:18px;height:18px;}
+.exitmodal .hearth{width:42px;height:42px;color:var(--brand); margin:0 auto 16px;}
+.exitmodal h3{font-size:28px; font-variation-settings:"SOFT" 100,"opsz" 34; line-height:1.15;}
+.exitmodal p{font-size:15px; color:var(--fg-muted); margin-top:12px; line-height:1.6; max-width:34ch; margin-left:auto; margin-right:auto;}
+.exitmodal__form{margin-top:22px;}
+.exitmodal__field{display:flex; gap:8px;}
+.exitmodal__form input{flex:1; padding:13px 14px; font-family:var(--font-body); font-size:16px; color:var(--fg); background:var(--bg); border:1px solid var(--border-strong); border-radius:10px;}
+.exitmodal__form input:focus{outline:none; border-color:var(--brand); box-shadow:var(--focus-ring);}
+.exitmodal__form.field--error input{border-color:var(--brand); box-shadow:0 0 0 2px rgba(217,83,44,.18);}
+.exitmodal__form .field__err{margin-top:8px;}
+.exitmodal__fine{font-size:12px; color:var(--fg-soft); margin-top:14px;}
+.exitmodal__done h3{margin-top:6px;}
+@media(max-width:760px){.exitmodal__field{flex-direction:column;}}
+
+/* sticky mobile CTA bar */
+.mobar{position:fixed; left:0; right:0; bottom:0; z-index:60; background:color-mix(in oklab, var(--bg) 94%, transparent); backdrop-filter:saturate(140%) blur(10px); border-top:1px solid var(--border); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); display:none; transform:translateY(100%); transition:transform var(--dur-mid) var(--ease);}
+.mobar.is-on{transform:translateY(0);}
+.mobar .btn{width:100%;}
+@media(max-width:760px){.mobar{display:block;}}
+
+@media(prefers-reduced-motion:reduce){*{transition:none !important; scroll-behavior:auto !important;}}
+</style>
+</head>
+<body id="top">
+<a class="skip" href="#conteudo">Pular para o conteúdo</a>
+
+<!-- shared SVG defs -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="hearth" viewBox="0 0 80 80"><path fill="currentColor" fill-rule="evenodd" d="M14 70 Q8 70 8 64 L8 39 A32 32 0 0 1 72 39 L72 64 Q72 70 66 70 Z M40 30 A17 17 0 0 0 23 47 L23 64 Q23 66 25 66 L55 66 Q57 66 57 64 L57 47 A17 17 0 0 0 40 30 Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c2-3 4-3 6 0s4 3 6 0 4-3 6 0"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></symbol>
+  <symbol id="i-family" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M3 20c0-2.8 2.2-5 5-5s5 2.2 5 5"/><path d="M11 20c0-2.8 2.2-5 5-5s5 2.2 5 5"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11V6a1.5 1.5 0 0 1 3 0v4m0 0V4.5a1.5 1.5 0 0 1 3 0V10m0 0V6a1.5 1.5 0 0 1 3 0v6c0 4-2.5 7-6 7s-6-2-7-5l-1.5-3a1.6 1.6 0 0 1 2.8-1.5L10 12"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h3l2-2h8l2 2h3v11H3z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="7" rx="2"/><rect x="4" y="13" width="16" height="7" rx="2"/><path d="M8 7.5h.01M8 16.5h.01"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h10M18 8h2M4 16h2M10 16h10"/><circle cx="16" cy="8" r="2"/><circle cx="8" cy="16" r="2"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7M6 10v9h12v-9"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></symbol>
+  <symbol id="i-people" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5.5a3 3 0 0 1 0 5.5M21 20c0-2.5-1.5-4.6-3.6-5.5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></symbol>
+</svg>
+
+<!-- NAV -->
+<header class="nav" id="nav">
+  <div class="wrap nav__row">
+    <a class="brand" href="#top" aria-label="Vesta — início">
+      <svg class="brand__mark"><use href="#hearth"/></svg>
+      <span class="brand__name">Vesta</span>
+    </a>
+    <nav class="nav__links">
+      <a href="#recursos">Recursos</a>
+      <a href="#como">Como funciona</a>
+      <a href="#privacidade">Privacidade</a>
+      <a href="#planos">Planos</a>
+    </nav>
+    <div class="nav__right">
+      <a class="nav__signin" href="https://vestaoai.com.br/entrar">Entrar</a>
+      <a class="btn btn--primary" href="#lista" style="padding:11px 20px;">Entrar na lista</a>
+    </div>
+  </div>
+</header>
+
+<main id="conteudo">
+
+<!-- ===== HERO ===== -->
+<section class="hero">
+  <div class="wrap hero__grid">
+    <div>
+      <div class="eyebrow">Para quem segura a casa</div>
+      <h1 style="margin-top:18px;">A casa não precisa morar só na <em>sua cabeça.</em></h1>
+      <p class="hero__sub">A Vesta vive no WhatsApp da família. Você manda o recado — ela organiza, e só age quando você confirma.</p>
+      <div class="hero__cta">
+        <a class="btn btn--primary btn--lg" href="#lista">Tire uma coisa da cabeça</a>
+        <a class="btn btn--ghost" href="#como"><span class="play"><svg width="14" height="14"><use href="#i-play"/></svg></span> Ver como funciona</a>
+      </div>
+      <div class="hero__proof">
+        <div class="avatars" aria-hidden="true">
+          <span class="av1">A</span><span class="av2">C</span><span class="av3">M</span><span class="av4">R</span>
+        </div>
+        <p><b>1.000+ famílias</b> já na lista. 50+ pilotando agora.</p>
+      </div>
+    </div>
+
+    <!-- STAGE: warm family photo + a real approval settling onto the scene -->
+    <div class="stage" role="img" aria-label="Família brasileira preparando a mesa do jantar juntos, com uma aprovação da Vesta na tela">
+      <div class="stage__photo"></div>
+      <div class="stage__card" aria-hidden="true">
+        <span class="stage__card__chip"><span class="dot"></span> Sugerido pela Vesta · agora</span>
+        <div class="stage__card__t">Consulta da Bia — quinta, 14h</div>
+        <div class="stage__card__m">+ lembrete do boleto da escola</div>
+        <div class="stage__card__row">
+          <span class="stage__card__b stage__card__b--p">Aprovar</span>
+          <span class="stage__card__b stage__card__b--g">Mudar</span>
+        </div>
+      </div>
+      <div class="stage__script script">A casa que segue em frente <span class="heart">♥</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- PRODUCT SHOWCASE: phone + callouts, on their own ground (no overlap) -->
+<section class="showcase" id="produto">
+  <div class="wrap">
+    <div class="shead shead--c">
+      <div class="eyebrow">Como é por dentro</div>
+      <h2>Você manda do seu jeito. <em>A Vesta cuida do resto.</em></h2>
+    </div>
+    <div class="showcase__row">
+      <!-- left callouts -->
+      <div class="showcase__col showcase__col--l">
+        <div class="callout">
+          <div class="callout__h"><svg><use href="#i-mic"/></svg> Captura inteligente</div>
+          <p>De voz, texto, foto ou recado. A Vesta entende e organiza.</p>
+        </div>
+        <div class="callout">
+          <div class="callout__h"><svg><use href="#i-check"/></svg> Regras que aprendem</div>
+          <p>A Vesta conhece a rotina e sugere o quê, quando e pra quem.</p>
+        </div>
+      </div>
+
+      <!-- phone: the recado → approval-card transformation (the "aha") -->
+      <div class="phone" aria-hidden="true">
+        <div class="phone__screen">
+          <div class="wa-head">
+            <svg class="brand__mark"><use href="#hearth"/></svg>
+            <span class="wa-head__t">Vesta</span>
+            <span class="wa-head__s"><span class="dot"></span> online</span>
+          </div>
+          <div class="bub bub--meta">Você repassou · 1 toque</div>
+          <div class="bub bub--in">Mãe, preciso marcar a pediatra da Bia pra quinta. E não esquece o boleto da escola que vence dia 10. 🙏</div>
+          <div class="arrowdown">a Vesta organizou</div>
+          <div class="appcard">
+            <span class="appcard__chip"><span class="dot"></span> Sugerido · agora</span>
+            <div class="appcard__t">Marcar pediatra — Bia</div>
+            <div class="appcard__m">Quinta, 8 jun · + lembrete: boleto escola (vence 10/jun)</div>
+            <div class="appcard__row">
+              <span class="appcard__btn appcard__btn--p">Aprovar</span>
+              <span class="appcard__btn appcard__btn--g">Mudar</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- right callout -->
+      <div class="showcase__col showcase__col--r">
+        <div class="callout">
+          <div class="callout__h"><svg><use href="#i-cal"/></svg> No calendário certo</div>
+          <p>Escreve no lugar certo: Google, iCal, Outlook e mais.</p>
+        </div>
+        <div class="callout">
+          <div class="callout__h"><svg><use href="#i-wave"/></svg> Onde a casa já conversa</div>
+          <p>A Vesta vive no WhatsApp da família. Sem aprender ferramenta nova.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- INTEGRATION BAR -->
+<div class="integbar">
+  <div class="wrap integbar__row">
+    <span class="integbar__lead">Conecte uma vez o que a família já usa</span>
+    <span class="integbar__item"><svg><use href="#i-wave"/></svg> WhatsApp</span>
+    <span class="integbar__item"><svg><use href="#i-cal"/></svg> Google Calendar</span>
+    <span class="integbar__item"><svg><use href="#i-cal"/></svg> Apple Calendar</span>
+    <span class="integbar__item"><svg><use href="#i-cal"/></svg> Outlook</span>
+    <span class="integbar__item"><svg><use href="#i-mail"/></svg> E-mail</span>
+    <span class="integbar__item" style="color:var(--fg-soft)">+ mais</span>
+  </div>
+</div>
+
+<!-- INVISIBLE WORK -->
+<section class="band">
+  <div class="wrap">
+    <div class="eyebrow">O trabalho que ninguém vê</div>
+    <h2>Você não está desorganizada. <em>Você é o sistema.</em></h2>
+    <p class="band__lede">É um banco de dados que só existe na sua cabeça — sem backup, sem equipe, sem folga. E quando uma coisa escapa, todo mundo pergunta por que <em>você</em> esqueceu.</p>
+    <div class="band__pile">
+      <span>o médico que a criança foi e o que receitou</span>
+      <span>o dia que a diarista não pode vir</span>
+      <span>o vencimento de cada conta</span>
+      <span>a reunião da escola na quinta</span>
+      <span>o remédio que não pode faltar</span>
+      <span>o passaporte que vence em julho</span>
+      <span>a fruta que o filho do meio não come</span>
+      <span>a senha do wifi de 3 anos atrás</span>
+      <span>quem busca quem, e a que horas</span>
+      <span>o presente do aniversário de sábado</span>
+      <span>quando acaba o gás</span>
+      <span>o que faltou no mercado</span>
+    </div>
+    <div class="band__turn">
+      <svg class="hearth-sm"><use href="#hearth"/></svg>
+      <div class="band__foot">A Vesta tira esse peso de uma pessoa só.<br><em>Menos cobrança. Mais combinados.</em></div>
+    </div>
+  </div>
+</section>
+
+<!-- PHOTO BAND — the family the product serves (school-morning, shared load) -->
+<div class="photoband" style="background-image:image-set(url('img/como-funciona.webp') 1x);" role="img" aria-label="Família brasileira na correria da manhã de escola, dividindo as tarefas">
+  <div class="photoband__cap"><div class="wrap"><span class="script">Para a casa toda. Não só para uma pessoa. ♥</span></div></div>
+</div>
+
+<!-- FEATURE ROW -->
+<section id="recursos">
+  <div class="wrap">
+    <div class="shead shead--c">
+      <div class="eyebrow">Tudo em um só lugar</div>
+      <h2>Tudo que uma família precisa. <em>Em um só lugar.</em></h2>
+    </div>
+    <div class="feat-grid">
+      <div class="fcard"><div class="fcard__ic"><svg><use href="#i-mic"/></svg></div><h3>Entra do jeito que a vida manda</h3><p>Mensagem, e-mail, foto ou áudio: você repassa do jeito que dá e a Vesta entende. Sem formulário, sem triagem.</p></div>
+      <div class="fcard"><div class="fcard__ic"><svg><use href="#i-list"/></svg></div><h3>Organiza e prioriza</h3><p>A Vesta transforma o caos em planos claros, com prazos e prioridades.</p></div>
+      <div class="fcard"><div class="fcard__ic"><svg><use href="#i-family"/></svg></div><h3>Delega sem estresse</h3><p>O combinado vai pra pessoa certa, com contexto e sem cobrança.</p></div>
+      <div class="fcard"><div class="fcard__ic"><svg><use href="#i-cal"/></svg></div><h3>Escreve no lugar certo</h3><p>Compromissos e lembretes no calendário certo, sempre atualizados.</p></div>
+      <div class="fcard"><div class="fcard__ic"><svg><use href="#i-hand"/></svg></div><h3>Resolve por você</h3><p>Peça ajuda quando precisar. A Vesta encontra, agenda e acompanha.</p></div>
+      <div class="fcard"><div class="fcard__ic"><svg><use href="#i-lock"/></svg></div><h3>Privacidade inegociável</h3><p>Seus dados são seus. Seguros, privados e nunca compartilhados.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- COMO FUNCIONA -->
+<section id="como" style="background:var(--surface-soft);">
+  <div class="wrap">
+    <div class="shead">
+      <div class="eyebrow">Como funciona</div>
+      <h2>Você conecta uma vez. <em>Depois, é só aprovar.</em></h2>
+      <p>A parte cansativa nunca foi mandar — é separar, lembrar e cobrar. Isso a Vesta tira de você. Seu trabalho recorrente vira um só: aprovar.</p>
+    </div>
+    <div class="steps">
+      <div class="step"><div class="step__n">01</div><h3>Conecte a casa, uma vez</h3><p>Ligue sua agenda e deixe o e-mail da escola cair direto na Vesta. Configura uma vez e pronto.</p><div class="step__line"></div></div>
+      <div class="step"><div class="step__n">02</div><h3>Manda num toque, sem organizar</h3><p>O recado, a foto, o áudio — você só repassa. Quem tria, entende e monta o plano é a Vesta. Você nunca classifica nada.</p><div class="step__line"></div></div>
+      <div class="step"><div class="step__n">03</div><h3>Você só aprova</h3><p>Um toque: confirma, ajusta ou delega. Esse é o único passo que continua com você.</p><div class="step__line"></div></div>
+      <div class="step"><div class="step__n">04</div><h3>A Vesta cuida do resto</h3><p>Escreve no calendário, avisa quem precisa e acompanha até resolver.</p><div class="step__line"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- RULES + PHOTO -->
+<section id="regras">
+  <div class="wrap split">
+    <div>
+      <div class="eyebrow">Regras da casa</div>
+      <h2 style="font-size:38px; margin-top:14px; font-variation-settings:'SOFT' 100,'opsz' 40;">Você decide as regras. <em>A Vesta segue.</em></h2>
+      <p style="color:var(--fg-muted); margin-top:14px; font-size:16px; line-height:1.6; max-width:42ch;">Nada acontece sem combinar. Você define o limite de autonomia da Vesta e ajusta quando quiser — sem mexer em código, sem chamar suporte.</p>
+      <ul class="rules-list">
+        <li><span class="ck"><svg><use href="#i-check"/></svg></span> Quem pode aprovar o quê — você, o parceiro, ou ninguém.</li>
+        <li><span class="ck"><svg><use href="#i-check"/></svg></span> O que vai pro calendário automaticamente — e o que sempre passa por você.</li>
+        <li><span class="ck"><svg><use href="#i-check"/></svg></span> Quais categorias a Vesta pode delegar sem perguntar.</li>
+        <li><span class="ck"><svg><use href="#i-check"/></svg></span> Quem recebe quais lembretes e em qual canal.</li>
+      </ul>
+    </div>
+    <!-- PHOTO SLOT — warm documentary. ART DIRECTION: a male caregiver or couple at home,
+         late-afternoon light, phone in hand mid-approval. Diversified casting (NOT mother-default). -->
+    <div class="photoslot"><!-- bg: img/regras-pai.webp (two dads, school-morning). --></div>
+  </div>
+</section>
+
+<!-- TIMELINE -->
+<section style="background:var(--surface-soft);">
+  <div class="wrap">
+    <div class="shead">
+      <div class="eyebrow">Como a Vesta evolui com a sua casa</div>
+      <h2>Começa com suas regras. <em>Aprende com o tempo.</em></h2>
+      <p>A Vesta não chega tomando decisões. Entra discreta, segue o que você combinou e vai ganhando contexto na medida em que você confia.</p>
+    </div>
+    <div class="rail">
+      <div class="tcard"><div class="tcard__when">No começo</div><h3>Você define as regras</h3><p>Quem confirma o quê, quais canais a Vesta escuta, o que vai direto pro calendário. Ela começa fazendo só o que você combinou.</p></div>
+      <div class="tcard"><div class="tcard__when">Com o uso</div><h3>Ela aprende o jeito da casa</h3><p>Vai entendendo seus horários, quem cuida de quê, quais mensagens viram tarefa e quais só ficam registradas.</p></div>
+      <div class="tcard"><div class="tcard__when">Com o tempo</div><h3>Sugere antes de você pedir</h3><p>Aos poucos, antecipa padrões: "agendo a próxima vacina?", "reabasteço a feira de sexta?". Você só confirma — ou ajusta a regra.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- PRIVACY -->
+<section id="privacidade" class="priv">
+  <div class="wrap">
+    <div class="shead">
+      <div class="eyebrow">Privacidade da casa</div>
+      <h2>O que é da sua casa <em>fica na sua casa.</em></h2>
+      <p>A Vesta foi pensada por gente que também é mãe, pai e parceiro. Rotina de família é íntimo — e a gente trata assim, do código à operação.</p>
+    </div>
+    <div class="priv__grid">
+      <div class="pcard"><svg class="pcard__ic"><use href="#i-lock"/></svg><h3>Criptografia no que importa</h3><p>Mensagens, fotos e contexto da família são protegidos em trânsito e em repouso.</p></div>
+      <div class="pcard"><svg class="pcard__ic"><use href="#i-eye"/></svg><h3>Não treinamos IA com seus dados</h3><p>Sua casa não vira dataset. Nada do que entra na Vesta sai pra alimentar IA externa.</p></div>
+      <div class="pcard"><svg class="pcard__ic"><use href="#i-server"/></svg><h3>Hospedagem no Brasil, sob a LGPD</h3><p>Servidores na região Brasil e DPO designado. Você exporta ou apaga tudo a qualquer momento.</p></div>
+      <div class="pcard"><svg class="pcard__ic"><use href="#i-sliders"/></svg><h3>Você decide canal por canal</h3><p>Conecta o que quiser, desconecta quando quiser. A Vesta nunca lê o que você não autorizou.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- PLANS -->
+<section id="planos">
+  <div class="wrap">
+    <div class="shead shead--c">
+      <div class="eyebrow">Planos</div>
+      <h2>Preço justo, <em>no seu tempo.</em></h2>
+      <p>Cancela quando quiser. Quem entra agora trava o preço de fundadora por 12 meses.</p>
+    </div>
+    <div class="plans">
+      <div class="plan">
+        <div class="plan__name">Grátis pra sempre</div>
+        <div class="plan__price">R$ 0</div>
+        <div class="plan__desc">Pra tirar a primeira coisa da cabeça e sentir como é.</div>
+        <ul class="plan__feats">
+          <li><svg class="ck"><use href="#i-check"/></svg> 2 adultos + 1 criança</li>
+          <li><svg class="ck"><use href="#i-check"/></svg> 3 categorias</li>
+          <li><svg class="ck"><use href="#i-check"/></svg> 30 dias de histórico</li>
+          <li><svg class="ck"><use href="#i-check"/></svg> 3 regras da casa</li>
+        </ul>
+        <a class="btn btn--secondary plan__cta" href="#lista">Começar grátis</a>
+      </div>
+      <div class="plan plan--feature">
+        <span class="plan__flag">Mais escolhido</span>
+        <div class="plan__name">Premium</div>
+        <div class="plan__price">R$ 29,90<small> /mês</small></div>
+        <div class="plan__desc">A casa inteira na Vesta — sem limites no que importa no dia a dia.</div>
+        <ul class="plan__feats">
+          <li><svg class="ck"><use href="#i-check"/></svg> Família completa, sem limite de membros</li>
+          <li><svg class="ck"><use href="#i-check"/></svg> Categorias e histórico ampliados</li>
+          <li><svg class="ck"><use href="#i-check"/></svg> Regras ilimitadas e delegação</li>
+          <li><svg class="ck"><use href="#i-check"/></svg> Sugestões que aprendem com a casa</li>
+        </ul>
+        <a class="btn btn--primary plan__cta" href="#lista">Entrar na lista</a>
+        <div class="plan__note">Preço de fundadora travado por 12 meses.</div>
+      </div>
+      <div class="plan">
+        <div class="plan__name">Concierge <span style="font-size:12px;color:var(--fg-soft);font-family:var(--font-mono);">add-on</span></div>
+        <div class="plan__price">R$ 49<small> /mês + taxa</small></div>
+        <div class="plan__desc">O que você prefere não fazer, uma pessoa real resolve — você confirma antes da execução.</div>
+        <ul class="plan__feats">
+          <li><svg class="ck"><use href="#i-check"/></svg> Pessoa real cota, agenda e acompanha</li>
+          <li><svg class="ck"><use href="#i-check"/></svg> Taxa só por pedido resolvido</li>
+          <li><svg class="ck"><use href="#i-check"/></svg> Atendimento de seg a sáb</li>
+          <li><svg class="ck"><use href="#i-check"/></svg> Complemento do plano Premium</li>
+        </ul>
+        <a class="btn btn--secondary plan__cta" href="#lista">Quero saber mais</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIALS -->
+<section style="background:var(--surface-soft);">
+  <div class="wrap">
+    <div class="shead shead--c">
+      <div class="eyebrow">Quem segura a casa</div>
+      <h2>Não é mágica. <em>É terça, 18h.</em></h2>
+      <p>Histórias reais de famílias do piloto. Nomes preservados quando pedido.</p>
+    </div>
+    <div class="tg">
+      <div class="quote quote--lead">
+        <div class="quote__mark">"</div>
+        <p>Terça, 18h, no meio da reunião. A Vesta me lembrou da consulta da Bia que eu tinha deixado passar — e já tinha achado dois horários. Eu só toquei em <em>aprovar.</em></p>
+        <div class="quote__who"><span class="quote__av" style="background:var(--brand)">J</span><div><div class="quote__name">Juliana, 38</div><div class="quote__role">Mãe do Theo e da Bia · São Paulo</div></div></div>
+      </div>
+      <div class="quote">
+        <div class="quote__mark">"</div>
+        <p>A gente parou de cobrar um ao outro. O combinado chega pra quem tem que fazer, com prazo e contexto.</p>
+        <div class="quote__who"><span class="quote__av" style="background:var(--approval)">M</span><div><div class="quote__name">Marcos &amp; Leo</div><div class="quote__role">Casal · Belo Horizonte</div></div></div>
+      </div>
+      <div class="quote">
+        <div class="quote__mark">"</div>
+        <p>Pela primeira vez eu não sou a única que sabe de tudo. Isso mudou o clima da casa.</p>
+        <div class="quote__who"><span class="quote__av" style="background:var(--approval-deep)">R</span><div><div class="quote__name">Renata, 41</div><div class="quote__role">Mãe da Sofia · Rio de Janeiro</div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WAITLIST -->
+<section id="lista" class="signup">
+  <div class="wrap signup__grid">
+    <div>
+      <div class="eyebrow">Vagas limitadas · onda de junho</div>
+      <h2>Deixe de ser <em>o sistema da casa.</em></h2>
+      <p style="color:rgba(253,251,246,.78); margin-top:18px; max-width:46ch; line-height:1.7;">A Vesta abre em ondas pequenas, pra cuidar de cada família com calma. Entre agora e, na sua vez, a primeira coisa some da sua cabeça em 2 minutos.</p>
+      <ul class="signup__benefits">
+        <li><svg class="ck"><use href="#i-check"/></svg> Sua primeira regra da casa, no dia em que entrar</li>
+        <li><svg class="ck"><use href="#i-check"/></svg> Preço de fundadora travado por 12 meses</li>
+        <li><svg class="ck"><use href="#i-check"/></svg> Linha direta com quem está construindo</li>
+      </ul>
+      <p class="signup__wave"><b>1.000+</b> famílias já pararam de carregar tudo sozinhas · próxima onda em junho</p>
+    </div>
+    <div class="form" id="waitlist-form">
+      <div class="form__body">
+        <form id="vesta-form" novalidate>
+          <div class="field" id="field-nome"><label for="nome">Seu nome</label><input type="text" id="nome" name="nome" autocomplete="name" required aria-describedby="err-nome"><span class="field__err" id="err-nome">Como a gente te chama?</span></div>
+          <div class="field" id="field-email"><label for="email">E-mail</label><input type="email" id="email" name="email" inputmode="email" autocomplete="email" required aria-describedby="err-email"><span class="field__err" id="err-email">Confere o e-mail? Parece faltar algo.</span></div>
+          <div class="field">
+            <label>Quantas pessoas moram com você?</label>
+            <div class="choices" role="radiogroup" aria-label="Quantas pessoas moram com você?">
+              <label class="choice"><input type="radio" name="lar" value="solo"><span>Moro sozinho(a)</span></label>
+              <label class="choice"><input type="radio" name="lar" value="casal"><span>Eu + parceiro(a)</span></label>
+              <label class="choice"><input type="radio" name="lar" value="filhos" checked><span>Família com filhos</span></label>
+              <label class="choice"><input type="radio" name="lar" value="multi"><span>Multigeracional</span></label>
+            </div>
+          </div>
+          <div class="hp" aria-hidden="true"><label>Empresa<input type="text" name="company" tabindex="-1" autocomplete="off"></label></div>
+          <button type="submit" class="btn btn--primary btn--lg form__submit"><span class="btn__spin" aria-hidden="true"></span><span class="btn__label">Quero entrar na lista</span></button>
+          <p class="form__neterr" id="form-neterr" role="alert" style="display:none">Ops, algo travou aqui. Tenta de novo em instantes?</p>
+        </form>
+        <div class="form__or">ou</div>
+        <!-- WhatsApp click-to-chat. TODO: replace 55XXXXXXXXXXX with the real Vesta WhatsApp Business number once the Twilio/Meta sender is live. Until then this stays disabled-looking via the data-pending flag handled in JS. -->
+        <a class="btn btn--wa btn--lg" id="wa-cta" href="https://wa.me/55XXXXXXXXXXX?text=Oi%2C%20Vesta!%20Quero%20entrar%20na%20lista%20de%20espera." data-pending="true" target="_blank" rel="noopener">
+          <svg><use href="#i-wave"/></svg> Começar pelo WhatsApp
+        </a>
+        <p class="form__fine">Sem spam. Você só recebe quando a sua vez chegar. Ao continuar, você concorda com a nossa <a href="https://vestaoai.com.br/privacidade">política de privacidade</a>.</p>
+      </div>
+      <div class="form__success" role="status" aria-live="polite">
+        <svg><use href="#hearth"/></svg>
+        <h3>Você está na lista.</h3>
+        <p>A gente chama na sua vez. Enquanto isso, fica por perto — é onde a gente conta o que vem primeiro.</p>
+        <div class="form__success-cta"><a class="btn btn--primary btn--sm" href="https://instagram.com/vestaoai" target="_blank" rel="noopener">Seguir @vestaoai</a><a class="btn btn--secondary btn--sm" id="share-cta" href="https://wa.me/?text=Achei%20a%20Vesta%20%E2%80%94%20uma%20assistente%20da%20fam%C3%ADlia%20no%20WhatsApp.%20Entra%20na%20lista%3A%20https%3A%2F%2Fvestaoai.com.br" target="_blank" rel="noopener">Contar pra uma amiga</a></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST STRIP -->
+<div class="trust">
+  <div class="wrap trust__row">
+    <div class="trust__item"><svg><use href="#i-shield"/></svg> <span>Seus dados. Sua família. <b>Sua confiança.</b></span></div>
+    <div class="trust__item"><svg><use href="#i-server"/></svg> <span>Hospedado no Brasil · <b>conforme a LGPD</b></span></div>
+    <div class="trust__script">Feita para famílias reais. Como a sua.</div>
+  </div>
+</div>
+
+<!-- FAQ -->
+<section>
+  <div class="wrap">
+    <div class="shead shead--c">
+      <div class="eyebrow">Perguntas frequentes</div>
+      <h2>O que toda família <em>pergunta primeiro.</em></h2>
+    </div>
+    <div class="faq">
+      <details><summary>É só mais um app de agenda? <svg class="pm" width="20" height="20"><use href="#i-plus"/></svg></summary><p>Não. A Vesta não é um app de tarefas, calendário ou checklist. Ela vive no WhatsApp que a família já usa, entende o recado que chega e transforma em ação — escrevendo no calendário que você já tem, quando você confirma.</p></details>
+      <details><summary>Quem da família precisa instalar? <svg class="pm" width="20" height="20"><use href="#i-plus"/></svg></summary><p>Você usa a Vesta pelo WhatsApp que já tem — sem aprender ferramenta nova. As outras pessoas da casa não instalam nada: só recebem o que foi combinado, pelo canal que você definir.</p></details>
+      <details><summary>A Vesta lê tudo do meu WhatsApp? <svg class="pm" width="20" height="20"><use href="#i-plus"/></svg></summary><p>Não. A Vesta só lê o que você encaminha pra ela. Você decide canal por canal o que ela enxerga — e desconecta quando quiser.</p></details>
+      <details><summary>O Concierge é humano ou IA? <svg class="pm" width="20" height="20"><use href="#i-plus"/></svg></summary><p>Humano. Uma pessoa real cota, agenda e acompanha o pedido. A Vesta organiza; você confirma antes de qualquer execução. O Concierge é um add-on do Premium, por R$ 49/mês + taxa por pedido resolvido.</p></details>
+      <details><summary>Meus dados são usados pra treinar IA? <svg class="pm" width="20" height="20"><use href="#i-plus"/></svg></summary><p>Nunca. Sua casa não vira dataset. Nada do que entra na Vesta sai pra alimentar IA externa, e tudo segue a LGPD com hospedagem no Brasil.</p></details>
+      <details><summary>Quanto vai custar? <svg class="pm" width="20" height="20"><use href="#i-plus"/></svg></summary><p>Tem plano grátis pra sempre. O Premium custa R$ 29,90/mês e o Concierge é um add-on por R$ 49/mês + taxa por pedido. Quem entra pela lista agora trava o preço de fundadora por 12 meses.</p></details>
+      <details><summary>Quando vou conseguir entrar? <svg class="pm" width="20" height="20"><use href="#i-plus"/></svg></summary><p>A Vesta abre em ondas pequenas. A próxima é em junho. Entrando na lista, a gente chama você na sua vez — sem pressa, pra cuidar de cada família com calma.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- FOUNDER NOTE -->
+<section class="founder">
+  <div class="wrap">
+    <div class="founder__card">
+      <!-- TODO: swap initials for a real warm founder photo (img/fundadora.webp) -->
+      <div class="founder__photo">V</div>
+      <div>
+        <div class="eyebrow">De quem está construindo</div>
+        <p class="founder__q" style="margin-top:12px;">"Eu vivia sendo a agenda, o sistema e o lembrete da minha casa — e nenhum app foi feito pra isso. Construí a Vesta pra tirar esse peso de uma pessoa só. A casa é de todo mundo; o trabalho de lembrar também devia ser."</p>
+        <div class="founder__sig"><b>— Gio</b>, fundador(a) da Vesta</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MANIFESTO -->
+<section class="manifesto">
+  <div class="wrap">
+    <svg class="hearth"><use href="#hearth"/></svg>
+    <p>A casa aprende. <em>Você respira.</em></p>
+    <a class="btn btn--primary btn--lg" href="#lista">Entrar na lista</a>
+  </div>
+</section>
+
+</main>
+
+<!-- EXIT-INTENT MODAL — gentle, once per visitor, desktop only -->
+<div class="exitmodal" id="exitmodal" role="dialog" aria-modal="true" aria-labelledby="exit-title" aria-hidden="true">
+  <div class="exitmodal__scrim" data-exit-close></div>
+  <div class="exitmodal__card">
+    <button class="exitmodal__close" data-exit-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="exitmodal__body">
+      <svg class="hearth" aria-hidden="true"><use href="#hearth"/></svg>
+      <h3 id="exit-title">Antes de ir — <em>tira uma coisa da cabeça?</em></h3>
+      <p>Entra na lista e a gente te chama na próxima onda. Sem pressa, sem spam.</p>
+      <form class="exitmodal__form" id="exit-form" novalidate>
+        <div class="hp" aria-hidden="true"><label>Empresa<input type="text" name="company" tabindex="-1" autocomplete="off"></label></div>
+        <div class="exitmodal__field">
+          <input type="email" id="exit-email" name="email" inputmode="email" placeholder="Seu melhor e-mail" autocomplete="email" required aria-describedby="err-exit">
+          <button type="submit" class="btn btn--primary"><span class="btn__spin" aria-hidden="true"></span><span class="btn__label">Entrar na lista</span></button>
+        </div>
+        <span class="field__err" id="err-exit" style="text-align:left">Confere o e-mail? Parece faltar algo.</span>
+      </form>
+      <p class="exitmodal__fine">1.000+ famílias já na lista · próxima onda em junho</p>
+    </div>
+    <div class="exitmodal__done" style="display:none">
+      <svg class="hearth"><use href="#hearth"/></svg>
+      <h3>Você está na lista. ♥</h3>
+      <p>A gente chama na sua vez. Pode fechar a aba tranquila.</p>
+    </div>
+  </div>
+</div>
+
+<!-- STICKY MOBILE CTA -->
+<div class="mobar" id="mobar"><a class="btn btn--primary" href="#lista">Tire uma coisa da cabeça</a></div>
+
+<!-- FOOTER -->
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__grid">
+      <div class="foot__brand">
+        <a class="brand" href="#top" aria-label="Vesta"><svg class="brand__mark"><use href="#hearth"/></svg><span class="brand__name">Vesta</span></a>
+        <p>A assistente inteligente da família. Captura, organiza e delega — para um dia a dia mais leve.</p>
+      </div>
+      <div><h4>Produto</h4><ul><li><a href="#recursos">Recursos</a></li><li><a href="#como">Como funciona</a></li><li><a href="#planos">Planos</a></li><li><a href="#lista">Lista de espera</a></li></ul></div>
+      <div><h4>Casa</h4><ul><li><a href="https://vestaoai.com.br/privacidade">Privacidade</a></li><li><a href="https://vestaoai.com.br/termos">Termos de uso</a></li><li><a href="#lista">Começar agora</a></li></ul></div>
+      <div><h4>Contato</h4><ul><li><a href="mailto:hello@vestaoai.com.br">hello@vestaoai.com.br</a></li><li><a href="mailto:privacidade@vestaoai.com.br">privacidade@vestaoai.com.br</a></li><li><a href="https://instagram.com/vestaoai">Instagram · @vestaoai</a></li></ul></div>
+    </div>
+    <div class="foot__legal">
+      <span>São Paulo · Brasil · Feito com cuidado para famílias brasileiras.</span>
+      <span>© 2026 Vesta</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Lightweight event helper — works with Plausible if enabled, else no-ops safely.
+function vestaTrack(name, props){ try{ if(window.plausible) window.plausible(name, props?{props:props}:undefined); }catch(e){} }
+
+(function(){
+  var nav=document.getElementById('nav'), mobar=document.getElementById('mobar');
+  var onScroll=function(){
+    nav.classList.toggle('is-stuck', window.scrollY>8);
+    if(mobar) mobar.classList.toggle('is-on', window.scrollY>620);
+  };
+  window.addEventListener('scroll',onScroll,{passive:true}); onScroll();
+})();
+
+var EMAIL_RE=/^\S+@\S+\.\S+$/;
+var WAITLIST_ENDPOINT="https://feqykyiyqzkmepfeehmg.supabase.co/functions/v1/waitlist-signup";
+function setError(fieldEl, inputEl, on){
+  if(!fieldEl) return;
+  fieldEl.classList.toggle('field--error', on);
+  if(inputEl) inputEl.setAttribute('aria-invalid', on?'true':'false');
+}
+// POST to the secured Edge Function. Resolves true on success (incl. dupes), false on a real failure.
+function submitWaitlist(payload){
+  return fetch(WAITLIST_ENDPOINT, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+  }).then(function(r){ return r.ok; }).catch(function(){ return false; });
+}
+// Waitlist form — validates inline, shows a pending state, then a graceful success.
+// NOTE TO DEV: no data is sent by default; wire the endpoint where marked.
+(function(){
+  var form=document.getElementById('vesta-form'); var card=document.getElementById('waitlist-form');
+  if(!form) return;
+  var fNome=document.getElementById('field-nome'), fEmail=document.getElementById('field-email');
+  var iNome=document.getElementById('nome'), iEmail=document.getElementById('email');
+  var btn=form.querySelector('button[type="submit"]');
+  iNome.addEventListener('input', function(){ if(iNome.value.trim()) setError(fNome,iNome,false); });
+  iEmail.addEventListener('input', function(){ if(EMAIL_RE.test(iEmail.value.trim())) setError(fEmail,iEmail,false); });
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    var nome=iNome.value.trim(), email=iEmail.value.trim();
+    var badNome=!nome, badEmail=!EMAIL_RE.test(email);
+    setError(fNome,iNome,badNome); setError(fEmail,iEmail,badEmail);
+    if(badNome||badEmail){ (badNome?iNome:iEmail).focus(); return; }
+    var payload={email:email, name:nome, lar:(form.querySelector('input[name="lar"]:checked')||{}).value||null, source:'landing-form', company:(form.company?form.company.value:'')};
+    btn.setAttribute('aria-busy','true'); btn.querySelector('.btn__label').textContent='Entrando…';
+    submitWaitlist(payload).then(function(ok){
+      btn.removeAttribute('aria-busy'); btn.querySelector('.btn__label').textContent='Quero entrar na lista';
+      if(ok){
+        vestaTrack('Waitlist Signup', {lar: payload.lar});
+        card.classList.add('is-done'); card.scrollIntoView({behavior:'smooth',block:'center'});
+      } else {
+        var err=document.getElementById('form-neterr'); if(err) err.style.display='block';
+      }
+    });
+  });
+})();
+
+// WhatsApp CTA — until the real number is wired (data-pending), route to the email form instead of a dead wa.me link.
+(function(){
+  var wa=document.getElementById('wa-cta'); if(!wa) return;
+  wa.addEventListener('click', function(e){
+    vestaTrack('WhatsApp CTA');
+    if(wa.getAttribute('data-pending')==='true'){
+      e.preventDefault();
+      var nome=document.getElementById('nome'); if(nome){ nome.focus(); nome.scrollIntoView({behavior:'smooth',block:'center'}); }
+    }
+  });
+})();
+
+// Track all primary CTA clicks (analytics only).
+document.querySelectorAll('a.btn--primary, .nav__cta').forEach(function(b){
+  b.addEventListener('click', function(){ vestaTrack('CTA Click', {label:(b.textContent||'').trim().slice(0,40)}); });
+});
+var share=document.getElementById('share-cta');
+if(share) share.addEventListener('click', function(){ vestaTrack('Referral Share', {source:'post-signup'}); });
+
+// Exit-intent modal — gentle: desktop only, once per visitor, dismissible.
+(function(){
+  var modal=document.getElementById('exitmodal'); if(!modal) return;
+  var KEY='vesta_exit_seen';
+  var seen=function(){ try{return localStorage.getItem(KEY)==='1';}catch(e){return false;} };
+  var mark=function(){ try{localStorage.setItem(KEY,'1');}catch(e){} };
+  var isMobile=function(){ return window.matchMedia('(max-width:760px)').matches; };
+  var lastFocus=null;
+
+  var FOCUSABLE='a[href],button:not([disabled]),input,[tabindex]:not([tabindex="-1"])';
+  function open(){
+    if(seen()||modal.classList.contains('is-open')) return;
+    lastFocus=document.activeElement;
+    modal.classList.add('is-open'); modal.setAttribute('aria-hidden','false'); mark();
+    vestaTrack('Exit Intent Shown');
+    var inp=document.getElementById('exit-email'); if(inp) setTimeout(function(){inp.focus();},80);
+  }
+  function close(){
+    modal.classList.remove('is-open'); modal.setAttribute('aria-hidden','true');
+    if(lastFocus&&lastFocus.focus) lastFocus.focus();
+  }
+  // Focus trap: keep Tab inside the open dialog.
+  modal.addEventListener('keydown', function(e){
+    if(e.key!=='Tab'||!modal.classList.contains('is-open')) return;
+    var items=Array.prototype.slice.call(modal.querySelectorAll(FOCUSABLE)).filter(function(el){return el.offsetParent!==null;});
+    if(!items.length) return;
+    var first=items[0], last=items[items.length-1];
+    if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+  });
+
+  // Don't arm immediately — the cursor often starts near the top (address bar) on load,
+  // which would fire instantly. Require: page open ≥8s + real engagement, then exit intent.
+  var armed=false, moved=false;
+  setTimeout(function(){ armed=true; }, 8000);
+  window.addEventListener('scroll', function(){ if(window.scrollY>120) moved=true; }, {passive:true});
+  document.addEventListener('mousemove', function(e){ if(e.clientY>140) moved=true; }, {passive:true});
+
+  // DESKTOP: cursor leaves through the top of the viewport (intent to close/switch tab).
+  document.addEventListener('mouseout', function(e){
+    if(armed && moved && !isMobile() && !e.relatedTarget && e.clientY<=0) open();
+  });
+
+  // MOBILE: the analog of exit-intent is a deliberate upward fling after scrolling down —
+  // a quick scroll back toward the address bar. Requires real depth first, then a fast rise.
+  var lastY=window.scrollY, lastT=Date.now(), deepEnough=false;
+  window.addEventListener('scroll', function(){
+    if(!isMobile()) return;
+    var y=window.scrollY, t=Date.now(), dt=t-lastT||1;
+    if(y>700) deepEnough=true;                          // they've engaged with the page
+    var velUp=(lastY-y)/dt;                             // px per ms, positive = scrolling up
+    if(armed && deepEnough && y<320 && velUp>1.1) open(); // fast rise back to the top
+    lastY=y; lastT=t;
+  }, {passive:true});
+
+  modal.querySelectorAll('[data-exit-close]').forEach(function(el){ el.addEventListener('click', close); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape'&&modal.classList.contains('is-open')) close(); });
+
+  var f=document.getElementById('exit-form');
+  if(f){
+    var xi=document.getElementById('exit-email'), xb=f.querySelector('button[type="submit"]');
+    xi.addEventListener('input', function(){ if(EMAIL_RE.test(xi.value.trim())) setError(f,xi,false); });
+    f.addEventListener('submit', function(e){
+      e.preventDefault();
+      var email=(xi.value||'').trim();
+      if(!EMAIL_RE.test(email)){ setError(f,xi,true); xi.focus(); return; }
+      setError(f,xi,false);
+      xb.setAttribute('aria-busy','true'); xb.querySelector('.btn__label').textContent='Entrando…';
+      submitWaitlist({email:email, source:'exit-intent', company:(f.company?f.company.value:'')}).then(function(ok){
+        xb.removeAttribute('aria-busy'); xb.querySelector('.btn__label').textContent='Entrar na lista';
+        if(ok){
+          vestaTrack('Waitlist Signup', {source:'exit-intent'});
+          modal.querySelector('.exitmodal__body').style.display='none';
+          modal.querySelector('.exitmodal__done').style.display='block';
+          setTimeout(close, 2800);
+        } else { setError(f,xi,true); }
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>
