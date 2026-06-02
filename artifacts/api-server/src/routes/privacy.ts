@@ -27,6 +27,70 @@ import { getSessionId, clearSession } from "../lib/auth";
 
 const router = Router();
 
+// GET /privacy/export/summary — lightweight count query before the full export
+router.get("/privacy/export/summary", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const hid = getHouseholdId(req);
+
+    const [
+      membersCount,
+      contactsCount,
+      inboxCount,
+      actionsCount,
+      eventsCount,
+      tasksCount,
+      rulesCount,
+      patternsCount,
+      memoryCount,
+      auditCount,
+    ] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` }).from(membersTable).where(eq(membersTable.household_id, hid)),
+      db.select({ count: sql<number>`count(*)::int` }).from(contactsTable).where(eq(contactsTable.household_id, hid)),
+      db.select({ count: sql<number>`count(*)::int` }).from(inboxItemsTable).where(eq(inboxItemsTable.household_id, hid)),
+      db.select({ count: sql<number>`count(*)::int` }).from(suggestedActionsTable).where(eq(suggestedActionsTable.household_id, hid)),
+      db.select({ count: sql<number>`count(*)::int` }).from(calendarEventsTable).where(eq(calendarEventsTable.household_id, hid)),
+      db.select({ count: sql<number>`count(*)::int` }).from(tasksTable).where(eq(tasksTable.household_id, hid)),
+      db.select({ count: sql<number>`count(*)::int` }).from(rulesTable).where(eq(rulesTable.household_id, hid)),
+      db.select({ count: sql<number>`count(*)::int` }).from(patternObservationsTable).where(eq(patternObservationsTable.household_id, hid)),
+      db.select({ count: sql<number>`count(*)::int` }).from(memoryStagingTable).where(eq(memoryStagingTable.household_id, hid)),
+      db.select({ count: sql<number>`count(*)::int` }).from(auditLogTable).where(eq(auditLogTable.household_id, hid)),
+    ]);
+
+    const c = {
+      members:           membersCount[0]?.count  ?? 0,
+      contacts:          contactsCount[0]?.count  ?? 0,
+      inbox_items:       inboxCount[0]?.count     ?? 0,
+      suggested_actions: actionsCount[0]?.count   ?? 0,
+      events:            eventsCount[0]?.count     ?? 0,
+      tasks:             tasksCount[0]?.count      ?? 0,
+      rules:             rulesCount[0]?.count      ?? 0,
+      patterns:          patternsCount[0]?.count   ?? 0,
+      memory_staging:    memoryCount[0]?.count     ?? 0,
+      audit_log:         auditCount[0]?.count      ?? 0,
+    };
+
+    // Rough per-record estimates (bytes): inbox/audit ~800, events/actions ~500, rest ~300
+    const estimatedBytes =
+      c.members           * 300 +
+      c.contacts          * 300 +
+      c.inbox_items       * 800 +
+      c.suggested_actions * 500 +
+      c.events            * 500 +
+      c.tasks             * 400 +
+      c.rules             * 300 +
+      c.patterns          * 400 +
+      c.memory_staging    * 300 +
+      c.audit_log         * 800 +
+      4096; // fixed envelope overhead
+
+    res.json({ ...c, estimated_size_kb: Math.max(1, Math.round(estimatedBytes / 1024)) });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get privacy export summary");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // GET /privacy/export — LGPD Art. 18 V: data portability
 router.get("/privacy/export", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }

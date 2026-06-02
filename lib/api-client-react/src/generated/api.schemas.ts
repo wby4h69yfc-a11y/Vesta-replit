@@ -348,6 +348,21 @@ export interface ConsentRateLimitError {
   next_allowed_at: string;
 }
 
+export interface PrivacyExportSummary {
+  members: number;
+  contacts: number;
+  inbox_items: number;
+  suggested_actions: number;
+  events: number;
+  tasks: number;
+  rules: number;
+  patterns: number;
+  memory_staging: number;
+  audit_log: number;
+  /** Rough estimate of the exported JSON size in kilobytes */
+  estimated_size_kb: number;
+}
+
 export type InboxItemSource =
   (typeof InboxItemSource)[keyof typeof InboxItemSource];
 

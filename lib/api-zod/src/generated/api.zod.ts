@@ -850,6 +850,25 @@ export const RequestContactConsentResponse = zod.object({
 });
 
 /**
+ * @summary Returns item counts and estimated file size before a full export
+ */
+export const GetPrivacyExportSummaryResponse = zod.object({
+  members: zod.number(),
+  contacts: zod.number(),
+  inbox_items: zod.number(),
+  suggested_actions: zod.number(),
+  events: zod.number(),
+  tasks: zod.number(),
+  rules: zod.number(),
+  patterns: zod.number(),
+  memory_staging: zod.number(),
+  audit_log: zod.number(),
+  estimated_size_kb: zod
+    .number()
+    .describe("Rough estimate of the exported JSON size in kilobytes"),
+});
+
+/**
  * @summary Export all household data as JSON (LGPD Art. 18 V)
  */
 export const exportPrivacyDataResponseHouseholdOneBriefingHourMin = 0;
