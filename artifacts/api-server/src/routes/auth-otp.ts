@@ -53,7 +53,13 @@ function generateOtp(): string {
 }
 
 function normalizePhone(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
+  const trimmed = raw.trim();
+  // Client sends full E.164 (e.g. "+5511999999999") — strip whitespace/formatting only
+  if (trimmed.startsWith("+")) {
+    return "+" + trimmed.replace(/\D/g, "");
+  }
+  // Bare digits fallback (backwards compatibility): assume Brazilian number
+  const digits = trimmed.replace(/\D/g, "");
   if (digits.startsWith("55") && digits.length >= 12) return `+${digits}`;
   if (digits.length >= 10) return `+55${digits}`;
   return `+${digits}`;

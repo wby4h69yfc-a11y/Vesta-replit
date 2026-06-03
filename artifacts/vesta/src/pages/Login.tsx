@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
-import { Home, MessageCircle, ArrowRight, Loader2, ChevronLeft, CheckCircle2 } from "lucide-react";
+import { Home, MessageCircle, ArrowRight, Loader2, ChevronLeft, CheckCircle2, ChevronDown, X, Search } from "lucide-react";
 
 const V = {
   primary: "#0E3B2E",
@@ -22,6 +22,41 @@ const ERROR_MESSAGES: Record<string, string> = {
   apple_not_configured: "Login com Apple ainda não está disponível.",
   invalid_state: "Sessão expirada. Tente novamente.",
 };
+
+interface Country {
+  dial: string;
+  flag: string;
+  name: string;
+}
+
+const COUNTRIES: Country[] = [
+  { dial: "+55", flag: "🇧🇷", name: "Brasil" },
+  { dial: "+351", flag: "🇵🇹", name: "Portugal" },
+  { dial: "+1", flag: "🇺🇸", name: "EUA / Canadá" },
+  { dial: "+54", flag: "🇦🇷", name: "Argentina" },
+  { dial: "+52", flag: "🇲🇽", name: "México" },
+  { dial: "+57", flag: "🇨🇴", name: "Colômbia" },
+  { dial: "+56", flag: "🇨🇱", name: "Chile" },
+  { dial: "+51", flag: "🇵🇪", name: "Peru" },
+  { dial: "+598", flag: "🇺🇾", name: "Uruguai" },
+  { dial: "+595", flag: "🇵🇾", name: "Paraguai" },
+  { dial: "+591", flag: "🇧🇴", name: "Bolívia" },
+  { dial: "+58", flag: "🇻🇪", name: "Venezuela" },
+  { dial: "+593", flag: "🇪🇨", name: "Equador" },
+  { dial: "+44", flag: "🇬🇧", name: "Reino Unido" },
+  { dial: "+49", flag: "🇩🇪", name: "Alemanha" },
+  { dial: "+34", flag: "🇪🇸", name: "Espanha" },
+  { dial: "+33", flag: "🇫🇷", name: "França" },
+  { dial: "+39", flag: "🇮🇹", name: "Itália" },
+  { dial: "+61", flag: "🇦🇺", name: "Austrália" },
+  { dial: "+81", flag: "🇯🇵", name: "Japão" },
+  { dial: "+86", flag: "🇨🇳", name: "China" },
+  { dial: "+91", flag: "🇮🇳", name: "Índia" },
+  { dial: "+244", flag: "🇦🇴", name: "Angola" },
+  { dial: "+258", flag: "🇲🇿", name: "Moçambique" },
+  { dial: "+27", flag: "🇿🇦", name: "África do Sul" },
+  { dial: "+972", flag: "🇮🇱", name: "Israel" },
+];
 
 interface OtpInputProps {
   value: string[];
@@ -105,13 +140,15 @@ function AppleIcon() {
 export default function LoginPage() {
   const [screen, setScreen] = useState<Screen>("phone");
   const [phone, setPhone] = useState("");
+  const [country, setCountry] = useState<Country>(COUNTRIES[0]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
   const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [appleAvailable, setAppleAvailable] = useState(false);
 
-  // Check which social providers are available + handle OAuth redirect errors
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const errParam = params.get("error");
@@ -126,14 +163,14 @@ export default function LoginPage() {
       .catch(() => {});
   }, []);
 
-  // Countdown for resend
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [resendCooldown]);
 
-  function formatPhoneDisplay(raw: string) {
+  function formatLocalPhone(raw: string) {
+    if (country.dial !== "+55") return raw;
     const digits = raw.replace(/\D/g, "");
     if (digits.length <= 2) return digits;
     if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
@@ -142,9 +179,14 @@ export default function LoginPage() {
   }
 
   function handlePhoneChange(raw: string) {
-    const digits = raw.replace(/\D/g, "").slice(0, 11);
+    const maxDigits = country.dial === "+55" ? 11 : 15;
+    const digits = raw.replace(/\D/g, "").slice(0, maxDigits);
     setPhone(digits);
     setError(null);
+  }
+
+  function fullPhone() {
+    return `${country.dial}${phone}`;
   }
 
   async function sendOtp() {
@@ -154,7 +196,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/otp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ phone: fullPhone() }),
       });
       const data = await res.json() as { sent?: boolean; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Falha ao enviar");
@@ -177,7 +219,7 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ phone, code }),
+        body: JSON.stringify({ phone: fullPhone(), code }),
       });
       const data = await res.json() as { success?: boolean; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Código inválido");
@@ -198,7 +240,13 @@ export default function LoginPage() {
     await sendOtp();
   }
 
+  const minPhoneLength = country.dial === "+55" ? 10 : 5;
   const otpComplete = otp.every((c) => c !== "");
+
+  const filteredCountries = COUNTRIES.filter(c =>
+    c.name.toLowerCase().includes(pickerSearch.toLowerCase()) ||
+    c.dial.includes(pickerSearch)
+  );
 
   return (
     <div
@@ -243,18 +291,24 @@ export default function LoginPage() {
               className="flex items-center gap-3 px-4 py-4 rounded-2xl"
               style={{ background: V.cream }}
             >
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-base">🇧🇷</span>
-                <span className="text-sm font-semibold" style={{ color: V.ink }}>+55</span>
-              </div>
+              {/* Country picker trigger */}
+              <button
+                type="button"
+                onClick={() => { setPickerOpen(true); setPickerSearch(""); }}
+                className="flex items-center gap-1.5 shrink-0 hover:opacity-70 transition-opacity"
+              >
+                <span className="text-base leading-none">{country.flag}</span>
+                <span className="text-sm font-semibold" style={{ color: V.ink }}>{country.dial}</span>
+                <ChevronDown className="h-3 w-3" style={{ color: V.muted }} />
+              </button>
               <div className="w-px h-5 rounded-full" style={{ background: V.beige }} />
               <input
                 type="tel"
                 inputMode="numeric"
-                placeholder="(11) 99999-9999"
-                value={formatPhoneDisplay(phone)}
+                placeholder={country.dial === "+55" ? "(11) 99999-9999" : "Número local"}
+                value={formatLocalPhone(phone)}
                 onChange={(e) => handlePhoneChange(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && phone.length >= 10) void sendOtp(); }}
+                onKeyDown={(e) => { if (e.key === "Enter" && phone.length >= minPhoneLength) void sendOtp(); }}
                 className="flex-1 bg-transparent text-base outline-none"
                 style={{ color: V.ink }}
                 autoFocus
@@ -267,7 +321,7 @@ export default function LoginPage() {
 
             <button
               onClick={sendOtp}
-              disabled={phone.length < 10 || loading}
+              disabled={phone.length < minPhoneLength || loading}
               className="w-full py-4 rounded-full text-base font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-40 transition-opacity hover:opacity-90"
               style={{ background: V.whatsapp }}
             >
@@ -344,7 +398,7 @@ export default function LoginPage() {
               <p className="text-sm" style={{ color: V.muted }}>
                 Enviamos um código de 6 dígitos para{" "}
                 <span className="font-semibold" style={{ color: V.ink }}>
-                  +55 {formatPhoneDisplay(phone)}
+                  {country.flag} {country.dial} {formatLocalPhone(phone)}
                 </span>
               </p>
             </div>
@@ -401,6 +455,82 @@ export default function LoginPage() {
           </div>
         )}
       </div>
+
+      {/* ── COUNTRY PICKER MODAL ── */}
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          onClick={() => setPickerOpen(false)}
+        >
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="relative w-full max-w-lg rounded-t-3xl overflow-hidden flex flex-col"
+            style={{ background: V.cream, maxHeight: "72vh" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-5 pt-5 pb-3 shrink-0" style={{ borderBottom: `1px solid ${V.beige}` }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="font-semibold text-sm" style={{ color: V.ink }}>Selecionar país</p>
+                <button
+                  onClick={() => setPickerOpen(false)}
+                  className="w-7 h-7 flex items-center justify-center rounded-full"
+                  style={{ background: V.beige }}
+                >
+                  <X className="h-4 w-4" style={{ color: V.muted }} />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: V.beige }}>
+                <Search className="h-4 w-4 shrink-0" style={{ color: V.muted }} />
+                <input
+                  type="text"
+                  placeholder="Pesquisar país ou código..."
+                  value={pickerSearch}
+                  onChange={(e) => setPickerSearch(e.target.value)}
+                  className="flex-1 bg-transparent text-sm outline-none"
+                  style={{ color: V.ink }}
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {/* Country list */}
+            <div className="overflow-y-auto flex-1">
+              {filteredCountries.length === 0 ? (
+                <p className="px-5 py-6 text-sm text-center" style={{ color: V.muted }}>
+                  Nenhum país encontrado.
+                </p>
+              ) : (
+                filteredCountries.map((c) => {
+                  const selected = c.dial === country.dial && c.flag === country.flag;
+                  return (
+                    <button
+                      key={`${c.dial}-${c.flag}`}
+                      onClick={() => {
+                        setCountry(c);
+                        setPhone("");
+                        setPickerOpen(false);
+                        setPickerSearch("");
+                      }}
+                      className="w-full flex items-center gap-3 px-5 py-3.5 text-left transition-opacity hover:opacity-80"
+                      style={{
+                        borderBottom: `1px solid ${V.beige}66`,
+                        background: selected ? "#EAF1E5" : "transparent",
+                      }}
+                    >
+                      <span className="text-xl leading-none">{c.flag}</span>
+                      <span className="text-sm flex-1" style={{ color: V.ink }}>{c.name}</span>
+                      <span className="text-sm font-medium" style={{ color: selected ? V.primary : V.muted }}>
+                        {c.dial}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
