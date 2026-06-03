@@ -40,7 +40,7 @@ async function seedPattern(
 }
 
 /** Poll DB until the condition resolves or throw on timeout. */
-async function pollDb<T>(
+async function pollDb<T extends Record<string, unknown>>(
   db: Client,
   query: string,
   params: unknown[],
