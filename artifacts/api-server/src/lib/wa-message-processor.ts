@@ -53,7 +53,7 @@ export type ProcessOutcome =
   | { kind: "dismissed_via_wa"; actionId: number; householdId: number; phone: string }
   | { kind: "edited_via_wa"; actionId: number; newTitle: string; householdId: number; phone: string }
   | { kind: "undone_via_wa"; actionTitle: string; householdId: number; phone: string }
-  | { kind: "consent_updated"; contactId: number; newStatus: "consented" | "revoked"; phone: string }
+  | { kind: "consent_updated"; contactId: number; newStatus: "consented" | "revoked"; phone: string; householdId: number; contactName: string }
   | {
       kind: "ingested";
       inboxItemId: number;
@@ -359,7 +359,7 @@ export async function processInboundWAMessage(
           "Contact consent status updated via WhatsApp reply",
         );
 
-        return { kind: "consent_updated", contactId: contactForConsent.id, newStatus, phone: phoneRaw };
+        return { kind: "consent_updated", contactId: contactForConsent.id, newStatus, phone: phoneRaw, householdId, contactName: contactForConsent.name };
       }
     }
   }

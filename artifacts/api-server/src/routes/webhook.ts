@@ -14,6 +14,8 @@ import {
   replyExplicitReviewNeeded,
   replyConsentGranted,
   replyConsentRevoked,
+  notifyAdminConsentGranted,
+  notifyAdminConsentRevoked,
 } from "../lib/wa-reply-composer";
 
 const router = Router();
@@ -156,7 +158,7 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         void sendWhatsApp(outcome.phone, replyUndone(outcome.actionTitle));
         break;
 
-      case "consent_updated":
+      case "consent_updated": {
         void sendWhatsApp(
           outcome.phone,
           outcome.newStatus === "consented" ? replyConsentGranted() : replyConsentRevoked(),
@@ -165,7 +167,22 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
           { contactId: outcome.contactId, newStatus: outcome.newStatus },
           "Consent updated via WhatsApp reply — ack sent",
         );
+
+        // Notify the household admin so they know the consent loop closed
+        const adminPhone = await resolveHouseholdAdminPhone(outcome.householdId);
+        if (adminPhone && adminPhone !== outcome.phone) {
+          const adminMsg =
+            outcome.newStatus === "consented"
+              ? notifyAdminConsentGranted(outcome.contactName)
+              : notifyAdminConsentRevoked(outcome.contactName);
+          void sendWhatsApp(adminPhone, adminMsg);
+          req.log.info(
+            { householdId: outcome.householdId, contactId: outcome.contactId, newStatus: outcome.newStatus },
+            "Consent change notification sent to household admin",
+          );
+        }
         break;
+      }
 
       // ── New inbound message — classified and proposed ─────────────────────
       case "ingested": {
