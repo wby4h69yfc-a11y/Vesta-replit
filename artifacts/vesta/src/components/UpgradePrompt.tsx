@@ -6,9 +6,11 @@ const V = { primary: "#0E3B2E", cream: "#FFFDF6", beige: "#EEE6D6", ink: "#12231
 interface UpgradePromptProps {
   limitLabel: string;
   onClose: () => void;
+  used?: number;
+  limit?: number;
 }
 
-export default function UpgradePrompt({ limitLabel, onClose }: UpgradePromptProps) {
+export default function UpgradePrompt({ limitLabel, onClose, used, limit }: UpgradePromptProps) {
   const [, navigate] = useLocation();
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
@@ -34,6 +36,27 @@ export default function UpgradePrompt({ limitLabel, onClose }: UpgradePromptProp
             <p className="text-xs mt-1 leading-relaxed" style={{ color: V.muted }}>{limitLabel}</p>
           </div>
         </div>
+
+        {used !== undefined && limit !== undefined && (
+          <div className="space-y-1.5 px-1">
+            <div className="flex items-center justify-between text-xs" style={{ color: V.muted }}>
+              <span><strong style={{ color: V.ink }}>{used}</strong> de {limit} usados</span>
+              {limit - used > 0
+                ? <span>{limit - used} restante{limit - used !== 1 ? "s" : ""}</span>
+                : <span style={{ color: "#DC2626" }}>Limite atingido</span>
+              }
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#E8E0CC" }}>
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${Math.min(100, Math.round((used / limit) * 100))}%`,
+                  background: used >= limit ? "#DC2626" : "#0E3B2E",
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         <div className="rounded-2xl p-4 space-y-1.5"
           style={{ background: "linear-gradient(135deg, #0E3B2E 0%, #1A5C45 100%)" }}>
