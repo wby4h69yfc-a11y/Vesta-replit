@@ -1363,7 +1363,6 @@ export const updateHouseholdBodyBriefingHourMax = 23;
 export const UpdateHouseholdBody = zod.object({
   name: zod.string().optional(),
   location: zod.string().optional(),
-  plan: zod.enum(["free", "premium"]).optional(),
   briefing_hour: zod
     .number()
     .min(updateHouseholdBodyBriefingHourMin)

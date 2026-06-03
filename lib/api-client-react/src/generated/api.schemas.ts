@@ -82,18 +82,9 @@ export interface Household {
   created_at?: string;
 }
 
-export type HouseholdUpdatePlan =
-  (typeof HouseholdUpdatePlan)[keyof typeof HouseholdUpdatePlan];
-
-export const HouseholdUpdatePlan = {
-  free: "free",
-  premium: "premium",
-} as const;
-
 export interface HouseholdUpdate {
   name?: string;
   location?: string;
-  plan?: HouseholdUpdatePlan;
   /**
    * Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.
    * @minimum 0
