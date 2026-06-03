@@ -815,7 +815,7 @@ export const DeleteContactParams = zod.object({
 });
 
 /**
- * @summary List contacts whose consent check-in is due within the next 14 days
+ * @summary List contacts whose consent check-in is overdue or due within the next 14 days
  */
 export const GetContactsConsentDueResponseItem = zod.object({
   id: zod.number(),

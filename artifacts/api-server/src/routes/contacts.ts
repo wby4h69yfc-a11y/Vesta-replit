@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { contactsTable, inboxItemsTable, householdsTable } from "@workspace/db";
-import { eq, and, sql, lte, gte } from "drizzle-orm";
+import { eq, and, sql, lte, isNotNull } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 import { sendWhatsApp } from "../lib/whatsapp";
 import { replyConsentRequest } from "../lib/wa-reply-composer";
@@ -213,7 +213,7 @@ router.get("/contacts/consent-due", async (req, res) => {
         and(
           eq(contactsTable.household_id, hid),
           eq(contactsTable.consent_status, "consented"),
-          gte(contactsTable.consent_check_in_due_at, now),
+          isNotNull(contactsTable.consent_check_in_due_at),
           lte(contactsTable.consent_check_in_due_at, in14Days),
         ),
       )

@@ -723,7 +723,7 @@ paths:
     get:
       operationId: getContactsConsentDue
       tags: [contacts]
-      summary: List contacts whose consent check-in is due within the next 14 days
+      summary: List contacts whose consent check-in is overdue or due within the next 14 days
       responses:
         "200":
           description: List of contacts with upcoming consent check-in

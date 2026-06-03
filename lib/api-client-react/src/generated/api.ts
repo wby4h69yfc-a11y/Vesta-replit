@@ -3066,7 +3066,7 @@ export const useDeleteContact = <
 };
 
 /**
- * @summary List contacts whose consent check-in is due within the next 14 days
+ * @summary List contacts whose consent check-in is overdue or due within the next 14 days
  */
 export const getGetContactsConsentDueUrl = () => {
   return `/api/contacts/consent-due`;
@@ -3117,7 +3117,7 @@ export type GetContactsConsentDueQueryResult = NonNullable<
 export type GetContactsConsentDueQueryError = ErrorType<unknown>;
 
 /**
- * @summary List contacts whose consent check-in is due within the next 14 days
+ * @summary List contacts whose consent check-in is overdue or due within the next 14 days
  */
 
 export function useGetContactsConsentDue<
