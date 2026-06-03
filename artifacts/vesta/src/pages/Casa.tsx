@@ -800,6 +800,8 @@ function FamiliaTab() {
 
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgradeLabel, setUpgradeLabel] = useState("");
+  const [upgradeUsed, setUpgradeUsed] = useState<number | undefined>(undefined);
+  const [upgradeLimit, setUpgradeLimit] = useState<number | undefined>(undefined);
 
   const [showConsentForm, setShowConsentForm] = useState(false);
   const [consentPhone, setConsentPhone] = useState("");
@@ -857,10 +859,14 @@ function FamiliaTab() {
       onError: (e: unknown) => {
         if (isUpgradeError(e)) {
           const lim = planStatus?.limits;
+          const usg = planStatus?.usage;
           const type = formValues.relationship_type;
           const n = type === "child" ? (lim?.children ?? 1) : (lim?.adults ?? 2);
+          const used = type === "child" ? (usg?.children ?? n) : (usg?.adults ?? n);
           const label = type === "child" ? `Plano gratuito: máximo de ${n} criança(s).` : `Plano gratuito: máximo de ${n} adulto(s).`;
           setUpgradeLabel(label);
+          setUpgradeUsed(used);
+          setUpgradeLimit(n);
           setShowUpgrade(true);
         } else {
           toast({ title: "Erro ao adicionar", variant: "destructive" });
@@ -900,12 +906,17 @@ function FamiliaTab() {
   const usg = planStatus?.usage;
   const adultsAtLimit = lim?.adults !== null && lim?.adults !== undefined && (usg?.adults ?? 0) >= lim.adults;
   const childrenAtLimit = lim?.children !== null && lim?.children !== undefined && (usg?.children ?? 0) >= lim.children;
+  const adultsOneLeft = !adultsAtLimit && lim?.adults !== null && lim?.adults !== undefined && (usg?.adults ?? 0) === lim.adults - 1;
+  const childrenOneLeft = !childrenAtLimit && lim?.children !== null && lim?.children !== undefined && (usg?.children ?? 0) === lim.children - 1;
 
   function openAddGated(type: "adult" | "child") {
     const atLimit = type === "adult" ? adultsAtLimit : childrenAtLimit;
     if (atLimit) {
       const n = type === "adult" ? lim?.adults : lim?.children;
+      const used = type === "adult" ? (usg?.adults ?? 0) : (usg?.children ?? 0);
       setUpgradeLabel(type === "adult" ? `Plano gratuito: máximo de ${n ?? 2} adulto(s).` : `Plano gratuito: máximo de ${n ?? 1} criança(s).`);
+      setUpgradeUsed(used);
+      setUpgradeLimit(n ?? (type === "adult" ? 2 : 1));
       setShowUpgrade(true);
     } else {
       openAdd(type);
@@ -916,7 +927,7 @@ function FamiliaTab() {
   return (
     <div className="space-y-6 py-6">
 
-      {showUpgrade && <UpgradePrompt limitLabel={upgradeLabel} onClose={() => setShowUpgrade(false)} />}
+      {showUpgrade && <UpgradePrompt limitLabel={upgradeLabel} used={upgradeUsed} limit={upgradeLimit} onClose={() => { setShowUpgrade(false); setUpgradeUsed(undefined); setUpgradeLimit(undefined); }} />}
 
       {/* Member form panel */}
       {formMode !== "none" && (
@@ -982,6 +993,19 @@ function FamiliaTab() {
           </div>
         )}
 
+        {adultsOneLeft && (
+          <div className="mb-3 flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs"
+            style={{ background: "#FEFCE8", border: "1px solid #FEF08A" }}>
+            <span style={{ color: "#78350F" }}>1 vaga de adulto restante no plano gratuito</span>
+            <button
+              onClick={() => { setUpgradeUsed(usg?.adults ?? 0); setUpgradeLimit(lim!.adults!); setUpgradeLabel("Adicione adultos sem limite com o Premium."); setShowUpgrade(true); }}
+              className="font-semibold ml-3 shrink-0"
+              style={{ color: V.primary }}>
+              Upgrade →
+            </button>
+          </div>
+        )}
+
         <div className="rounded-3xl overflow-hidden" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
           {isLoading && <p className="px-5 py-4 text-sm" style={{ color: V.muted }}>Carregando…</p>}
           {!isLoading && adults.length === 0 && (
@@ -1025,6 +1049,18 @@ function FamiliaTab() {
             </button>
           )}
         </div>
+        {childrenOneLeft && (
+          <div className="mt-3 flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs"
+            style={{ background: "#FEFCE8", border: "1px solid #FEF08A" }}>
+            <span style={{ color: "#78350F" }}>1 vaga de criança restante no plano gratuito</span>
+            <button
+              onClick={() => { setUpgradeUsed(usg?.children ?? 0); setUpgradeLimit(lim!.children!); setUpgradeLabel("Adicione crianças sem limite com o Premium."); setShowUpgrade(true); }}
+              className="font-semibold ml-3 shrink-0"
+              style={{ color: V.primary }}>
+              Upgrade →
+            </button>
+          </div>
+        )}
         <div className="rounded-3xl overflow-hidden" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
           {children.length === 0 ? (
             <button onClick={() => openAddGated("child")}
@@ -1180,6 +1216,8 @@ function RegrasTab() {
   const [showCreate, setShowCreate] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgradeLabel, setUpgradeLabel] = useState("");
+  const [upgradeUsed, setUpgradeUsed] = useState<number | undefined>(undefined);
+  const [upgradeLimit, setUpgradeLimit] = useState<number | undefined>(undefined);
   const [pendingPattern, setPendingPattern] = useState<PatternObservation | null>(null);
   const [form, setForm] = useState({
     name: "", category: "escola", trigger_desc: "", action_desc: "", approval_level: "one_tap",
@@ -1206,6 +1244,7 @@ function RegrasTab() {
   const rulesLimit = planStatus?.limits?.rules ?? null;
   const rulesUsage = planStatus?.usage?.rules ?? 0;
   const rulesAtLimit = rulesLimit !== null && rulesUsage >= rulesLimit;
+  const rulesOneLeft = rulesLimit !== null && !rulesAtLimit && rulesUsage === rulesLimit - 1;
 
   const createRule = useCreateRule({
     mutation: {
@@ -1219,6 +1258,8 @@ function RegrasTab() {
       onError: (e: unknown) => {
         if (isUpgradeError(e)) {
           setUpgradeLabel(`Plano gratuito: máximo de ${rulesLimit ?? 3} regras inteligentes.`);
+          setUpgradeUsed(rulesUsage);
+          setUpgradeLimit(rulesLimit ?? 3);
           setShowUpgrade(true);
         } else {
           toast({ description: "Erro ao criar regra.", variant: "destructive" });
@@ -1242,7 +1283,7 @@ function RegrasTab() {
 
   return (
     <div className="space-y-5 py-6">
-      {showUpgrade && <UpgradePrompt limitLabel={upgradeLabel} onClose={() => setShowUpgrade(false)} />}
+      {showUpgrade && <UpgradePrompt limitLabel={upgradeLabel} used={upgradeUsed} limit={upgradeLimit} onClose={() => { setShowUpgrade(false); setUpgradeUsed(undefined); setUpgradeLimit(undefined); }} />}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs" style={{ color: V.muted }}>
@@ -1257,7 +1298,7 @@ function RegrasTab() {
         </div>
         {rulesAtLimit ? (
           <button
-            onClick={() => { setUpgradeLabel(`Plano gratuito: máximo de ${rulesLimit} regras inteligentes.`); setShowUpgrade(true); }}
+            onClick={() => { setUpgradeLabel(`Plano gratuito: máximo de ${rulesLimit} regras inteligentes.`); setUpgradeUsed(rulesUsage); setUpgradeLimit(rulesLimit ?? 3); setShowUpgrade(true); }}
             title={`Limite atingido — plano gratuito: máximo de ${rulesLimit} regras`}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 ml-3"
             style={{ background: V.beige, color: V.muted }}
@@ -1273,6 +1314,19 @@ function RegrasTab() {
           </button>
         )}
       </div>
+
+      {rulesOneLeft && (
+        <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs"
+          style={{ background: "#FEFCE8", border: "1px solid #FEF08A" }}>
+          <span style={{ color: "#78350F" }}>1 regra restante no plano gratuito</span>
+          <button
+            onClick={() => { setUpgradeUsed(rulesUsage); setUpgradeLimit(rulesLimit!); setUpgradeLabel("Crie regras ilimitadas com o Premium."); setShowUpgrade(true); }}
+            className="font-semibold ml-3 shrink-0"
+            style={{ color: V.primary }}>
+            Upgrade →
+          </button>
+        </div>
+      )}
 
       {isAdmin && (
         <button
