@@ -39,6 +39,23 @@ async function seedPattern(
   return res.rows[0].id;
 }
 
+/** Poll DB until the condition resolves or throw on timeout. */
+async function pollDb<T>(
+  db: Client,
+  query: string,
+  params: unknown[],
+  check: (rows: T[]) => boolean,
+  { intervalMs = 200, timeoutMs = 5_000 } = {},
+): Promise<T[]> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const res = await db.query<T>(query, params);
+    if (check(res.rows)) return res.rows;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(`pollDb timed out after ${timeoutMs}ms`);
+}
+
 test.describe("Pattern suggestions", () => {
   let db: Client;
 
@@ -90,9 +107,17 @@ test.describe("Pattern suggestions", () => {
     // Submit
     await submitBtn.click();
 
-    // Form should close and pattern card should disappear
+    // Form should close
     await expect(nameInput).not.toBeVisible({ timeout: 8_000 });
+
+    // Success toast should appear (exact match avoids strict-mode violation with aria-live mirror)
+    await expect(page.getByText("Regra criada.", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
+
+    // Pattern card should disappear from the list
     await expect(card).not.toBeVisible({ timeout: 8_000 });
+
+    // A rule card should now appear in the rules list
+    await expect(page.locator('[data-testid^="rule-"]').first()).toBeVisible({ timeout: 5_000 });
 
     // DB: pattern status should be "rule_created"
     const pRow = await db.query<{ status: string }>(
@@ -131,13 +156,21 @@ test.describe("Pattern suggestions", () => {
     // Card should disappear from DOM immediately (filtered out on dismiss click)
     await expect(card).not.toBeAttached({ timeout: 5_000 });
 
-    // DB: wait for the API mutation to complete and verify status = "dismissed"
-    await page.waitForTimeout(600);
-    const pRow = await db.query<{ status: string }>(
+    // DB: poll until status = "dismissed" (API mutation is async)
+    const pRows = await pollDb<{ status: string }>(
+      db,
       "SELECT status FROM pattern_observations WHERE id = $1",
       [patternId],
+      (rows) => rows[0]?.status === "dismissed",
     );
-    expect(pRow.rows[0]?.status).toBe("dismissed");
+    expect(pRows[0]?.status).toBe("dismissed");
+
+    // DB: no rule should have been created for this household
+    const rRow = await db.query<{ cnt: string }>(
+      "SELECT COUNT(*)::int AS cnt FROM rules WHERE household_id = $1",
+      [hh],
+    );
+    expect(Number(rRow.rows[0]?.cnt)).toBe(0);
   });
 
   // ────────────────────────────────────────────────────────────────
@@ -170,6 +203,14 @@ test.describe("Pattern suggestions", () => {
     // Nudge should be visible
     const nudge = page.locator('[data-testid="pattern-nudge"]');
     await expect(nudge).toBeVisible({ timeout: 12_000 });
+
+    // Clicking the nudge should navigate to /rules (wouter SPA pushState)
+    await nudge.click();
+
+    // Wait for the patterns section that only exists on the /rules page
+    await expect(
+      page.locator('[data-testid="pattern-suggestions-section"]'),
+    ).toBeVisible({ timeout: 8_000 });
   });
 
   // ────────────────────────────────────────────────────────────────
