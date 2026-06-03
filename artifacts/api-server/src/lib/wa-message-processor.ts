@@ -17,7 +17,7 @@ import {
   membersTable,
   suggestedActionsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { classifyAndSaveAction } from "./classifier";
 import { processWhatsAppMedia } from "./media-analysis";
 import { looksLikeToken, markTokenVerified } from "./wa-token-store";
@@ -339,6 +339,20 @@ export async function processInboundWAMessage(
         const now = new Date();
         const twelveMonthsFromNow = new Date(now);
         twelveMonthsFromNow.setFullYear(twelveMonthsFromNow.getFullYear() + 1);
+
+        // Idempotency guard: include the expected current status in the WHERE
+        // clause so that a Twilio retry (or a SIM+REVOGAR race) that arrives
+        // after the first update has already changed the status becomes a no-op
+        // at the DB level rather than re-writing or flipping the value.
+        // REVOGAR is valid from both "pending" and "consented", so we use OR.
+        const statusGuard =
+          upper === "REVOGAR"
+            ? or(
+                eq(contactsTable.consent_status, "pending"),
+                eq(contactsTable.consent_status, "consented"),
+              )
+            : eq(contactsTable.consent_status, currentStatus!);
+
         await db
           .update(contactsTable)
           .set({
@@ -351,6 +365,7 @@ export async function processInboundWAMessage(
             and(
               eq(contactsTable.id, contactForConsent.id),
               eq(contactsTable.household_id, householdId),
+              statusGuard,
             ),
           );
 
