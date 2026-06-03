@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Users, ShieldCheck, ChevronRight, Plus, Trash2, Pencil,
   Home, Baby, Heart, Lock, Bell, Key, HelpCircle, LogOut,
@@ -16,7 +16,7 @@ import {
   useGetHouseholdPlanStatus,
   useListRules, useCreateRule, useToggleRule, useDeleteRule,
   useListPatterns, useTriggerPatternDetection,
-  useListContacts, useUpdateContact, useRequestContactConsent,
+  useListContacts, useCreateContact, useUpdateContact, useRequestContactConsent,
   useGetContactsConsentDue,
   useListAuditLog,
   useDeleteAccount,
@@ -801,9 +801,53 @@ function FamiliaTab() {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgradeLabel, setUpgradeLabel] = useState("");
 
-  const [consentStep, setConsentStep] = useState<"idle" | "form" | "pending" | "consented">("idle");
+  const [showConsentForm, setShowConsentForm] = useState(false);
   const [consentPhone, setConsentPhone] = useState("");
   const [consentName, setConsentName] = useState("");
+
+  const { data: diaristContacts = [] } = useListContacts(
+    { category: "diarista" },
+    { query: { queryKey: getListContactsQueryKey({ category: "diarista" }), refetchInterval: 30_000, refetchOnWindowFocus: true } },
+  );
+
+  const prevConsentStatusesRef = useRef<Record<number, string>>({});
+  useEffect(() => {
+    const prev = prevConsentStatusesRef.current;
+    const next: Record<number, string> = {};
+    for (const c of diaristContacts) {
+      const curr = c.consent_status ?? "pending";
+      next[c.id] = curr;
+      const prevStatus = prev[c.id];
+      if (prevStatus && prevStatus !== curr) {
+        if (curr === "consented") {
+          toast({ title: "Consentimento confirmado", description: `${c.name} aceitou receber mensagens da Vesta.` });
+        } else if (curr === "revoked") {
+          toast({ title: "Consentimento recusado", description: `${c.name} recusou o contato.`, variant: "destructive" });
+        }
+      }
+    }
+    prevConsentStatusesRef.current = next;
+  }, [diaristContacts]);
+
+  const createContactMutation = useCreateContact({
+    mutation: {
+      onSuccess: async (newContact) => {
+        await requestConsentForDiarista.mutateAsync({ id: newContact.id });
+        void qc.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        setShowConsentForm(false);
+        setConsentName("");
+        setConsentPhone("");
+        toast({ description: "Convite de consentimento enviado via WhatsApp." });
+      },
+      onError: () => toast({ description: "Erro ao adicionar diarista.", variant: "destructive" }),
+    },
+  });
+
+  const requestConsentForDiarista = useRequestContactConsent({
+    mutation: {
+      onError: () => toast({ description: "Erro ao enviar convite de consentimento.", variant: "destructive" }),
+    },
+  });
 
   const invalidateMembers = () => qc.invalidateQueries({ queryKey: getListMembersQueryKey() });
 
@@ -1016,31 +1060,56 @@ function FamiliaTab() {
 
       {/* Diarista consent */}
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: V.muted }}>Diarista</h2>
-
-        {consentStep === "idle" && (
-          <div className="p-5 rounded-3xl space-y-4"
-            style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
-            <div className="flex items-start gap-3">
-              <ShieldCheck className="h-5 w-5 mt-0.5 shrink-0" style={{ color: V.primary }} />
-              <div>
-                <p className="text-sm font-semibold mb-1" style={{ color: V.ink }}>
-                  Coordenar via WhatsApp
-                </p>
-                <p className="text-xs leading-relaxed" style={{ color: V.muted }}>
-                  A Vesta pode avisar sua diarista sobre compromissos — mas só após o consentimento explícito dela (LGPD).
-                </p>
-              </div>
-            </div>
-            <button onClick={() => setConsentStep("form")}
-              className="w-full py-3 rounded-2xl text-sm font-semibold text-white"
-              style={{ background: V.primary }}>
-              Adicionar diarista
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: V.muted }}>Diarista</h2>
+          {diaristContacts.length > 0 && !showConsentForm && (
+            <button
+              onClick={() => setShowConsentForm(true)}
+              className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full"
+              style={{ background: "#EAF1E5", color: V.primary }}>
+              <Plus className="h-3.5 w-3.5" /> Adicionar
             </button>
+          )}
+        </div>
+
+        {/* Existing diarista contacts — live from API */}
+        {diaristContacts.length > 0 && (
+          <div className="rounded-3xl overflow-hidden mb-3"
+            style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
+            {diaristContacts.map((contact, i) => {
+              const status = contact.consent_status ?? "pending";
+              const colors = CONSENT_COLORS[status] ?? CONSENT_COLORS.not_required;
+              const isFirst = i === 0;
+              return (
+                <div key={contact.id}
+                  className="flex items-center gap-3 px-4 py-3"
+                  style={{ borderTop: isFirst ? undefined : "1px solid rgba(14,59,46,0.06)" }}>
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ background: "#EAF1E5" }}>
+                    {status === "consented"
+                      ? <CheckCircle className="h-4 w-4" style={{ color: "#059669" }} />
+                      : status === "revoked"
+                        ? <AlertCircle className="h-4 w-4" style={{ color: "#DC2626" }} />
+                        : <Clock className="h-4 w-4" style={{ color: "#D97706" }} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate" style={{ color: V.ink }}>{contact.name}</p>
+                    {contact.phone && (
+                      <p className="text-xs truncate" style={{ color: V.muted }}>{contact.phone}</p>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-full"
+                    style={{ background: colors.bg, color: colors.color }}>
+                    {CONSENT_LABELS[status] ?? status}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
 
-        {consentStep === "form" && (
+        {/* Add diarista form */}
+        {showConsentForm ? (
           <div className="p-5 rounded-3xl space-y-3"
             style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.10)" }}>
             <p className="text-sm font-semibold" style={{ color: V.ink }}>Dados da diarista</p>
@@ -1057,48 +1126,41 @@ function FamiliaTab() {
               <strong>LGPD:</strong> A diarista receberá uma mensagem pedindo consentimento explícito para contato pela Vesta. Nenhuma mensagem será enviada sem isso.
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setConsentStep("idle")}
+              <button onClick={() => { setShowConsentForm(false); setConsentName(""); setConsentPhone(""); }}
                 className="flex-1 py-2.5 rounded-full text-xs font-semibold"
                 style={{ background: V.beige, color: V.ink }}>Cancelar</button>
-              <button onClick={() => setConsentStep("pending")}
-                disabled={!consentName || !consentPhone}
+              <button
+                onClick={() => createContactMutation.mutate({
+                  data: { name: consentName, phone: consentPhone, category: "diarista" },
+                })}
+                disabled={!consentName || !consentPhone || createContactMutation.isPending || requestConsentForDiarista.isPending}
                 className="flex-1 py-2.5 rounded-full text-xs font-semibold text-white disabled:opacity-50"
-                style={{ background: "#25D366" }}>Enviar convite</button>
+                style={{ background: "#25D366" }}>
+                {createContactMutation.isPending || requestConsentForDiarista.isPending ? "Enviando…" : "Enviar convite"}
+              </button>
             </div>
           </div>
-        )}
-
-        {consentStep === "pending" && (
-          <div className="p-5 rounded-3xl space-y-3"
-            style={{ background: "#FEF3C7", border: "1px solid rgba(245,158,11,0.2)" }}>
-            <div className="flex items-center gap-3">
-              <Clock className="h-5 w-5 shrink-0" style={{ color: "#D97706" }} />
+        ) : diaristContacts.length === 0 ? (
+          <div className="p-5 rounded-3xl space-y-4"
+            style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="h-5 w-5 mt-0.5 shrink-0" style={{ color: V.primary }} />
               <div>
-                <p className="text-sm font-semibold" style={{ color: "#92400E" }}>Aguardando consentimento</p>
-                <p className="text-xs mt-0.5" style={{ color: "#B45309" }}>
-                  {consentName} ainda não respondeu ao convite.
+                <p className="text-sm font-semibold mb-1" style={{ color: V.ink }}>
+                  Coordenar via WhatsApp
+                </p>
+                <p className="text-xs leading-relaxed" style={{ color: V.muted }}>
+                  A Vesta pode avisar sua diarista sobre compromissos — mas só após o consentimento explícito dela (LGPD).
                 </p>
               </div>
             </div>
-            <button onClick={() => setConsentStep("idle")}
-              className="text-xs" style={{ color: V.muted }}>Cancelar convite</button>
+            <button onClick={() => setShowConsentForm(true)}
+              className="w-full py-3 rounded-2xl text-sm font-semibold text-white"
+              style={{ background: V.primary }}>
+              Adicionar diarista
+            </button>
           </div>
-        )}
-
-        {consentStep === "consented" && (
-          <div className="p-5 rounded-3xl space-y-2"
-            style={{ background: "#F0FDF4", border: "1px solid #BBF7D0" }}>
-            <div className="flex items-center gap-3">
-              <CheckCircle className="h-5 w-5 shrink-0" style={{ color: "#059669" }} />
-              <div>
-                <p className="text-sm font-semibold" style={{ color: "#065F46" }}>Consentimento confirmado</p>
-                <p className="text-xs mt-0.5" style={{ color: "#047857" }}>
-                  {consentName} aceitou receber mensagens da Vesta.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+        ) : null}
       </section>
     </div>
   );
@@ -1452,8 +1514,12 @@ const CONSENT_COLORS: Record<string, { bg: string; color: string }> = {
 function PrivacyDashboard() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: contacts } = useListContacts();
-  const { data: consentDueContacts = [] } = useGetContactsConsentDue();
+  const { data: contacts } = useListContacts(undefined, {
+    query: { queryKey: getListContactsQueryKey(), refetchInterval: 30_000, refetchOnWindowFocus: true },
+  });
+  const { data: consentDueContacts = [] } = useGetContactsConsentDue({
+    query: { queryKey: getGetContactsConsentDueQueryKey(), refetchInterval: 30_000, refetchOnWindowFocus: true },
+  });
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
