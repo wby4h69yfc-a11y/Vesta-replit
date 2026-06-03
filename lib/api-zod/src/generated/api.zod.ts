@@ -1681,6 +1681,37 @@ export const DismissPatternResponse = zod.object({
 });
 
 /**
+ * @summary Manually trigger pattern detection for the household (admin only)
+ */
+export const TriggerPatternDetectionResponseItem = zod.object({
+  id: zod.number(),
+  type: zod.enum([
+    "sender",
+    "sequence",
+    "temporal",
+    "ownership",
+    "absence",
+    "seasonal",
+  ]),
+  description: zod.string(),
+  occurrences: zod.number(),
+  confidence: zod.number(),
+  status: zod.enum([
+    "accumulating",
+    "threshold_met",
+    "suggested",
+    "accepted",
+    "rule_created",
+    "dismissed",
+  ]),
+  evidence: zod.string().nullish(),
+  created_at: zod.coerce.date().optional(),
+});
+export const TriggerPatternDetectionResponse = zod.array(
+  TriggerPatternDetectionResponseItem,
+);
+
+/**
  * @summary Send WhatsApp OTP to phone number
  */
 export const SendOtpBody = zod.object({

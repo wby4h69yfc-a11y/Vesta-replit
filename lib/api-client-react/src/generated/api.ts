@@ -4950,6 +4950,87 @@ export const useDismissPattern = <
 };
 
 /**
+ * @summary Manually trigger pattern detection for the household (admin only)
+ */
+export const getTriggerPatternDetectionUrl = () => {
+  return `/api/patterns/detect`;
+};
+
+export const triggerPatternDetection = async (
+  options?: RequestInit,
+): Promise<PatternObservation[]> => {
+  return customFetch<PatternObservation[]>(getTriggerPatternDetectionUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getTriggerPatternDetectionMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof triggerPatternDetection>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof triggerPatternDetection>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["triggerPatternDetection"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof triggerPatternDetection>>,
+    void
+  > = () => {
+    return triggerPatternDetection(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TriggerPatternDetectionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof triggerPatternDetection>>
+>;
+
+export type TriggerPatternDetectionMutationError = ErrorType<void>;
+
+/**
+ * @summary Manually trigger pattern detection for the household (admin only)
+ */
+export const useTriggerPatternDetection = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof triggerPatternDetection>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof triggerPatternDetection>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getTriggerPatternDetectionMutationOptions(options));
+};
+
+/**
  * @summary Send WhatsApp OTP to phone number
  */
 export const getSendOtpUrl = () => {

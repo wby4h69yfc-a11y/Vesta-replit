@@ -1206,6 +1206,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/PatternObservation"
 
+  /patterns/detect:
+    post:
+      operationId: triggerPatternDetection
+      tags: [patterns]
+      summary: Manually trigger pattern detection for the household (admin only)
+      responses:
+        "200":
+          description: Detection complete — returns updated pattern list for the household
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PatternObservation"
+        "403":
+          description: Caller is not a household admin
+
   /auth/otp/send:
     post:
       tags: [auth]
