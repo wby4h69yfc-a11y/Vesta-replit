@@ -57,8 +57,10 @@ app.use(
         callback(new Error(`CORS: no allowed origins configured in production`));
         return;
       }
+      // In development, also allow localhost origins (used by Playwright E2E tests).
+      const isLocalhost = !isProduction && /^https?:\/\/localhost(:\d+)?$/.test(origin);
       // In development with no configured origins: allow all (dev convenience).
-      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin) || isLocalhost) {
         callback(null, true);
       } else {
         callback(new Error(`CORS: origin ${origin} not allowed`));
@@ -125,6 +127,7 @@ const PUBLIC_API_EXACT: ReadonlySet<string> = new Set([
   "/webhook/whatsapp/info",
   "/mobile-auth/token-exchange",
   "/mobile-auth/logout",
+  "/dev/test-login",
 ]);
 
 app.use("/api", (req: Request, res: Response, next: NextFunction): void => {

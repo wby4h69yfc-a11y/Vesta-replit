@@ -22,6 +22,7 @@ import adminRouter from "./admin";
 import devRouter from "./dev";
 import memoryRouter from "./memory";
 import privacyRouter from "./privacy";
+import devPublicRouter from "./dev-public";
 
 const router: IRouter = Router();
 
@@ -31,6 +32,7 @@ const router: IRouter = Router();
 // silently open it to unauthenticated access.
 router.use(healthRouter);    // GET /health
 router.use(authRouter);      // GET /login, GET /callback, GET /logout, GET /auth/user, POST /mobile-auth/*
+router.use(devPublicRouter); // GET /dev/test-login (dev only, no auth required)
 router.use(authOtpRouter);   // POST /auth/otp/send, POST /auth/otp/verify
 router.use(authSocialRouter); // GET /auth/google, GET /auth/google/callback, POST /auth/apple/callback
 router.use(webhookRouter);   // POST /webhook/whatsapp (authenticated via Twilio HMAC)
