@@ -1,6 +1,6 @@
 import { ShoppingBag, Wrench, Sparkles, Car, Package, Clock } from "lucide-react";
 
-const V = { primary: "#0E3B2E", deep: "#08251E", sage: "#6F856F", ivory: "#F7F4EA", cream: "#FFFDF6", beige: "#EEE6D6", warm: "#F1EBDD", ink: "#12231C", muted: "#5F6B61", gold: "#D9B95F" };
+import { V } from "@/lib/brand";
 
 const SERVICES = [
   { icon: <Wrench className="h-6 w-6" />,     title: "Encontrar eletricista",        desc: "Pesquisa, compara e agenda para você." },

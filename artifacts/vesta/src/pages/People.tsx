@@ -2,7 +2,7 @@ import { Users, Phone, ShieldCheck, Plus } from "lucide-react";
 import { useListMembers, useListContacts } from "@workspace/api-client-react";
 import CategoryBadge from "@/components/CategoryBadge";
 
-const V = { primary: "#0E3B2E", sage: "#6F856F", ivory: "#F7F4EA", cream: "#FFFDF6", beige: "#EEE6D6", ink: "#12231C", muted: "#5F6B61" };
+import { V } from "@/lib/brand";
 
 const ROLE_LABELS: Record<string, string> = {
   admin:      "Administradora",

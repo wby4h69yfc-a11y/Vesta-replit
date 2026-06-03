@@ -7,18 +7,7 @@ import {
   MessageCircle, Sparkles, X, Loader2, ArrowRight,
 } from "lucide-react";
 
-/* ── tokens ── */
-const V = {
-  primary: "#0E3B2E",
-  sage:    "#6F856F",
-  ivory:   "#F7F4EA",
-  cream:   "#FFFDF6",
-  ink:     "#12231C",
-  muted:   "#5F6B61",
-  beige:   "#EEE6D6",
-  wa:      "#25D366",
-  waHeader:"#075E54",
-};
+import { V } from "@/lib/brand";
 
 /* ── progress bar ── */
 function ProgressBar({ step, total }: { step: number; total: number }) {

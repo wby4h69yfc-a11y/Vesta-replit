@@ -4,16 +4,8 @@ import {
 } from "recharts";
 import { Users, Home, MessageSquare, CheckCircle, XCircle, Clock, Smartphone, Calendar, TrendingUp, RefreshCw } from "lucide-react";
 
-const V = {
-  primary:  "#0E3B2E",
-  sage:     "#6F856F",
-  ivory:    "#F7F4EA",
-  cream:    "#FFFDF6",
-  muted:    "#9CA3AF",
-  green:    "#16A34A",
-  red:      "#DC2626",
-  amber:    "#D97706",
-};
+import { V } from "@/lib/brand";
+const VAdmin = { green: "#16A34A", red: "#DC2626", amber: "#D97706" };
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 interface AdminStats {
@@ -165,7 +157,7 @@ export default function AdminPage() {
             <StatCard icon={Users}         label="Usuários"            value={summary.total_users} />
             <StatCard icon={Home}          label="Lares"               value={summary.total_households} />
             <StatCard icon={CheckCircle}   label="Onboarding completo" value={summary.onboarding_complete}
-              sub={`${pct(summary.onboarding_complete, summary.total_users)} dos cadastros`} color={V.green} />
+              sub={`${pct(summary.onboarding_complete, summary.total_users)} dos cadastros`} color={VAdmin.green} />
             <StatCard icon={Smartphone}    label="WhatsApp verificado" value={summary.whatsapp_verified}
               sub={`${pct(summary.whatsapp_verified, summary.total_users)} dos usuários`} color="#25D366" />
             <StatCard icon={Calendar}      label="Agenda conectada"    value={summary.calendar_connected}
@@ -183,9 +175,9 @@ export default function AdminPage() {
               <span className="font-bold" style={{ color: V.primary }}>{summary.total_actions}</span>
             </div>
             {[
-              { label: "Aprovadas", value: summary.actions_approved, color: V.green,   Icon: CheckCircle },
-              { label: "Pendentes", value: summary.actions_pending,  color: V.amber,   Icon: Clock },
-              { label: "Rejeitadas",value: summary.actions_rejected, color: V.red,     Icon: XCircle },
+              { label: "Aprovadas", value: summary.actions_approved, color: VAdmin.green,   Icon: CheckCircle },
+              { label: "Pendentes", value: summary.actions_pending,  color: VAdmin.amber,   Icon: Clock },
+              { label: "Rejeitadas",value: summary.actions_rejected, color: VAdmin.red,     Icon: XCircle },
             ].map(({ label, value, color, Icon }) => (
               <div key={label}>
                 <div className="flex items-center justify-between text-sm mb-1">

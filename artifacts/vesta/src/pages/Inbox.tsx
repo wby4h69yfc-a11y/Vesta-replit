@@ -20,13 +20,7 @@ import { formatRelativeTime } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
-const V = {
-  primary: "#0E3B2E",
-  ink:     "#12231C",
-  muted:   "#5F6B61",
-  cream:   "#FFFDF6",
-  beige:   "#EEE6D6",
-};
+import { V } from "@/lib/brand";
 
 const SOURCE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   whatsapp: ({ className }) => <MessageCircle className={cn(className, "text-emerald-600")} />,

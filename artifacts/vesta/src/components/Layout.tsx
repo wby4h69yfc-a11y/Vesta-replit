@@ -2,16 +2,7 @@ import { Link, useLocation } from "wouter";
 import { Home, Inbox, CalendarDays, Building2 } from "lucide-react";
 import { useListInboxItems } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
-
-const V = {
-  primary: "#0E3B2E",
-  deep:    "#08251E",
-  sage:    "#6F856F",
-  ivory:   "#F7F4EA",
-  cream:   "#FFFDF6",
-  ink:     "#12231C",
-  muted:   "#5F6B61",
-};
+import { V } from "@/lib/brand";
 
 const NAV = [
   { path: "/app",      label: "Hoje",   icon: Home,        testId: "app" },
@@ -30,18 +21,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: V.ivory }}>
+    <div className="min-h-screen flex" style={{ background: V.bg }}>
 
       {/* ── Desktop sidebar ── */}
       <aside className="hidden md:flex w-60 flex-col shrink-0 sticky top-0 h-screen"
-        style={{ background: V.primary }}>
+        style={{ background: V.surfaceDeep }}>
         <div className="p-6 pb-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl"
-              style={{ border: "1px solid rgba(255,255,255,0.2)" }}>
-              <Home className="h-5 w-5 text-white" strokeWidth={1.8} />
+              style={{ border: "1px solid rgba(255,255,255,0.15)" }}>
+              <svg viewBox="0 0 80 80" className="h-5 w-5" aria-hidden="true" style={{ color: V.brand }}>
+                <path fill="currentColor" fillRule="evenodd"
+                  d="M14 70 Q8 70 8 64 L8 39 A32 32 0 0 1 72 39 L72 64 Q72 70 66 70 Z M40 30 A17 17 0 0 0 23 47 L23 64 Q23 66 25 66 L55 66 Q57 66 57 64 L57 47 A17 17 0 0 0 40 30 Z" />
+              </svg>
             </div>
-            <span className="text-xl font-semibold text-white tracking-tight">vesta</span>
+            <span className="text-xl font-medium text-white tracking-tight"
+              style={{ fontFamily: "var(--font-serif)" }}>Vesta</span>
           </div>
         </div>
 
@@ -53,16 +48,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <Link key={path} href={path}
                 className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-colors"
                 style={{
-                  background: active ? "rgba(255,255,255,0.15)" : "transparent",
-                  color: active ? "white" : "rgba(255,255,255,0.65)",
+                  background: active ? `${V.brand}22` : "transparent",
+                  color: active ? V.brand : "rgba(253,251,246,0.55)",
                 }}
                 data-testid={`nav-${path.replace(/\//g, "-").slice(1)}`}
               >
                 <div className="relative">
                   <Icon className="h-5 w-5" />
                   {showBadge && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-amber-400 text-[9px] font-bold flex items-center justify-center"
-                      style={{ color: V.deep }}>
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full text-[9px] font-bold flex items-center justify-center"
+                      style={{ background: V.brand, color: V.fgInverse }}>
                       {pendingCount > 99 ? "99+" : pendingCount}
                     </span>
                   )}
@@ -75,7 +70,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         <div className="p-4 pt-0">
           <Link href="/" className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-colors"
-            style={{ color: "rgba(255,255,255,0.35)" }}>
+            style={{ color: "rgba(253,251,246,0.3)" }}>
             ← Voltar ao site
           </Link>
         </div>
@@ -86,20 +81,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Mobile header */}
         <header className="md:hidden sticky top-0 z-40 px-5 py-3.5 flex items-center justify-between"
-          style={{ background: "rgba(247,244,234,0.95)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(14,59,46,0.08)" }}>
+          style={{ background: `${V.bg}f5`, backdropFilter: "blur(8px)", borderBottom: `1px solid ${V.border}` }}>
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: V.primary }}>
-              <Home className="h-4 w-4 text-white" strokeWidth={1.8} />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl"
+              style={{ background: V.brand }}>
+              <svg viewBox="0 0 80 80" className="h-4 w-4 text-white" aria-hidden="true">
+                <path fill="currentColor" fillRule="evenodd"
+                  d="M14 70 Q8 70 8 64 L8 39 A32 32 0 0 1 72 39 L72 64 Q72 70 66 70 Z M40 30 A17 17 0 0 0 23 47 L23 64 Q23 66 25 66 L55 66 Q57 66 57 64 L57 47 A17 17 0 0 0 40 30 Z" />
+              </svg>
             </div>
-            <span className="text-lg font-semibold tracking-tight" style={{ color: V.ink }}>vesta</span>
+            <span className="text-lg font-medium tracking-tight"
+              style={{ color: V.fg, fontFamily: "var(--font-serif)" }}>Vesta</span>
           </div>
-          <Link href="/" className="text-xs" style={{ color: V.muted }}>← Site</Link>
+          <Link href="/" className="text-xs" style={{ color: V.fgMuted }}>← Site</Link>
         </header>
 
         {/* Desktop top bar */}
         <header className="hidden md:flex items-center px-8 py-4 sticky top-0 z-30"
-          style={{ background: "rgba(247,244,234,0.95)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(14,59,46,0.08)" }}>
-          <p className="text-xs font-medium" style={{ color: V.muted }}>
+          style={{ background: `${V.bg}f5`, backdropFilter: "blur(8px)", borderBottom: `1px solid ${V.border}` }}>
+          <p className="text-xs font-medium" style={{ color: V.fgMuted, fontFamily: "var(--font-mono)" }}>
             {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}
           </p>
         </header>
@@ -113,7 +113,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* ── Mobile bottom nav — 4 tabs ── */}
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50"
-          style={{ background: "rgba(247,244,234,0.97)", backdropFilter: "blur(12px)", borderTop: "1px solid rgba(14,59,46,0.08)" }}>
+          style={{ background: `${V.bg}f8`, backdropFilter: "blur(12px)", borderTop: `1px solid ${V.border}` }}>
           <div className="flex items-center justify-around px-2 pt-2 pb-safe-or-2">
             {NAV.map(({ path, label, icon: Icon, badge, testId }) => {
               const active = isActive(path);
@@ -121,14 +121,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               return (
                 <Link key={path} href={path}
                   className="flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl text-[10px] font-medium transition-colors"
-                  style={{ color: active ? V.primary : V.sage }}
+                  style={{ color: active ? V.brand : V.fgMuted }}
                   data-testid={`nav-${testId}`}
                 >
                   <div className="relative">
                     <Icon className={cn("h-5.5 w-5.5", active && "stroke-[2.5]")} style={{ height: 22, width: 22 }} />
                     {showBadge && (
                       <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-0.5 rounded-full text-white text-[9px] font-bold flex items-center justify-center"
-                        style={{ background: V.primary }}>
+                        style={{ background: V.brand }}>
                         {pendingCount > 99 ? "99+" : pendingCount}
                       </span>
                     )}
