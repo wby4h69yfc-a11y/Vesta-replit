@@ -107,6 +107,21 @@ export function replyConsentRevoked(): string {
   );
 }
 
+/**
+ * Sent to the household admin when a diarista/contact accepts (replies "SIM").
+ */
+export function notifyAdminConsentGranted(contactName: string): string {
+  return `✅ *${contactName}* autorizou mensagens pelo Vesta.`;
+}
+
+/**
+ * Sent to the household admin when a diarista/contact declines or revokes consent
+ * (replies "NÃO" or "REVOGAR").
+ */
+export function notifyAdminConsentRevoked(contactName: string): string {
+  return `🔒 *${contactName}* recusou/revogou a autorização.`;
+}
+
 // ── Action proposal & approval replies ───────────────────────────────────────
 
 const CATEGORY_EMOJI: Record<string, string> = {
