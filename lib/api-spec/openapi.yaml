@@ -1559,9 +1559,6 @@ components:
           type: string
         location:
           type: string
-        plan:
-          type: string
-          enum: [free, premium]
         briefing_hour:
           type: integer
           minimum: 0
