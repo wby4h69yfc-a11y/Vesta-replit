@@ -429,9 +429,7 @@ function BriefingHourSelector() {
   }, [household?.briefing_hour, savedTz]);
 
   function formatHour(h: number) {
-    const period = h < 12 ? "AM" : "PM";
-    const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
-    return `${display}:00 ${period}`;
+    return `${h}h`;
   }
 
   async function handleSave() {
