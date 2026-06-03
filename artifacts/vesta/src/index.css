@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;1,14..32,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..600,0..100;1,9..144,300..600,0..100&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -29,80 +29,83 @@
   --radius-lg:  var(--radius);
   --radius-xl:  calc(var(--radius) + 4px);
 
-  /* Vesta brand tokens — use as bg-vesta-green, text-vesta-ink, etc. */
-  --color-vesta-green:    #0E3B2E;
-  --color-vesta-deep:     #08251E;
-  --color-vesta-sage:     #6F856F;
-  --color-vesta-soft-sage:#DDE8D8;
-  --color-vesta-ivory:    #F7F4EA;
-  --color-vesta-cream:    #FFFDF6;
-  --color-vesta-beige:    #EEE6D6;
-  --color-vesta-warm:     #F1EBDD;
-  --color-vesta-gold:     #D9B95F;
-  --color-vesta-ink:      #12231C;
-  --color-vesta-muted:    #5F6B61;
+  /* Vesta brand tokens — landing system */
+  --color-vesta-brand:        #D9532C;
+  --color-vesta-brand-deep:   #B23F1E;
+  --color-vesta-brand-soft:   #F4DDD0;
+  --color-vesta-approval:     #9C7A4F;
+  --color-vesta-approval-deep:#5A4326;
+  --color-vesta-approval-soft:#E7D8C0;
+  --color-vesta-bg:           #FDFBF6;
+  --color-vesta-surface-soft: #F1EADB;
+  --color-vesta-surface-med:  #E8DEC8;
+  --color-vesta-surface-deep: #1F1A14;
+  --color-vesta-fg:           #1F1A14;
+  --color-vesta-fg-muted:     #6E6258;
+  --color-vesta-fg-soft:      #7E715F;
 
   /* Typography */
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-serif: Georgia, 'Times New Roman', serif;
+  --font-sans:    'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-serif:   'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
 }
 
 :root {
-  --radius: 1rem;
+  --radius: 0.875rem;
 
-  /* Background: Vesta ivory #F7F4EA */
-  --background: 46 45% 94%;
-  --foreground: 156 32% 10%;   /* #12231C ink */
+  /* Background: #FDFBF6 warm white */
+  --background: 40 60% 99%;
+  --foreground: 24 26% 11%;   /* #1F1A14 */
 
-  /* Card: warm cream #FFFDF6 */
-  --card: 46 100% 98%;
-  --card-foreground: 156 32% 10%;
-  --popover: 46 100% 98%;
-  --popover-foreground: 156 32% 10%;
+  /* Card: slightly lighter warm white */
+  --card: 40 60% 99%;
+  --card-foreground: 24 26% 11%;
+  --popover: 40 60% 99%;
+  --popover-foreground: 24 26% 11%;
 
-  /* Primary: #0E3B2E forest green */
-  --primary: 163 62% 14%;
+  /* Primary: #D9532C terracotta */
+  --primary: 16 69% 51%;
   --primary-foreground: 0 0% 100%;
 
-  /* Secondary: soft sage #DDE8D8 */
-  --secondary: 101 26% 88%;
-  --secondary-foreground: 163 62% 14%;
+  /* Secondary: approval warm tan */
+  --secondary: 33 30% 78%;
+  --secondary-foreground: 28 40% 26%;
 
-  /* Muted: beige #EEE6D6 */
-  --muted: 40 41% 89%;
-  --muted-foreground: 120 9% 48%;  /* #6F856F sage */
+  /* Muted: surface-soft warm linen */
+  --muted: 34 38% 90%;
+  --muted-foreground: 22 9% 41%;  /* fgMuted */
 
-  /* Accent: soft sage */
-  --accent: 101 26% 88%;
-  --accent-foreground: 163 62% 14%;
+  /* Accent: brand-soft */
+  --accent: 16 69% 90%;
+  --accent-foreground: 16 69% 35%;
 
   --destructive: 0 70% 50%;
 
-  /* Border: rgba(14,59,46,0.12) on ivory */
-  --border: 120 12% 84%;
-  --input:  40 28% 87%;
-  --ring:   163 62% 14%;
+  /* Border: warm sand */
+  --border: 34 26% 84%;
+  --input:  34 22% 86%;
+  --ring:   16 69% 51%;
 }
 
 .dark {
-  --background: 163 30% 6%;
-  --foreground: 46 30% 90%;
-  --card: 163 25% 9%;
-  --card-foreground: 46 30% 90%;
-  --popover: 163 25% 9%;
-  --popover-foreground: 46 30% 90%;
-  --primary: 163 50% 34%;
+  --background: 24 26% 7%;
+  --foreground: 40 40% 90%;
+  --card: 24 20% 10%;
+  --card-foreground: 40 40% 90%;
+  --popover: 24 20% 10%;
+  --popover-foreground: 40 40% 90%;
+  --primary: 16 60% 55%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 163 20% 14%;
-  --secondary-foreground: 101 20% 78%;
-  --muted: 163 18% 12%;
-  --muted-foreground: 120 8% 52%;
-  --accent: 163 20% 14%;
-  --accent-foreground: 101 20% 78%;
+  --secondary: 24 16% 16%;
+  --secondary-foreground: 33 26% 72%;
+  --muted: 24 14% 14%;
+  --muted-foreground: 22 8% 52%;
+  --accent: 24 16% 16%;
+  --accent-foreground: 33 26% 72%;
   --destructive: 0 62% 44%;
-  --border: 163 18% 16%;
-  --input: 163 18% 14%;
-  --ring: 163 50% 34%;
+  --border: 24 14% 18%;
+  --input: 24 14% 16%;
+  --ring: 16 60% 55%;
 }
 
 * {
@@ -116,6 +119,11 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Display headings use Fraunces */
+h1, h2, h3 {
+  font-family: var(--font-serif);
 }
 
 @keyframes fade-in-up {

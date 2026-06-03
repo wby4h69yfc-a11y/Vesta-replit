@@ -1,7 +1,7 @@
 import { Shield, Bell, Users, Key, Trash2, ChevronRight, Lock } from "lucide-react";
 import { useGetHousehold } from "@workspace/api-client-react";
 
-const V = { primary: "#0E3B2E", sage: "#6F856F", ivory: "#F7F4EA", cream: "#FFFDF6", beige: "#EEE6D6", ink: "#12231C", muted: "#5F6B61" };
+import { V } from "@/lib/brand";
 
 const SECTIONS = [
   {

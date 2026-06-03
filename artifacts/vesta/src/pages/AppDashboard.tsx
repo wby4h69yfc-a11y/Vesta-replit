@@ -11,16 +11,7 @@ import CategoryBadge from "@/components/CategoryBadge";
 import { formatTime, formatDate, formatRelativeTime, isPast } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
-const V = {
-  primary: "#0E3B2E",
-  sage:    "#6F856F",
-  ivory:   "#F7F4EA",
-  cream:   "#FFFDF6",
-  beige:   "#EEE6D6",
-  ink:     "#12231C",
-  muted:   "#5F6B61",
-  gold:    "#D9B95F",
-};
+import { V } from "@/lib/brand";
 
 const NUDGE_STATUSES = new Set(["suggested", "threshold_met"]);
 

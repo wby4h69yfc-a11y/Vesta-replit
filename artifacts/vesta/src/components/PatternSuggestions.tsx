@@ -10,13 +10,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
-const V = {
-  primary: "#0E3B2E",
-  cream:   "#FFFDF6",
-  beige:   "#EEE6D6",
-  ink:     "#12231C",
-  muted:   "#5F6B61",
-};
+import { V } from "@/lib/brand";
 
 const ACTIONABLE_STATUSES = new Set(["suggested", "threshold_met"]);
 

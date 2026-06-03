@@ -24,17 +24,7 @@ import {
 import CategoryBadge from "@/components/CategoryBadge";
 import { formatTime, formatRelativeTime, formatDate } from "@/lib/utils";
 
-const V = {
-  primary:   "#0E3B2E",
-  sage:      "#6F856F",
-  ivory:     "#F7F4EA",
-  cream:     "#FFFDF6",
-  ink:       "#12231C",
-  muted:     "#5F6B61",
-  beige:     "#EEE6D6",
-  wa:        "#25D366",
-  waHeader:  "#075E54",
-};
+import { V } from "@/lib/brand";
 
 type WaInfo = {
   twilio_number?: string | null;

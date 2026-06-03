@@ -38,16 +38,7 @@ import CategoryBadge from "@/components/CategoryBadge";
 import { CATEGORIES } from "@/lib/categories";
 import { cn, formatRelativeTime, isUpgradeError } from "@/lib/utils";
 
-const V = {
-  primary: "#0E3B2E",
-  deep:    "#08251E",
-  sage:    "#6F856F",
-  ivory:   "#F7F4EA",
-  cream:   "#FFFDF6",
-  beige:   "#EEE6D6",
-  ink:     "#12231C",
-  muted:   "#5F6B61",
-};
+import { V } from "@/lib/brand";
 
 type Tab = "inicio" | "familia" | "regras" | "privacidade";
 

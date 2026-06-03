@@ -1,16 +1,6 @@
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import { Home, MessageCircle, ArrowRight, Loader2, ChevronLeft, CheckCircle2, ChevronDown, X, Search } from "lucide-react";
-
-const V = {
-  primary: "#0E3B2E",
-  sage: "#6F856F",
-  ivory: "#F7F4EA",
-  cream: "#FFFDF6",
-  ink: "#12231C",
-  muted: "#5F6B61",
-  beige: "#EEE6D6",
-  whatsapp: "#25D366",
-};
+import { V } from "@/lib/brand";
 
 type Screen = "phone" | "otp" | "success";
 
