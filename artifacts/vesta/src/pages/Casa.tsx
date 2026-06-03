@@ -15,7 +15,7 @@ import {
   useCreateHouseholdInvite,
   useGetHouseholdPlanStatus,
   useListRules, useCreateRule, useToggleRule, useDeleteRule,
-  useListPatterns,
+  useListPatterns, useTriggerPatternDetection,
   useListContacts, useUpdateContact, useRequestContactConsent,
   useGetContactsConsentDue,
   useListAuditLog,
@@ -24,7 +24,7 @@ import {
   getPrivacyExportSummary,
   type PrivacyExportSummary,
   getListMembersQueryKey,
-  getListRulesQueryKey, getListContactsQueryKey,
+  getListRulesQueryKey, getListPatternsQueryKey, getListContactsQueryKey,
   getGetContactsConsentDueQueryKey,
   type Member,
   type PatternObservation,
@@ -1116,6 +1116,7 @@ const ORIGIN_LABELS: Record<string, string> = {
 function RegrasTab() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [showCreate, setShowCreate] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgradeLabel, setUpgradeLabel] = useState("");
@@ -1126,6 +1127,21 @@ function RegrasTab() {
 
   const { data: rules, isLoading } = useListRules();
   const { data: planStatus } = useGetHouseholdPlanStatus();
+  const { data: members = [] } = useListMembers();
+
+  const isAdmin = !!user && members.some((m) => m.user_id === user.id && m.role === "admin");
+
+  const detectPatterns = useTriggerPatternDetection({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListPatternsQueryKey() });
+        toast({ description: "Análise concluída. Novos padrões detectados." });
+      },
+      onError: () => {
+        toast({ description: "Erro ao analisar padrões.", variant: "destructive" });
+      },
+    },
+  });
 
   const rulesLimit = planStatus?.limits?.rules ?? null;
   const rulesUsage = planStatus?.usage?.rules ?? 0;
@@ -1197,6 +1213,22 @@ function RegrasTab() {
           </button>
         )}
       </div>
+
+      {isAdmin && (
+        <button
+          onClick={() => detectPatterns.mutate()}
+          disabled={detectPatterns.isPending}
+          className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-medium transition-opacity disabled:opacity-60"
+          style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.12)", color: V.primary }}
+          data-testid="button-detect-patterns">
+          {detectPatterns.isPending ? (
+            <RefreshCw className="h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          {detectPatterns.isPending ? "Analisando…" : "Analisar padrões agora"}
+        </button>
+      )}
 
       <PatternSuggestions
         onAcceptClick={(pattern, prefill) => {

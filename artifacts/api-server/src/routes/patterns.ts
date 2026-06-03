@@ -2,7 +2,8 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { patternObservationsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { getHouseholdId } from "../lib/tenant";
+import { getHouseholdId, getCallerRole } from "../lib/tenant";
+import { detectPatternsForHousehold } from "../lib/pattern-detector";
 
 const router = Router();
 
@@ -69,6 +70,28 @@ router.post("/patterns/:id/dismiss", async (req, res) => {
     res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to dismiss pattern");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/patterns/detect", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const hid = getHouseholdId(req);
+    const role = await getCallerRole(req);
+    if (role !== "admin") {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+    await detectPatternsForHousehold(hid);
+    const patterns = await db
+      .select()
+      .from(patternObservationsTable)
+      .where(eq(patternObservationsTable.household_id, hid))
+      .orderBy(patternObservationsTable.created_at);
+    res.json(patterns);
+  } catch (err) {
+    req.log.error({ err }, "Failed to trigger pattern detection");
     res.status(500).json({ error: "Internal server error" });
   }
 });
