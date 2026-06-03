@@ -4,12 +4,15 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { logger } from "./lib/logger";
 import { sendHouseholdBriefing } from "./lib/briefing-core";
 import { detectPatternsForAllHouseholds } from "./lib/pattern-detector";
+import { runConsentRenewalJob } from "./lib/consent-renewal-scheduler";
 
 const TICK_INTERVAL_MS = 60_000;
 const PATTERN_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const CONSENT_RENEWAL_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 let briefingIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let patternIntervalHandle: ReturnType<typeof setInterval> | null = null;
+let consentRenewalIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
 function localHourInTimezone(date: Date, timezone: string): number {
   try {
@@ -99,6 +102,15 @@ async function patternTick(): Promise<void> {
   await detectPatternsForAllHouseholds();
 }
 
+async function consentRenewalTick(): Promise<void> {
+  logger.info("Scheduler: running consent renewal job");
+  try {
+    await runConsentRenewalJob();
+  } catch (err) {
+    logger.error({ err }, "Scheduler: consent renewal job error");
+  }
+}
+
 export function startScheduler(): void {
   if (briefingIntervalHandle !== null) {
     return;
@@ -113,6 +125,12 @@ export function startScheduler(): void {
     void patternTick();
   }, PATTERN_INTERVAL_MS);
   logger.info({ intervalMs: PATTERN_INTERVAL_MS }, "Pattern detection scheduler started");
+
+  void consentRenewalTick();
+  consentRenewalIntervalHandle = setInterval(() => {
+    void consentRenewalTick();
+  }, CONSENT_RENEWAL_INTERVAL_MS);
+  logger.info({ intervalMs: CONSENT_RENEWAL_INTERVAL_MS }, "Consent renewal scheduler started");
 }
 
 export function stopScheduler(): void {
@@ -125,5 +143,10 @@ export function stopScheduler(): void {
     clearInterval(patternIntervalHandle);
     patternIntervalHandle = null;
     logger.info("Pattern detection scheduler stopped");
+  }
+  if (consentRenewalIntervalHandle !== null) {
+    clearInterval(consentRenewalIntervalHandle);
+    consentRenewalIntervalHandle = null;
+    logger.info("Consent renewal scheduler stopped");
   }
 }
