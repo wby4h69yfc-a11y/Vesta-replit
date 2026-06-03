@@ -1,10 +1,11 @@
-import { Clock, ListChecks, Inbox as InboxIcon, Zap, ChevronRight } from "lucide-react";
+import { Clock, ListChecks, Inbox as InboxIcon, Zap, ChevronRight, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import {
   useGetDashboardSummary,
   useGetTodayEvents,
   useGetUpcomingTasks,
   useGetActivityFeed,
+  useListPatterns,
 } from "@workspace/api-client-react";
 import CategoryBadge from "@/components/CategoryBadge";
 import { formatTime, formatDate, formatRelativeTime, isPast } from "@/lib/utils";
@@ -20,6 +21,32 @@ const V = {
   muted:   "#5F6B61",
   gold:    "#D9B95F",
 };
+
+const NUDGE_STATUSES = new Set(["suggested", "threshold_met"]);
+
+function PatternNudge() {
+  const { data: allPatterns } = useListPatterns();
+  const count = allPatterns?.filter((p) => NUDGE_STATUSES.has(p.status)).length ?? 0;
+  if (count === 0) return null;
+  return (
+    <Link href="/rules">
+      <div
+        className="flex items-center gap-3 rounded-2xl px-4 py-3 cursor-pointer hover:opacity-90 transition-opacity"
+        style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.12)" }}
+        data-testid="pattern-nudge"
+      >
+        <span className="text-lg shrink-0">💡</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium" style={{ color: V.ink }}>
+            {count === 1 ? "1 sugestão de regra detectada" : `${count} sugestões de regras detectadas`}
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: V.muted }}>Ver e aprovar padrões →</p>
+        </div>
+        <ArrowRight className="h-4 w-4 shrink-0" style={{ color: V.sage }} />
+      </div>
+    </Link>
+  );
+}
 
 export default function AppDashboard() {
   const { data: summary, isLoading } = useGetDashboardSummary();
@@ -95,6 +122,9 @@ export default function AppDashboard() {
           </div>
         </Link>
       )}
+
+      {/* Pattern nudge — surfaces when AI has detected new rule suggestions */}
+      <PatternNudge />
 
       {/* Today's events */}
       <section>

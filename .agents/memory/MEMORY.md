@@ -1,0 +1,4 @@
+- [CORS localhost for E2E tests](cors-e2e-localhost.md) — `Origin: http://localhost` blocked in dev; fix: allow it in non-production CORS config.
+- [AppDashboard is the /app route](app-routing.md) — `Hoje.tsx` is unused; `/app` → `AppDashboard.tsx`; always add UI features there, not Hoje.
+- [React Query staleTime 30s](react-query-staletime.md) — QueryClient default staleTime=30s; seed test data BEFORE browser first load or it caches empty results.
+- [Playwright E2E runner](playwright-e2e-runner.md) — `runTest` is blocked; run via `cd scripts && pnpm exec playwright test --config playwright.config.ts`.

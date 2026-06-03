@@ -69,7 +69,9 @@ export default function PatternSuggestions({ onAcceptClick }: PatternSuggestions
   const [dismissingIds, setDismissingIds] = useState<number[]>([]);
   const [acceptingIds, setAcceptingIds] = useState<number[]>([]);
 
-  const patterns = allPatterns?.filter((p) => ACTIONABLE_STATUSES.has(p.status)) ?? [];
+  const patterns = allPatterns?.filter(
+    (p) => ACTIONABLE_STATUSES.has(p.status) && !dismissingIds.includes(p.id),
+  ) ?? [];
 
   const dismissPattern = useDismissPattern({
     mutation: {

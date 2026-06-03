@@ -243,15 +243,18 @@ function EscalationBanner({ count }: { count: number }) {
 }
 
 /* ── PatternNudge ──────────────────────────────────────────────────────────── */
+const NUDGE_STATUSES = new Set(["suggested", "threshold_met"]);
+
 function PatternNudge() {
-  const { data: patterns } = useListPatterns({ status: "suggested" });
-  const count = patterns?.length ?? 0;
+  const { data: allPatterns } = useListPatterns();
+  const count = allPatterns?.filter((p) => NUDGE_STATUSES.has(p.status)).length ?? 0;
   if (count === 0) return null;
   return (
     <Link href="/rules">
       <div
         className="flex items-center gap-3 rounded-2xl px-4 py-3 cursor-pointer hover:opacity-90 transition-opacity"
         style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.12)" }}
+        data-testid="pattern-nudge"
       >
         <span className="text-lg shrink-0">💡</span>
         <div className="flex-1 min-w-0">
