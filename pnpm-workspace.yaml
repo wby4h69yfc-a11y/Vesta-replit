@@ -176,3 +176,5 @@ overrides:
   "minimatch>brace-expansion": "^2.0.3"
   # GHSA-qx2v-qp2m-jg93 — postcss < 8.5.10 (vite direct dep)
   "vite>postcss": "^8.5.10"
+  # GHSA-q8mj-m7cp-5q26 — qs < 6.15.1 (prototype pollution / excessive backtracking)
+  qs: "^6.15.2"
