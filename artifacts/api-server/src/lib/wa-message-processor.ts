@@ -73,6 +73,12 @@ export type ProcessOutcome =
       /** True when the message spans multiple intents or involves a payment */
       cascadeCheckNeeded: boolean;
       workflowTags: string[];
+      /**
+       * True when the action was bound in wa_conversations and can be approved
+       * directly in WhatsApp. False means the item must be reviewed in the app.
+       * This is authoritative — do not re-compute in webhook.ts.
+       */
+      waCanApproveViaWa: boolean;
     };
 
 /** Strip all non-digit chars for exact phone matching. */
@@ -486,13 +492,20 @@ export async function processInboundWAMessage(
     .where(eq(suggestedActionsTable.inbox_item_id, item.id))
     .limit(1);
 
-  // ── 8. Bind the proposed action to this sender's phone (DB-backed) ────────
-  // Record the (phone → actionId) mapping so that when the admin/sender
-  // replies "sim"/"não", the approval handler operates on this exact action
-  // rather than the most-recent pending action for the household.
-  // The prompt store is now DB-backed (wa_conversations table) so all server
-  // instances share state — critical for autoscale deployments.
-  if (savedAction?.id && savedAction.title) {
+  // ── 8. WA-native eligibility decision ───────────────────────────────────
+  // Only bind the prompt (and thus allow WhatsApp approvals) when all four
+  // criteria are met. For anything that falls below this bar (low confidence,
+  // multi-intent cascade, payment, or explicit-review level) we deliberately
+  // skip recordPrompt so the approval handler can never grant a WA-only approval
+  // for items that require app review.
+  const waEligible =
+    savedAction !== undefined &&
+    (savedAction.confidence ?? 0) >= 0.80 &&
+    !(savedAction.cascade_check_needed ?? false) &&
+    !(savedAction.workflow_tags ?? []).includes("payment_admin") &&
+    (savedAction.approval_level ?? "one_tap") !== "explicit";
+
+  if (waEligible && savedAction.id && savedAction.title) {
     await recordPrompt(phoneRaw, savedAction.id, householdId, {
       title: savedAction.title,
       type: savedAction.type,
@@ -501,7 +514,18 @@ export async function processInboundWAMessage(
     });
     log.info(
       { phone: phoneRaw, actionId: savedAction.id },
-      "Bound proposed action to sender phone (DB-backed)",
+      "Bound proposed action to sender phone — WA-native eligible",
+    );
+  } else if (savedAction?.id) {
+    log.info(
+      {
+        phone: phoneRaw,
+        actionId: savedAction.id,
+        confidence: savedAction.confidence,
+        cascadeCheckNeeded: savedAction.cascade_check_needed,
+        approvalLevel: savedAction.approval_level,
+      },
+      "Action requires app review — skipping WA prompt binding",
     );
   }
 
@@ -521,5 +545,6 @@ export async function processInboundWAMessage(
     confidence: savedAction?.confidence ?? 0.55,
     cascadeCheckNeeded: savedAction?.cascade_check_needed ?? false,
     workflowTags: savedAction?.workflow_tags ?? [],
+    waCanApproveViaWa: waEligible,
   };
 }

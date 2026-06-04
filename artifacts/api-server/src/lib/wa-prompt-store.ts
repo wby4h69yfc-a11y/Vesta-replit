@@ -95,14 +95,17 @@ export async function getPromptedActionId(
 }
 
 /**
- * Mark the conversation for `phone` as completed after the approval/dismissal
- * is processed.
+ * Mark the conversation for `phone` as completed after the approval is processed.
+ *
+ * Sets last_message_at = now so the 5-minute undo window is measured from the
+ * moment of approval, not from when the conversation was created.
  */
 export async function clearPrompt(phone: string): Promise<void> {
   const phoneNorm = normalisePhone(phone);
+  const now = new Date();
   await db
     .update(waConversationsTable)
-    .set({ state: "completed" })
+    .set({ state: "completed", last_message_at: now })
     .where(
       and(
         eq(waConversationsTable.sender_phone, phoneNorm),
@@ -112,13 +115,16 @@ export async function clearPrompt(phone: string): Promise<void> {
 }
 
 /**
- * Expire all wa_conversations rows past their expires_at.
- * Pending confirmations that expire are silently dismissed.
+ * Expire all wa_conversations rows past their expires_at, and purge stale
+ * completed/dismissed rows older than 24 h.
  * Called by the scheduler every 15 minutes.
  */
 export async function expireOldConversations(): Promise<number> {
   const now = new Date();
-  const result = await db
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  // 1. Dismiss awaiting_confirmation rows past their hard expiry.
+  const expireResult = await db
     .update(waConversationsTable)
     .set({ state: "dismissed" })
     .where(
@@ -127,5 +133,13 @@ export async function expireOldConversations(): Promise<number> {
         lt(waConversationsTable.expires_at, now),
       ),
     );
-  return (result as unknown as { rowCount?: number }).rowCount ?? 0;
+
+  // 2. Purge old completed/dismissed rows to bound table growth.
+  //    Rows younger than 24 h are kept so the 5-min undo window can always
+  //    look back at the most recently completed conversation.
+  await db
+    .delete(waConversationsTable)
+    .where(lt(waConversationsTable.created_at, oneDayAgo));
+
+  return (expireResult as unknown as { rowCount?: number }).rowCount ?? 0;
 }

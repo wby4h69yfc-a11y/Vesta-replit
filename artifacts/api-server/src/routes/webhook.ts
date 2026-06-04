@@ -72,32 +72,6 @@ async function validateTwilioSignature(req: Request): Promise<boolean> {
   return validateRequest(authToken, signature, webhookUrl, params);
 }
 
-/**
- * WA-native routing decision per spec §20.3.
- *
- * Returns true when the item can be fully approved/rejected inside WhatsApp
- * without opening the app. Criteria (all must be true):
- *   • Classifier confidence ≥ 0.80
- *   • Not a multi-intent / cascade item
- *   • No payment recipient involved (workflow_tags excludes payment_admin)
- *   • Not explicit-approval level (medical, financial)
- *
- * When false, Vesta sends an app deep link instead of an inline proposal.
- */
-function isWaNative(outcome: {
-  confidence: number;
-  cascadeCheckNeeded: boolean;
-  workflowTags: string[];
-  approvalLevel: string;
-}): boolean {
-  return (
-    outcome.confidence >= 0.80 &&
-    !outcome.cascadeCheckNeeded &&
-    !outcome.workflowTags.includes("payment_admin") &&
-    outcome.approvalLevel !== "explicit"
-  );
-}
-
 /** Resolve the primary production domain for deep links. */
 function primaryDomain(): string | null {
   const domains = (process.env.REPLIT_DOMAINS ?? "").split(",").filter(Boolean);
@@ -240,7 +214,7 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
 
         const domain = primaryDomain();
 
-        if (isWaNative(outcome)) {
+        if (outcome.waCanApproveViaWa) {
           // High-confidence single-intent: propose inline in WhatsApp
           req.log.info(
             { actionId: outcome.actionId, confidence: outcome.confidence },

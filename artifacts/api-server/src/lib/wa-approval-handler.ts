@@ -47,7 +47,7 @@ export type ApprovalHandlerOutcome =
   | { kind: "undone_via_wa"; actionTitle: string; householdId: number };
 
 const APPROVE_RE =
-  /^(sim|s|ok|pode|confirmar|aceito|confirmado|vai|tá|ta|ótimo|otimo|certo|isso|exato|perfeito|bom|beleza)[\s!.]*$/i;
+  /^(sim|s|ok|pode|confirmar|aceito|confirmado|vai|tá|ta|ótimo|otimo|certo|isso|exato|perfeito|bom|beleza|feito|claro|combinado)[\s!.]*$/i;
 
 const DISMISS_RE =
   /^(não|nao|n|descartar|cancela|cancelar|errado|errada|não\s+quero|nao\s+quero|delete|apaga|remove)[\s!.]*$/i;
@@ -329,29 +329,76 @@ async function handleUndo(
   householdId: number,
   log: Logger,
 ): Promise<ApprovalHandlerOutcome | undefined> {
-  const cutoff = new Date(Date.now() - 30 * 60 * 1000);
+  // ── 1. Find the most recently completed WA conversation (5-min undo window)
+  // The 5-min window is measured from last_message_at, which clearPrompt sets
+  // to now() at the moment of approval.
+  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
 
+  const [conv] = await db
+    .select({
+      pending_action_id: waConversationsTable.pending_action_id,
+    })
+    .from(waConversationsTable)
+    .where(
+      and(
+        eq(waConversationsTable.household_id, householdId),
+        eq(waConversationsTable.state, "completed"),
+        gte(waConversationsTable.last_message_at, fiveMinAgo),
+      ),
+    )
+    .orderBy(desc(waConversationsTable.last_message_at))
+    .limit(1);
+
+  if (!conv?.pending_action_id) return undefined;
+
+  // ── 2. Fetch the approved action via the binding stored in wa_conversations
   const [action] = await db
     .select({
       id: suggestedActionsTable.id,
       inbox_item_id: suggestedActionsTable.inbox_item_id,
-      household_id: suggestedActionsTable.household_id,
       title: suggestedActionsTable.title,
+      type: suggestedActionsTable.type,
       category: suggestedActionsTable.category,
     })
     .from(suggestedActionsTable)
     .where(
       and(
+        eq(suggestedActionsTable.id, conv.pending_action_id),
         eq(suggestedActionsTable.household_id, householdId),
         eq(suggestedActionsTable.status, "approved"),
-        gte(suggestedActionsTable.created_at, cutoff),
       ),
     )
-    .orderBy(desc(suggestedActionsTable.created_at))
     .limit(1);
 
   if (!action) return undefined;
 
+  // ── 3. Reverse physical task/event records created by this approval
+  if (action.type === "task" || action.type === "reminder") {
+    await db
+      .update(tasksTable)
+      .set({ status: "cancelled" })
+      .where(
+        and(
+          eq(tasksTable.household_id, householdId),
+          eq(tasksTable.title, action.title),
+          gte(tasksTable.created_at, fiveMinAgo),
+        ),
+      );
+  }
+
+  if (action.type === "event") {
+    await db
+      .delete(calendarEventsTable)
+      .where(
+        and(
+          eq(calendarEventsTable.household_id, householdId),
+          eq(calendarEventsTable.title, action.title),
+          gte(calendarEventsTable.created_at, fiveMinAgo),
+        ),
+      );
+  }
+
+  // ── 4. Flip the suggested action and inbox item back
   await db
     .update(suggestedActionsTable)
     .set({ status: "dismissed" })
@@ -362,6 +409,19 @@ async function handleUndo(
     .set({ status: "dismissed" })
     .where(eq(inboxItemsTable.id, action.inbox_item_id));
 
+  // ── 5. Close out the wa_conversations row
+  await db
+    .update(waConversationsTable)
+    .set({ state: "dismissed" })
+    .where(
+      and(
+        eq(waConversationsTable.household_id, householdId),
+        eq(waConversationsTable.pending_action_id, conv.pending_action_id),
+        eq(waConversationsTable.state, "completed"),
+      ),
+    );
+
+  // ── 6. Audit
   await db.insert(auditLogTable).values({
     household_id: householdId,
     action: "action_undone_via_wa",
