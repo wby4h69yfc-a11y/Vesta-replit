@@ -52,6 +52,7 @@ export type ProcessOutcome =
   | { kind: "approved_via_wa"; actionId: number; actionTitle: string; householdId: number; phone: string }
   | { kind: "dismissed_via_wa"; actionId: number; householdId: number; phone: string }
   | { kind: "edited_via_wa"; actionId: number; newTitle: string; householdId: number; phone: string }
+  | { kind: "nl_edit_proposed_via_wa"; actionId: number; newTitle: string; householdId: number; phone: string }
   | { kind: "undone_via_wa"; actionTitle: string; householdId: number; phone: string }
   | { kind: "consent_updated"; contactId: number; newStatus: "consented" | "revoked"; phone: string; householdId: number; contactName: string }
   | {
@@ -62,10 +63,16 @@ export type ProcessOutcome =
       approvalLevel: string;
       senderName: string | null;
       consentGranted: boolean;
+      actionId: number | null;
       actionTitle: string | null;
       actionType: string | null;
       actionCategory: string | null;
       actionDatetime: string | null;
+      /** Classification confidence — used by the WA-native routing decision */
+      confidence: number;
+      /** True when the message spans multiple intents or involves a payment */
+      cascadeCheckNeeded: boolean;
+      workflowTags: string[];
     };
 
 /** Strip all non-digit chars for exact phone matching. */
@@ -471,20 +478,30 @@ export async function processInboundWAMessage(
       type: suggestedActionsTable.type,
       category: suggestedActionsTable.category,
       datetime: suggestedActionsTable.datetime,
+      confidence: suggestedActionsTable.confidence,
+      cascade_check_needed: suggestedActionsTable.cascade_check_needed,
+      workflow_tags: suggestedActionsTable.workflow_tags,
     })
     .from(suggestedActionsTable)
     .where(eq(suggestedActionsTable.inbox_item_id, item.id))
     .limit(1);
 
-  // ── 8. Bind the proposed action to this sender's phone ────────────────────
-  // Record the (phone → actionId) mapping now so that when the admin/sender
+  // ── 8. Bind the proposed action to this sender's phone (DB-backed) ────────
+  // Record the (phone → actionId) mapping so that when the admin/sender
   // replies "sim"/"não", the approval handler operates on this exact action
   // rather than the most-recent pending action for the household.
+  // The prompt store is now DB-backed (wa_conversations table) so all server
+  // instances share state — critical for autoscale deployments.
   if (savedAction?.id && savedAction.title) {
-    recordPrompt(phoneRaw, savedAction.id, householdId);
+    await recordPrompt(phoneRaw, savedAction.id, householdId, {
+      title: savedAction.title,
+      type: savedAction.type,
+      category: savedAction.category,
+      datetime: savedAction.datetime ?? null,
+    });
     log.info(
       { phone: phoneRaw, actionId: savedAction.id },
-      "Bound proposed action to sender phone",
+      "Bound proposed action to sender phone (DB-backed)",
     );
   }
 
@@ -496,9 +513,13 @@ export async function processInboundWAMessage(
     approvalLevel: savedAction?.approval_level ?? "one_tap",
     senderName,
     consentGranted: !senderIsContact || consentGranted,
+    actionId: savedAction?.id ?? null,
     actionTitle: savedAction?.title ?? null,
     actionType: savedAction?.type ?? null,
     actionCategory: savedAction?.category ?? null,
     actionDatetime: savedAction?.datetime ?? null,
+    confidence: savedAction?.confidence ?? 0.55,
+    cascadeCheckNeeded: savedAction?.cascade_check_needed ?? false,
+    workflowTags: savedAction?.workflow_tags ?? [],
   };
 }

@@ -51,6 +51,20 @@ export function replyExplicitReviewNeeded(senderName: string): string {
 }
 
 /**
+ * Sent when an item's confidence is too low or it's complex — user should
+ * review in the app. Includes a deep link to the inbox.
+ */
+export function replyAppDeepLink(actionTitle: string | null, domain: string | null): string {
+  const linkBase = domain ? `https://${domain}` : null;
+  const appUrl = linkBase ? `${linkBase}/inbox` : null;
+  const titlePart = actionTitle ? `*${actionTitle}*\n\n` : "";
+  const linkPart = appUrl
+    ? `Revise no app: ${appUrl}`
+    : "Abra o app Vesta para revisar.";
+  return `📋 ${titlePart}Precisa de uma revisão rápida antes de confirmar.\n${linkPart}`;
+}
+
+/**
  * Sent when an inbound message comes from an unknown phone number —
  * not stored in contacts or members for any household.
  * We do NOT send this reply in production (would confirm to spammers
@@ -187,12 +201,25 @@ export function replyActionProposal(
   return lines.join("\n");
 }
 
+// Vocabulary pool for approval confirmations — rotated deterministically.
+// Per spec §20.7: vary confirmations, never repeat the same word.
+const APPROVAL_WORDS = ["Beleza", "Anotado", "Feito", "Pronto", "Confirmado"] as const;
+let approvalWordIdx = 0;
+
+function nextApprovalWord(): string {
+  const word = APPROVAL_WORDS[approvalWordIdx % APPROVAL_WORDS.length]!;
+  approvalWordIdx = (approvalWordIdx + 1) % APPROVAL_WORDS.length;
+  return word;
+}
+
 /**
  * Sent when the user replies "sim" and the action is approved.
+ * Rotates confirmation vocabulary per §20.7 style guide.
  */
 export function replyApproved(title: string): string {
   const short = title.length > 60 ? title.substring(0, 57) + "…" : title;
-  return `✅ Confirmado!\n\n*${short}*\n\nAdicionado ao seu Vesta.`;
+  const word = nextApprovalWord();
+  return `✅ ${word}!\n\n*${short}*\n\nAdicionado ao seu Vesta.`;
 }
 
 /**
@@ -208,6 +235,18 @@ export function replyDismissed(): string {
 export function replyEdited(newTitle: string): string {
   const short = newTitle.length > 60 ? newTitle.substring(0, 57) + "…" : newTitle;
   return `✅ Atualizado e confirmado!\n\n*${short}*`;
+}
+
+/**
+ * Sent after applying a natural-language inline edit — re-proposes the
+ * updated item for final confirmation.
+ */
+export function replyNlEditProposal(newTitle: string): string {
+  const short = newTitle.length > 60 ? newTitle.substring(0, 57) + "…" : newTitle;
+  return (
+    `✏️ Atualizado: *${short}*\n\n` +
+    `*sim* confirmar  ·  *não* descartar`
+  );
 }
 
 /**

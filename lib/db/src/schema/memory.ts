@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, jsonb, date, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, jsonb, date, boolean, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -84,6 +84,46 @@ export const onboardingStateTable = pgTable("onboarding_state", {
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const waConversationsTable = pgTable(
+  "wa_conversations",
+  {
+    id: serial("id").primaryKey(),
+    household_id: integer("household_id").notNull(),
+    sender_phone: text("sender_phone").notNull(),
+    /** awaiting_confirmation | awaiting_edit | completed | dismissed */
+    state: text("state").notNull().default("awaiting_confirmation"),
+    /** FK to suggested_actions.id — the action being proposed to this sender */
+    pending_action_id: integer("pending_action_id"),
+    /** Snapshot of the proposed action so the re-proposal message is accurate */
+    proposed_payload: jsonb("proposed_payload").$type<{
+      title: string;
+      type: string | null;
+      category: string | null;
+      datetime: string | null;
+    }>(),
+    /** Slot for future context types: 'approval' | 'rating_request' */
+    thread_context: text("thread_context").default("approval"),
+    last_message_at: timestamp("last_message_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    /** Hard expiry — rows older than this are silently dismissed by the cleanup tick */
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("wa_conversations_lookup_idx").on(
+      table.household_id,
+      table.sender_phone,
+      table.state,
+      table.expires_at,
+    ),
+  ],
+);
+
+export type WaConversation = typeof waConversationsTable.$inferSelect;
 
 export type HouseholdPlace = typeof householdPlacesTable.$inferSelect;
 export type HouseholdRoutine = typeof householdRoutinesTable.$inferSelect;

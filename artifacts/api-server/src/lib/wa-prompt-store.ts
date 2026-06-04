@@ -1,68 +1,131 @@
 /**
- * In-memory store that binds a WhatsApp sender phone to the specific
- * suggested action ID they were shown in a proposal message.
+ * WA Conversation Prompt Store — DB-backed
  *
- * This prevents the "approval hijack" race condition where a recognized sender
- * races in a new message so an admin's "sim" reply approves the wrong (newly
- * created) action instead of the one the admin actually reviewed.
+ * Binds a WhatsApp sender phone to the specific suggested action ID they
+ * were shown in a proposal message. Persisted in the `wa_conversations`
+ * table so all server instances share state (required for autoscale).
+ *
+ * Replaces the previous in-memory Map implementation. Interface is now async.
  *
  * Flow:
- *   1. Classifier produces a suggested action → recordPrompt(phone, actionId, householdId)
+ *   1. Classifier produces a suggested action → recordPrompt(phone, actionId, householdId, payload)
  *   2. replyActionProposal is sent to the sender
- *   3. Sender replies "sim"/"não"/etc. → getPromptedActionId(phone, householdId) returns
- *      the exact action ID they were shown; the handler queries by ID rather than
- *      picking the most-recently-created pending action for the household.
- *   4. After the approval/dismissal is processed → clearPrompt(phone)
+ *   3. Sender replies → getPromptedActionId(phone, householdId) returns the exact
+ *      action ID they were shown (not the most-recent pending action for the household)
+ *   4. After approval/dismissal → clearPrompt(phone)
  *
- * TTL: 24 hours — long enough for delayed replies while still bounding the window.
+ * TTL: 24 hours.
  */
+
+import { db } from "@workspace/db";
+import { waConversationsTable } from "@workspace/db";
+import { and, eq, gt, desc, lt } from "drizzle-orm";
 
 const TTL_MS = 24 * 60 * 60 * 1000;
 
-interface PromptEntry {
-  actionId: number;
-  householdId: number;
-  expiresAt: number;
-}
-
-const store = new Map<string, PromptEntry>();
-
-function normaliseKey(phone: string): string {
+export function normalisePhone(phone: string): string {
   return phone.replace(/\D/g, "");
 }
 
 /**
  * Record that `phone` was just shown a proposal for `actionId` in `householdId`.
- * Replaces any existing binding for that phone.
+ * Dismisses any previous open conversation for that sender first.
  */
-export function recordPrompt(phone: string, actionId: number, householdId: number): void {
-  const key = normaliseKey(phone);
-  for (const [k, v] of store.entries()) {
-    if (Date.now() > v.expiresAt) store.delete(k);
-  }
-  store.set(key, { actionId, householdId, expiresAt: Date.now() + TTL_MS });
+export async function recordPrompt(
+  phone: string,
+  actionId: number,
+  householdId: number,
+  proposedPayload?: { title: string; type: string | null; category: string | null; datetime: string | null },
+): Promise<void> {
+  const phoneNorm = normalisePhone(phone);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + TTL_MS);
+
+  // Dismiss any existing awaiting_confirmation rows for this sender so
+  // the lookup always returns only the freshest proposal.
+  await db
+    .update(waConversationsTable)
+    .set({ state: "dismissed" })
+    .where(
+      and(
+        eq(waConversationsTable.household_id, householdId),
+        eq(waConversationsTable.sender_phone, phoneNorm),
+        eq(waConversationsTable.state, "awaiting_confirmation"),
+      ),
+    );
+
+  await db.insert(waConversationsTable).values({
+    household_id: householdId,
+    sender_phone: phoneNorm,
+    state: "awaiting_confirmation",
+    pending_action_id: actionId,
+    proposed_payload: proposedPayload ?? null,
+    thread_context: "approval",
+    last_message_at: now,
+    expires_at: expiresAt,
+  });
 }
 
 /**
  * Return the action ID that was most recently proposed to `phone` in `householdId`,
- * or null if no valid binding exists.
- *
- * The householdId cross-check prevents a phone that somehow appears in two households
- * from using a stale binding belonging to the other household.
+ * or null if no valid binding exists or the conversation has expired.
  */
-export function getPromptedActionId(phone: string, householdId: number): number | null {
-  const key = normaliseKey(phone);
-  const entry = store.get(key);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    store.delete(key);
-    return null;
-  }
-  if (entry.householdId !== householdId) return null;
-  return entry.actionId;
+export async function getPromptedActionId(
+  phone: string,
+  householdId: number,
+): Promise<number | null> {
+  const phoneNorm = normalisePhone(phone);
+  const now = new Date();
+
+  const [row] = await db
+    .select({ pending_action_id: waConversationsTable.pending_action_id })
+    .from(waConversationsTable)
+    .where(
+      and(
+        eq(waConversationsTable.household_id, householdId),
+        eq(waConversationsTable.sender_phone, phoneNorm),
+        eq(waConversationsTable.state, "awaiting_confirmation"),
+        gt(waConversationsTable.expires_at, now),
+      ),
+    )
+    .orderBy(desc(waConversationsTable.created_at))
+    .limit(1);
+
+  return row?.pending_action_id ?? null;
 }
 
-/** Remove the binding for `phone` after the approval/dismissal is processed. */
-export function clearPrompt(phone: string): void {
-  store.delete(normaliseKey(phone));
+/**
+ * Mark the conversation for `phone` as completed after the approval/dismissal
+ * is processed.
+ */
+export async function clearPrompt(phone: string): Promise<void> {
+  const phoneNorm = normalisePhone(phone);
+  await db
+    .update(waConversationsTable)
+    .set({ state: "completed" })
+    .where(
+      and(
+        eq(waConversationsTable.sender_phone, phoneNorm),
+        eq(waConversationsTable.state, "awaiting_confirmation"),
+      ),
+    );
+}
+
+/**
+ * Expire all wa_conversations rows past their expires_at.
+ * Pending confirmations that expire are silently dismissed.
+ * Called by the scheduler every 15 minutes.
+ */
+export async function expireOldConversations(): Promise<number> {
+  const now = new Date();
+  const result = await db
+    .update(waConversationsTable)
+    .set({ state: "dismissed" })
+    .where(
+      and(
+        eq(waConversationsTable.state, "awaiting_confirmation"),
+        lt(waConversationsTable.expires_at, now),
+      ),
+    );
+  return (result as unknown as { rowCount?: number }).rowCount ?? 0;
 }

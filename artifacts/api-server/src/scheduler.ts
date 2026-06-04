@@ -5,14 +5,17 @@ import { logger } from "./lib/logger";
 import { sendHouseholdBriefing } from "./lib/briefing-core";
 import { detectPatternsForAllHouseholds } from "./lib/pattern-detector";
 import { runConsentRenewalJob } from "./lib/consent-renewal-scheduler";
+import { expireOldConversations } from "./lib/wa-prompt-store";
 
 const TICK_INTERVAL_MS = 60_000;
 const PATTERN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const CONSENT_RENEWAL_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const WA_CONV_EXPIRY_INTERVAL_MS = 15 * 60 * 1000; // every 15 minutes
 
 let briefingIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let patternIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let consentRenewalIntervalHandle: ReturnType<typeof setInterval> | null = null;
+let waConvExpiryIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
 function localHourInTimezone(date: Date, timezone: string): number {
   try {
@@ -111,6 +114,17 @@ async function consentRenewalTick(): Promise<void> {
   }
 }
 
+async function waConvExpiryTick(): Promise<void> {
+  try {
+    const expired = await expireOldConversations();
+    if (expired > 0) {
+      logger.info({ expired }, "Scheduler: expired WA conversations dismissed");
+    }
+  } catch (err) {
+    logger.error({ err }, "Scheduler: WA conversation expiry error");
+  }
+}
+
 export function startScheduler(): void {
   if (briefingIntervalHandle !== null) {
     return;
@@ -131,6 +145,12 @@ export function startScheduler(): void {
     void consentRenewalTick();
   }, CONSENT_RENEWAL_INTERVAL_MS);
   logger.info({ intervalMs: CONSENT_RENEWAL_INTERVAL_MS }, "Consent renewal scheduler started");
+
+  void waConvExpiryTick();
+  waConvExpiryIntervalHandle = setInterval(() => {
+    void waConvExpiryTick();
+  }, WA_CONV_EXPIRY_INTERVAL_MS);
+  logger.info({ intervalMs: WA_CONV_EXPIRY_INTERVAL_MS }, "WA conversation expiry scheduler started");
 }
 
 export function stopScheduler(): void {
@@ -148,5 +168,10 @@ export function stopScheduler(): void {
     clearInterval(consentRenewalIntervalHandle);
     consentRenewalIntervalHandle = null;
     logger.info("Consent renewal scheduler stopped");
+  }
+  if (waConvExpiryIntervalHandle !== null) {
+    clearInterval(waConvExpiryIntervalHandle);
+    waConvExpiryIntervalHandle = null;
+    logger.info("WA conversation expiry scheduler stopped");
   }
 }

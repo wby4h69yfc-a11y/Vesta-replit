@@ -9,12 +9,13 @@
  * the normal inbox → classify pipeline.
  *
  * Patterns (all case-insensitive, whole-message match for approve/dismiss/undo):
- *   approve  — sim, s, ok, pode, confirmar, aceito, confirmado, vai, tá, ta,
- *              ótimo, otimo, certo, isso, exato, perfeito, bom, beleza
- *   dismiss  — não, nao, n, descartar, cancela, cancelar, errado, errada,
- *              não quero, nao quero, delete, apaga, remove
- *   edit     — "editar: [new title]", "muda para [title]", "corrige: [title]", etc.
- *   undo     — desfazer, cancela isso, errei, foi erro, engano, undo
+ *   approve     — sim, s, ok, pode, confirmar, aceito, confirmado, vai, tá, ta,
+ *                 ótimo, otimo, certo, isso, exato, perfeito, bom, beleza
+ *   dismiss     — não, nao, n, descartar, cancela, cancelar, errado, errada,
+ *                 não quero, nao quero, delete, apaga, remove
+ *   edit        — "editar: [new title]", "muda para [title]", "corrige: [title]", etc.
+ *   approve+NL  — "sim mas troca pra Pedro", "ok, mas às 15h" — positive with inline edit
+ *   undo        — desfazer, cancela isso, errei, foi erro, engano, undo
  *
  * Undo window: 30 minutes from approval.
  *
@@ -32,22 +33,35 @@ import {
   calendarEventsTable,
   tasksTable,
   auditLogTable,
+  waConversationsTable,
 } from "@workspace/db";
 import { eq, and, desc, gte } from "drizzle-orm";
-import { getPromptedActionId, clearPrompt } from "./wa-prompt-store";
+import { normalisePhone, getPromptedActionId, clearPrompt } from "./wa-prompt-store";
+import { openai } from "@workspace/integrations-openai-ai-server";
 
 export type ApprovalHandlerOutcome =
   | { kind: "approved_via_wa"; actionId: number; actionTitle: string; householdId: number }
   | { kind: "dismissed_via_wa"; actionId: number; householdId: number }
   | { kind: "edited_via_wa"; actionId: number; newTitle: string; householdId: number }
+  | { kind: "nl_edit_proposed_via_wa"; actionId: number; newTitle: string; householdId: number }
   | { kind: "undone_via_wa"; actionTitle: string; householdId: number };
 
 const APPROVE_RE =
   /^(sim|s|ok|pode|confirmar|aceito|confirmado|vai|tá|ta|ótimo|otimo|certo|isso|exato|perfeito|bom|beleza)[\s!.]*$/i;
+
 const DISMISS_RE =
   /^(não|nao|n|descartar|cancela|cancelar|errado|errada|não\s+quero|nao\s+quero|delete|apaga|remove)[\s!.]*$/i;
+
 const EDIT_RE =
   /^(?:editar?|muda(?:\s+para)?|corrig[ie](?:r|ir)?|mudar\s+para|alterar?|trocar\s+para)[:\s]+(.+)$/i;
+
+/**
+ * "sim mas troca pra Pedro", "ok mas às 15h", "beleza, mas tira o lanche"
+ * Positive approval with an inline natural-language amendment.
+ */
+const APPROVE_WITH_NL_EDIT_RE =
+  /^(?:sim|s|ok|pode|confirmar|aceito|vai|tá|ta|ótimo|otimo|certo|isso|bom|beleza)\s*[,.]?\s+(?:mas|só\s+que|so\s+que|porém|porem|só\s*que|mas\s+(?:muda|troca|tira|adiciona|remove|coloca|bota|com|sem|às|as|para|pro|pra))\s+(.+)$/i;
+
 const UNDO_RE =
   /^(desfazer|cancela\s+isso|errei|foi\s+erro|engano|não\s+era\s+isso|nao\s+era\s+isso|apaga\s+isso|undo)[\s!.]*$/i;
 
@@ -64,12 +78,45 @@ interface ActionRow {
 }
 
 /**
+ * Resolve a natural-language edit instruction to a new title string.
+ * Falls back to the original title + note if OpenAI is unavailable.
+ */
+async function resolveNlEdit(originalTitle: string, editInstruction: string): Promise<string> {
+  try {
+    const resp = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_completion_tokens: 60,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Você é um assistente que atualiza títulos de ações domésticas em português. " +
+            "Recebe o título atual e uma instrução de edição e retorna APENAS o novo título, sem aspas, sem explicações.",
+        },
+        {
+          role: "user",
+          content: `Título atual: "${originalTitle}"\nInstrução de edição: "${editInstruction}"\nNovo título:`,
+        },
+      ],
+    });
+    const newTitle = resp.choices[0]?.message?.content?.trim();
+    if (newTitle && newTitle.length > 0) return newTitle.substring(0, 120);
+  } catch {
+    // fall through to deterministic fallback
+  }
+  // Deterministic fallback: append the edit instruction as a note
+  return `${originalTitle} (${editInstruction})`.substring(0, 120);
+}
+
+/**
  * Attempts to interpret `body` as an approval/dismissal/edit/undo command for
  * the given household and sender. Returns a typed outcome or undefined if the
  * message should be treated as a new inbound message.
  *
  * `senderPhone` is used to look up the specific action that was proposed to this
  * sender, preventing race-condition approval hijacks.
+ *
+ * NOTE: All prompt-store calls are now async (DB-backed).
  */
 export async function handleApprovalResponse(
   body: string,
@@ -87,14 +134,12 @@ export async function handleApprovalResponse(
   const isApprove = APPROVE_RE.test(trimmed);
   const isDismiss = DISMISS_RE.test(trimmed);
   const editMatch = EDIT_RE.exec(trimmed);
+  const nlEditMatch = APPROVE_WITH_NL_EDIT_RE.exec(trimmed);
 
-  if (!isApprove && !isDismiss && !editMatch) return undefined;
+  if (!isApprove && !isDismiss && !editMatch && !nlEditMatch) return undefined;
 
   // ── find the specific action that was proposed to this sender ─────────────
-  // We look up the action ID from the prompt store first (bound when the
-  // proposal was sent to this phone). This prevents "most recent" selection
-  // from being hijacked by a concurrent message that created a newer action.
-  const promptedActionId = getPromptedActionId(senderPhone, householdId);
+  const promptedActionId = await getPromptedActionId(senderPhone, householdId);
 
   let action: ActionRow | undefined;
 
@@ -124,14 +169,42 @@ export async function handleApprovalResponse(
   }
 
   if (!action) {
-    // No valid prompt binding for this sender — do not fall back to "most
-    // recent" for the whole household, as that would re-introduce the race
-    // condition. Treat as a regular message instead.
     log.info(
       { senderPhone, householdId, promptedActionId },
       "No bound pending action for sender — treating as new message",
     );
     return undefined;
+  }
+
+  // ── Natural-language inline edit ("sim mas troca pra Pedro") ─────────────
+  if (nlEditMatch) {
+    const editInstruction = nlEditMatch[1]?.trim() ?? "";
+    const newTitle = await resolveNlEdit(action.title, editInstruction);
+
+    // Update wa_conversations with the new proposed payload then re-propose.
+    // We keep state as awaiting_confirmation so the user can confirm the edit.
+    await db
+      .update(waConversationsTable)
+      .set({
+        proposed_payload: { title: newTitle, type: action.type, category: action.category, datetime: action.datetime },
+        last_message_at: new Date(),
+      })
+      .where(
+        and(
+          eq(waConversationsTable.household_id, householdId),
+          eq(waConversationsTable.sender_phone, normalisePhone(senderPhone)),
+          eq(waConversationsTable.state, "awaiting_confirmation"),
+        ),
+      );
+
+    // Also update the pending action's title so if finally approved it saves correctly
+    await db
+      .update(suggestedActionsTable)
+      .set({ title: newTitle })
+      .where(eq(suggestedActionsTable.id, action.id));
+
+    log.info({ actionId: action.id, newTitle, editInstruction }, "NL inline edit applied — re-proposing");
+    return { kind: "nl_edit_proposed_via_wa", actionId: action.id, newTitle, householdId };
   }
 
   if (isApprove) {
@@ -141,7 +214,7 @@ export async function handleApprovalResponse(
       description: `Aprovado via WhatsApp: ${action.title}`,
       category: action.category,
     });
-    clearPrompt(senderPhone);
+    await clearPrompt(senderPhone);
     log.info({ actionId: action.id, title: action.title }, "Action approved via WhatsApp");
     return {
       kind: "approved_via_wa",
@@ -157,13 +230,13 @@ export async function handleApprovalResponse(
       description: `Descartado via WhatsApp: ${action.title}`,
       category: action.category,
     });
-    clearPrompt(senderPhone);
+    await clearPrompt(senderPhone);
     log.info({ actionId: action.id, title: action.title }, "Action dismissed via WhatsApp");
     return { kind: "dismissed_via_wa", actionId: action.id, householdId };
   }
 
   if (editMatch) {
-    const newTitle = editMatch[1].trim().substring(0, 120);
+    const newTitle = editMatch[1]!.trim().substring(0, 120);
     const editedAction: ActionRow = { ...action, title: newTitle };
 
     await createEventOrTask(editedAction, householdId);
@@ -187,7 +260,7 @@ export async function handleApprovalResponse(
       description: `Editado via WhatsApp: ${newTitle}`,
     });
 
-    clearPrompt(senderPhone);
+    await clearPrompt(senderPhone);
     log.info({ actionId: action.id, newTitle }, "Action edited and approved via WhatsApp");
     return { kind: "edited_via_wa", actionId: action.id, newTitle, householdId };
   }

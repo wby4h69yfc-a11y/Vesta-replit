@@ -10,8 +10,10 @@ import {
   replyApproved,
   replyDismissed,
   replyEdited,
+  replyNlEditProposal,
   replyUndone,
   replyExplicitReviewNeeded,
+  replyAppDeepLink,
   replyConsentGranted,
   replyConsentRevoked,
   notifyAdminConsentGranted,
@@ -71,6 +73,38 @@ async function validateTwilioSignature(req: Request): Promise<boolean> {
 }
 
 /**
+ * WA-native routing decision per spec §20.3.
+ *
+ * Returns true when the item can be fully approved/rejected inside WhatsApp
+ * without opening the app. Criteria (all must be true):
+ *   • Classifier confidence ≥ 0.80
+ *   • Not a multi-intent / cascade item
+ *   • No payment recipient involved (workflow_tags excludes payment_admin)
+ *   • Not explicit-approval level (medical, financial)
+ *
+ * When false, Vesta sends an app deep link instead of an inline proposal.
+ */
+function isWaNative(outcome: {
+  confidence: number;
+  cascadeCheckNeeded: boolean;
+  workflowTags: string[];
+  approvalLevel: string;
+}): boolean {
+  return (
+    outcome.confidence >= 0.80 &&
+    !outcome.cascadeCheckNeeded &&
+    !outcome.workflowTags.includes("payment_admin") &&
+    outcome.approvalLevel !== "explicit"
+  );
+}
+
+/** Resolve the primary production domain for deep links. */
+function primaryDomain(): string | null {
+  const domains = (process.env.REPLIT_DOMAINS ?? "").split(",").filter(Boolean);
+  return domains[0] ?? process.env.REPLIT_DEV_DOMAIN ?? null;
+}
+
+/**
  * POST /api/webhook/whatsapp
  *
  * Twilio WhatsApp inbound webhook.
@@ -81,15 +115,19 @@ async function validateTwilioSignature(req: Request): Promise<boolean> {
  *   1. Authenticate (Twilio HMAC)
  *   2. ACK Twilio immediately (prevents retries)
  *   3. Delegate to WhatsAppMessageProcessor (async)
- *   4. Send WhatsApp reply via WhatsAppReplyComposer output
+ *   4. Send WhatsApp reply based on WA-native routing decision
  *
- * WhatsApp-native approval loop:
- *   • New message → classified → replyActionProposal (shows action, asks sim/não)
- *   • "sim"         → replyApproved   (action written to DB)
- *   • "não"         → replyDismissed
- *   • "editar: X"   → replyEdited     (title corrected and action written)
- *   • "desfazer"    → replyUndone     (30-min undo window)
- *   • explicit item → replyExplicitReviewNeeded to household admin
+ * WA-native approval loop (confidence ≥ 0.80, single-intent, no payment):
+ *   • New message → classified → replyActionProposal (asks sim/não in WA)
+ *   • "sim"           → replyApproved   (action written to DB, rotated vocab)
+ *   • "não"           → replyDismissed
+ *   • "editar: X"     → replyEdited     (title corrected and action written)
+ *   • "sim mas X"     → replyNlEditProposal (re-proposes with updated title)
+ *   • "desfazer"      → replyUndone     (30-min undo window)
+ *
+ * App-required path (confidence < 0.80 or cascade or payment or explicit):
+ *   • replyAppDeepLink → user opens inbox in browser to review
+ *   • explicit items also notify household admin
  */
 router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
   // ── 1. Authenticate ────────────────────────────────────────────────────────
@@ -154,6 +192,12 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         void sendWhatsApp(outcome.phone, replyEdited(outcome.newTitle));
         break;
 
+      // NL inline edit applied — re-propose updated item for final confirmation
+      case "nl_edit_proposed_via_wa":
+        void sendWhatsApp(outcome.phone, replyNlEditProposal(outcome.newTitle));
+        req.log.info({ actionId: outcome.actionId, newTitle: outcome.newTitle }, "NL edit re-proposed via WhatsApp");
+        break;
+
       case "undone_via_wa":
         void sendWhatsApp(outcome.phone, replyUndone(outcome.actionTitle));
         break;
@@ -184,27 +228,48 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         break;
       }
 
-      // ── New inbound message — classified and proposed ─────────────────────
+      // ── New inbound message — classified and routed ────────────────────────
       case "ingested": {
-        if (outcome.consentGranted) {
-          if (outcome.actionTitle) {
-            // Send action proposal so the user can approve/reject in WhatsApp
-            void sendWhatsApp(
-              outcome.phone,
-              replyActionProposal(
-                outcome.actionTitle,
-                outcome.actionType,
-                outcome.actionCategory,
-                outcome.actionDatetime,
-              ),
-            );
-          } else {
-            // Classification produced no action (e.g. pure chitchat) — simple ack
-            void sendWhatsApp(outcome.phone, replyIngestAck());
-          }
+        if (!outcome.consentGranted) break;
+
+        if (!outcome.actionTitle) {
+          // Classification produced no action (e.g. pure chitchat) — simple ack
+          void sendWhatsApp(outcome.phone, replyIngestAck());
+          break;
         }
 
-        // Notify household admin for explicit-approval items
+        const domain = primaryDomain();
+
+        if (isWaNative(outcome)) {
+          // High-confidence single-intent: propose inline in WhatsApp
+          req.log.info(
+            { actionId: outcome.actionId, confidence: outcome.confidence },
+            "WA-native flow: sending inline action proposal",
+          );
+          void sendWhatsApp(
+            outcome.phone,
+            replyActionProposal(
+              outcome.actionTitle,
+              outcome.actionType,
+              outcome.actionCategory,
+              outcome.actionDatetime,
+            ),
+          );
+        } else {
+          // Low-confidence, multi-intent, payment, or explicit: redirect to app
+          req.log.info(
+            {
+              actionId: outcome.actionId,
+              confidence: outcome.confidence,
+              cascadeCheckNeeded: outcome.cascadeCheckNeeded,
+              approvalLevel: outcome.approvalLevel,
+            },
+            "App-required path: sending deep link",
+          );
+          void sendWhatsApp(outcome.phone, replyAppDeepLink(outcome.actionTitle, domain));
+        }
+
+        // Notify household admin for explicit-approval items regardless of routing
         if (outcome.approvalLevel === "explicit" && outcome.senderName) {
           const adminPhone = await resolveHouseholdAdminPhone(outcome.householdId);
           if (adminPhone && adminPhone !== outcome.phone) {
@@ -238,20 +303,20 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
  */
 router.get("/webhook/whatsapp/info", async (req: Request, res: Response) => {
   const domains = (process.env.REPLIT_DOMAINS ?? "").split(",").filter(Boolean);
-  const primaryDomain = domains[0] ?? null;
+  const primaryDomainStr = domains[0] ?? null;
 
   // Extract the phone number digits from TWILIO_WHATSAPP_FROM (e.g. "whatsapp:+14155238886" → "14155238886")
   const rawFrom = process.env.TWILIO_WHATSAPP_FROM ?? "";
   const twilioNumber = rawFrom.replace(/^whatsapp:/i, "").replace(/\D/g, "") || null;
 
   res.json({
-    webhook_url: primaryDomain
-      ? `https://${primaryDomain}/api/webhook/whatsapp`
+    webhook_url: primaryDomainStr
+      ? `https://${primaryDomainStr}/api/webhook/whatsapp`
       : null,
     method: "POST",
     description:
       "Configure este URL no console do Twilio como webhook de entrada para seu número WhatsApp Business.",
-    status: primaryDomain ? "configured" : "needs_domain",
+    status: primaryDomainStr ? "configured" : "needs_domain",
     twilioConfigured: isTwilioConfigured(),
     twilio_number: twilioNumber,
   });
