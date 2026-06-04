@@ -46,7 +46,8 @@ import { eq, and, desc, gte, gt } from "drizzle-orm";
 import {
   normalisePhone,
   getPromptedActionId,
-  clearPrompt,
+  completePrompt,
+  dismissPrompt,
 } from "./wa-prompt-store";
 import { openai } from "@workspace/integrations-openai-ai-server";
 
@@ -389,15 +390,39 @@ export async function handleApprovalResponse(
 
   // ── Approve ───────────────────────────────────────────────────────────────
   if (isApprove) {
-    await createEventOrTask(action, householdId);
+    const artifactId = await createEventOrTask(action, householdId);
+
+    // Write the artifact ID back into the conversation row BEFORE completing
+    // so that undo can reverse the exact row rather than searching by title+time.
+    if (artifactId !== null) {
+      await db
+        .update(waConversationsTable)
+        .set({
+          proposed_payload: {
+            title: action.title,
+            type: action.type,
+            category: action.category,
+            datetime: action.datetime,
+            artifact_id: artifactId,
+          },
+        })
+        .where(
+          and(
+            eq(waConversationsTable.household_id, householdId),
+            eq(waConversationsTable.sender_phone, phoneNorm),
+            eq(waConversationsTable.state, "awaiting_confirmation"),
+          ),
+        );
+    }
+
     await markActionStatus(action.id, action.inbox_item_id, householdId, "approved", {
       auditAction: "action_approved_via_wa",
       description: `Aprovado via WhatsApp: ${action.title}`,
       category: action.category,
     });
-    await clearPrompt(senderPhone, householdId);
+    await completePrompt(senderPhone, householdId);
 
-    log.info({ actionId: action.id, title: action.title }, "Action approved via WhatsApp");
+    log.info({ actionId: action.id, title: action.title, artifactId }, "Action approved via WhatsApp");
     return { kind: "approved_via_wa", actionId: action.id, actionTitle: action.title, householdId };
   }
 
@@ -408,7 +433,7 @@ export async function handleApprovalResponse(
       description: `Descartado via WhatsApp: ${action.title}`,
       category: action.category,
     });
-    await clearPrompt(senderPhone, householdId);
+    await dismissPrompt(senderPhone, householdId);
 
     log.info({ actionId: action.id }, "Action dismissed via WhatsApp");
     return { kind: "dismissed_via_wa", actionId: action.id, householdId };
@@ -419,9 +444,14 @@ export async function handleApprovalResponse(
 
 // ── Domain helpers ────────────────────────────────────────────────────────────
 
-async function createEventOrTask(action: ActionRow, householdId: number): Promise<void> {
+/**
+ * Creates the physical event or task row on approval.
+ * Returns the new row's ID so the caller can write it back into
+ * wa_conversations.proposed_payload for precise undo.
+ */
+async function createEventOrTask(action: ActionRow, householdId: number): Promise<number | null> {
   if (action.type === "event" && action.datetime) {
-    await db
+    const [created] = await db
       .insert(calendarEventsTable)
       .values({
         household_id: householdId,
@@ -432,19 +462,26 @@ async function createEventOrTask(action: ActionRow, householdId: number): Promis
         sync_status: "local",
         notes: action.notes ?? undefined,
       })
-      .onConflictDoNothing();
+      .returning({ id: calendarEventsTable.id });
+    return created?.id ?? null;
   }
 
   if (action.type === "task" || action.type === "reminder") {
-    await db.insert(tasksTable).values({
-      household_id: householdId,
-      title: action.title,
-      status: "pending",
-      category: action.category ?? "outros",
-      due_at: action.datetime ? new Date(action.datetime) : undefined,
-      workflow_tags: action.workflow_tags,
-    });
+    const [created] = await db
+      .insert(tasksTable)
+      .values({
+        household_id: householdId,
+        title: action.title,
+        status: "pending",
+        category: action.category ?? "outros",
+        due_at: action.datetime ? new Date(action.datetime) : undefined,
+        workflow_tags: action.workflow_tags,
+      })
+      .returning({ id: tasksTable.id });
+    return created?.id ?? null;
   }
+
+  return null;
 }
 
 async function markActionStatus(
@@ -486,7 +523,10 @@ async function handleUndoOrCancel(
   // if two admins act in the same household, "cancela" from one must not undo
   // the other's most recent action.
   const [conv] = await db
-    .select({ pending_action_id: waConversationsTable.pending_action_id })
+    .select({
+      pending_action_id: waConversationsTable.pending_action_id,
+      proposed_payload: waConversationsTable.proposed_payload,
+    })
     .from(waConversationsTable)
     .where(
       and(
@@ -519,29 +559,56 @@ async function handleUndoOrCancel(
       .limit(1);
 
     if (action) {
+      // artifact_id is persisted at approval time for precise reversal;
+      // fall back to title+time matching for pre-migration conversations.
+      const artifactId = conv.proposed_payload?.artifact_id;
+
       // Reverse physical records created by the approval
       if (action.type === "task" || action.type === "reminder") {
-        await db
-          .update(tasksTable)
-          .set({ status: "cancelled" })
-          .where(
-            and(
-              eq(tasksTable.household_id, householdId),
-              eq(tasksTable.title, action.title),
-              gte(tasksTable.created_at, fiveMinAgo),
-            ),
-          );
+        if (artifactId) {
+          await db
+            .update(tasksTable)
+            .set({ status: "cancelled" })
+            .where(
+              and(
+                eq(tasksTable.id, artifactId),
+                eq(tasksTable.household_id, householdId),
+              ),
+            );
+        } else {
+          await db
+            .update(tasksTable)
+            .set({ status: "cancelled" })
+            .where(
+              and(
+                eq(tasksTable.household_id, householdId),
+                eq(tasksTable.title, action.title),
+                gte(tasksTable.created_at, fiveMinAgo),
+              ),
+            );
+        }
       }
       if (action.type === "event") {
-        await db
-          .delete(calendarEventsTable)
-          .where(
-            and(
-              eq(calendarEventsTable.household_id, householdId),
-              eq(calendarEventsTable.title, action.title),
-              gte(calendarEventsTable.created_at, fiveMinAgo),
-            ),
-          );
+        if (artifactId) {
+          await db
+            .delete(calendarEventsTable)
+            .where(
+              and(
+                eq(calendarEventsTable.id, artifactId),
+                eq(calendarEventsTable.household_id, householdId),
+              ),
+            );
+        } else {
+          await db
+            .delete(calendarEventsTable)
+            .where(
+              and(
+                eq(calendarEventsTable.household_id, householdId),
+                eq(calendarEventsTable.title, action.title),
+                gte(calendarEventsTable.created_at, fiveMinAgo),
+              ),
+            );
+        }
       }
 
       // Flip action + inbox item
@@ -601,7 +668,7 @@ async function handleUndoOrCancel(
         description: `Descartado via WhatsApp (cancela): ${pendingAction.title}`,
         category: pendingAction.category,
       });
-      await clearPrompt(senderPhone, householdId);
+      await dismissPrompt(senderPhone, householdId);
 
       log.info({ actionId: pendingAction.id }, "Pending proposal dismissed via 'cancela'");
       return { kind: "dismissed_via_wa", actionId: pendingAction.id, householdId };

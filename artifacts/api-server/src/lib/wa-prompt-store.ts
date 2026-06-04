@@ -56,7 +56,15 @@ export async function recordPrompt(
   phone: string,
   actionId: number,
   householdId: number,
-  proposedPayload?: { title: string; type: string | null; category: string | null; datetime: string | null },
+  proposedPayload?: {
+    title: string;
+    type: string | null;
+    category: string | null;
+    datetime: string | null;
+    artifact_id?: number;
+  },
+  /** Twilio MessageSid — stored for thread-level traceability */
+  threadId?: string,
 ): Promise<void> {
   const phoneNorm = normalisePhone(phone);
   const now = new Date();
@@ -78,6 +86,7 @@ export async function recordPrompt(
   await db.insert(waConversationsTable).values({
     household_id: householdId,
     sender_phone: phoneNorm,
+    thread_id: threadId ?? null,
     state: "awaiting_confirmation",
     pending_action_id: actionId,
     proposed_payload: proposedPayload ?? null,
@@ -116,21 +125,42 @@ export async function getPromptedActionId(
 }
 
 /**
- * Mark the open conversation for (phone, householdId) as completed.
+ * Mark the open conversation as **completed** after the user approves.
  *
- * Both phone AND householdId are required to scope the update correctly.
- * Without the household filter, a phone number shared across households (e.g.
- * a contact in two families) would incorrectly clear the wrong conversation.
+ * Both phone AND householdId scope the update so a phone shared across two
+ * households can never clear the wrong conversation.
  *
  * Sets last_message_at = now() so the 5-minute undo window is measured from
  * the moment of the approval turn.
+ *
+ * Call ONLY on approve; use dismissPrompt() for reject/cancel paths so that
+ * analytics can distinguish "user approved" from "user dismissed".
  */
-export async function clearPrompt(phone: string, householdId: number): Promise<void> {
+export async function completePrompt(phone: string, householdId: number): Promise<void> {
   const phoneNorm = normalisePhone(phone);
-  const now = new Date();
   await db
     .update(waConversationsTable)
-    .set({ state: "completed", last_message_at: now })
+    .set({ state: "completed", last_message_at: new Date() })
+    .where(
+      and(
+        eq(waConversationsTable.household_id, householdId),
+        eq(waConversationsTable.sender_phone, phoneNorm),
+        eq(waConversationsTable.state, "awaiting_confirmation"),
+      ),
+    );
+}
+
+/**
+ * Mark the open conversation as **dismissed** when the user rejects/cancels.
+ *
+ * Intentionally separate from completePrompt so that the `dismissed` state
+ * is not confused with `completed` in downstream analytics or undo logic.
+ */
+export async function dismissPrompt(phone: string, householdId: number): Promise<void> {
+  const phoneNorm = normalisePhone(phone);
+  await db
+    .update(waConversationsTable)
+    .set({ state: "dismissed", last_message_at: new Date() })
     .where(
       and(
         eq(waConversationsTable.household_id, householdId),

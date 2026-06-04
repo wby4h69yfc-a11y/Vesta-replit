@@ -104,12 +104,16 @@ export const waConversationsTable = pgTable(
       () => suggestedActionsTable.id,
       { onDelete: "set null" },
     ),
-    /** Snapshot of the proposed action so the re-proposal message is accurate */
+    /**
+     * Snapshot of the proposed action. `artifact_id` is written back on
+     * approval so undo can reverse the exact created task/event row.
+     */
     proposed_payload: jsonb("proposed_payload").$type<{
       title: string;
       type: string | null;
       category: string | null;
       datetime: string | null;
+      artifact_id?: number;
     }>(),
     /** Slot for future context types: 'approval' | 'rating_request' */
     thread_context: text("thread_context").default("approval"),

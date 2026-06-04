@@ -506,12 +506,18 @@ export async function processInboundWAMessage(
     (savedAction.approval_level ?? "one_tap") !== "explicit";
 
   if (waEligible && savedAction.id && savedAction.title) {
-    await recordPrompt(phoneRaw, savedAction.id, householdId, {
-      title: savedAction.title,
-      type: savedAction.type,
-      category: savedAction.category,
-      datetime: savedAction.datetime ?? null,
-    });
+    await recordPrompt(
+      phoneRaw,
+      savedAction.id,
+      householdId,
+      {
+        title: savedAction.title,
+        type: savedAction.type,
+        category: savedAction.category,
+        datetime: savedAction.datetime ?? null,
+      },
+      payload.messageSid ?? undefined,
+    );
     log.info(
       { phone: phoneRaw, actionId: savedAction.id },
       "Bound proposed action to sender phone — WA-native eligible",
