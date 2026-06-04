@@ -51,8 +51,8 @@ export type ProcessOutcome =
   | { kind: "media_rate_limited"; phone: string }
   | { kind: "approved_via_wa"; actionId: number; actionTitle: string; householdId: number; phone: string }
   | { kind: "dismissed_via_wa"; actionId: number; householdId: number; phone: string }
-  | { kind: "edited_via_wa"; actionId: number; newTitle: string; householdId: number; phone: string }
   | { kind: "nl_edit_proposed_via_wa"; actionId: number; newTitle: string; householdId: number; phone: string }
+  | { kind: "edit_prompt_via_wa"; actionId: number; householdId: number; phone: string }
   | { kind: "undone_via_wa"; actionTitle: string; householdId: number; phone: string }
   | { kind: "consent_updated"; contactId: number; newStatus: "consented" | "revoked"; phone: string; householdId: number; contactName: string }
   | {

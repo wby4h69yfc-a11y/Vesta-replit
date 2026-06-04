@@ -5,24 +5,31 @@
  * Checks if the inbound message is a short approval/rejection/edit/undo response
  * to the pending Vesta suggested action that was shown to this specific sender.
  *
- * Returns a typed outcome, or null to signal the caller should continue with
+ * Returns a typed outcome, or undefined to signal the caller should continue with
  * the normal inbox → classify pipeline.
  *
- * Patterns (all case-insensitive, whole-message match for approve/dismiss/undo):
- *   approve     — sim, s, ok, pode, confirmar, aceito, confirmado, vai, tá, ta,
- *                 ótimo, otimo, certo, isso, exato, perfeito, bom, beleza
- *   dismiss     — não, nao, n, descartar, cancela, cancelar, errado, errada,
- *                 não quero, nao quero, delete, apaga, remove
- *   edit        — "editar: [new title]", "muda para [title]", "corrige: [title]", etc.
- *   approve+NL  — "sim mas troca pra Pedro", "ok, mas às 15h" — positive with inline edit
- *   undo        — desfazer, cancela isso, errei, foi erro, engano, undo
+ * State machine for a WA conversation:
  *
- * Undo window: 30 minutes from approval.
+ *   (new message arrives) → classified → recordPrompt → awaiting_confirmation
+ *     ├─ "sim"            → approved_via_wa     → completed
+ *     ├─ "não"            → dismissed_via_wa    → dismissed
+ *     ├─ "editar: X"      → nl_edit_proposed    → awaiting_confirmation (re-propose)
+ *     ├─ "editar" alone   → edit_prompt_via_wa  → awaiting_edit
+ *     │    └─ any message → nl_edit_proposed    → awaiting_confirmation (re-propose)
+ *     ├─ "sim mas X"      → nl_edit_proposed    → awaiting_confirmation (re-propose)
+ *     └─ "cancela/desfaz" → undo  (if completed within 5 min) OR dismiss (if still pending)
  *
- * Security: approvals/dismissals/edits are bound to the specific action that was
- * proposed to this sender's phone number via the wa-prompt-store. This prevents
- * a race-condition hijack where a concurrent message creates a newer pending
- * action that would otherwise be selected as "most recent" for the household.
+ * Tier-0 positive aliases:
+ *   sim, s, ok, pode, confirmar, aceito, confirmado, vai, tá, ta, ótimo, otimo,
+ *   certo, isso, exato, perfeito, bom, beleza, feito, claro, combinado
+ *
+ * All conversation turns are audited to the audit_log table.
+ *
+ * Security:
+ *   Approvals/dismissals/edits are bound to the specific action proposed to
+ *   this sender's phone number via wa-prompt-store. This prevents a race-condition
+ *   hijack where a concurrent message creates a newer pending action that would
+ *   otherwise be selected as "most recent" for the household.
  */
 
 import type { Logger } from "pino";
@@ -35,35 +42,59 @@ import {
   auditLogTable,
   waConversationsTable,
 } from "@workspace/db";
-import { eq, and, desc, gte } from "drizzle-orm";
-import { normalisePhone, getPromptedActionId, clearPrompt } from "./wa-prompt-store";
+import { eq, and, desc, gte, gt } from "drizzle-orm";
+import {
+  normalisePhone,
+  getPromptedActionId,
+  clearPrompt,
+} from "./wa-prompt-store";
 import { openai } from "@workspace/integrations-openai-ai-server";
 
 export type ApprovalHandlerOutcome =
   | { kind: "approved_via_wa"; actionId: number; actionTitle: string; householdId: number }
   | { kind: "dismissed_via_wa"; actionId: number; householdId: number }
-  | { kind: "edited_via_wa"; actionId: number; newTitle: string; householdId: number }
   | { kind: "nl_edit_proposed_via_wa"; actionId: number; newTitle: string; householdId: number }
+  | { kind: "edit_prompt_via_wa"; actionId: number; householdId: number }
   | { kind: "undone_via_wa"; actionTitle: string; householdId: number };
 
+// ── Intent patterns ────────────────────────────────────────────────────────────
+
+/** All Tier-0 one-tap confirmation aliases */
 const APPROVE_RE =
   /^(sim|s|ok|pode|confirmar|aceito|confirmado|vai|tá|ta|ótimo|otimo|certo|isso|exato|perfeito|bom|beleza|feito|claro|combinado)[\s!.]*$/i;
 
+/**
+ * Definitive dismiss. Does NOT include "cancela"/"cancelar" because those
+ * are ambiguous — they may mean undo-within-5-min or dismiss-pending depending
+ * on conversational context. handleUndoOrCancel handles that disambiguation.
+ */
 const DISMISS_RE =
-  /^(não|nao|n|descartar|cancela|cancelar|errado|errada|não\s+quero|nao\s+quero|delete|apaga|remove)[\s!.]*$/i;
+  /^(não|nao|n|descartar|errado|errada|não\s+quero|nao\s+quero|delete|apaga|remove)[\s!.]*$/i;
 
+/** Structured edit with inline replacement: "editar: nova versão" */
 const EDIT_RE =
   /^(?:editar?|muda(?:\s+para)?|corrig[ie](?:r|ir)?|mudar\s+para|alterar?|trocar\s+para)[:\s]+(.+)$/i;
+
+/** Standalone edit request without content — triggers awaiting_edit state */
+const STANDALONE_EDIT_RE = /^(?:editar?|alterar?|mudar?)[\s!.]*$/i;
 
 /**
  * "sim mas troca pra Pedro", "ok mas às 15h", "beleza, mas tira o lanche"
  * Positive approval with an inline natural-language amendment.
  */
 const APPROVE_WITH_NL_EDIT_RE =
-  /^(?:sim|s|ok|pode|confirmar|aceito|vai|tá|ta|ótimo|otimo|certo|isso|bom|beleza)\s*[,.]?\s+(?:mas|só\s+que|so\s+que|porém|porem|só\s*que|mas\s+(?:muda|troca|tira|adiciona|remove|coloca|bota|com|sem|às|as|para|pro|pra))\s+(.+)$/i;
+  /^(?:sim|s|ok|pode|confirmar|aceito|vai|tá|ta|ótimo|otimo|certo|isso|bom|beleza|feito|claro|combinado)\s*[,.]?\s+(?:mas|só\s+que|so\s+que|porém|porem|só\s*que|mas\s+(?:muda|troca|tira|adiciona|remove|coloca|bota|com|sem|às|as|para|pro|pra))\s+(.+)$/i;
 
+/**
+ * Undo / cancel intents.
+ * Includes "cancela" (plain) — disambiguated by context in handleUndoOrCancel:
+ *   • If completed conv within 5 min → undo
+ *   • If pending proposal → dismiss
+ */
 const UNDO_RE =
-  /^(desfazer|cancela\s+isso|errei|foi\s+erro|engano|não\s+era\s+isso|nao\s+era\s+isso|apaga\s+isso|undo)[\s!.]*$/i;
+  /^(desfazer|desfaz\s+isso|cancela\s+isso|cancelar\s+isso|cancela|cancelar|errei|foi\s+erro|engano|não\s+era\s+isso|nao\s+era\s+isso|apaga\s+isso|undo)[\s!.]*$/i;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 interface ActionRow {
   id: number;
@@ -79,7 +110,8 @@ interface ActionRow {
 
 /**
  * Resolve a natural-language edit instruction to a new title string.
- * Falls back to the original title + note if OpenAI is unavailable.
+ * Falls back to appending the edit note to the original title if OpenAI
+ * is unavailable.
  */
 async function resolveNlEdit(originalTitle: string, editInstruction: string): Promise<string> {
   try {
@@ -104,19 +136,67 @@ async function resolveNlEdit(originalTitle: string, editInstruction: string): Pr
   } catch {
     // fall through to deterministic fallback
   }
-  // Deterministic fallback: append the edit instruction as a note
   return `${originalTitle} (${editInstruction})`.substring(0, 120);
 }
 
+async function auditTurn(
+  householdId: number,
+  action: string,
+  actionType: string,
+  category: string | null,
+  description: string,
+): Promise<void> {
+  await db.insert(auditLogTable).values({
+    household_id: householdId,
+    action,
+    actor: "whatsapp",
+    action_type: actionType,
+    category,
+    description,
+  });
+}
+
 /**
- * Attempts to interpret `body` as an approval/dismissal/edit/undo command for
- * the given household and sender. Returns a typed outcome or undefined if the
- * message should be treated as a new inbound message.
- *
- * `senderPhone` is used to look up the specific action that was proposed to this
- * sender, preventing race-condition approval hijacks.
- *
- * NOTE: All prompt-store calls are now async (DB-backed).
+ * Re-propose an action with an updated title. Does NOT clear the prompt
+ * (conversation stays in awaiting_confirmation).
+ */
+async function applyEditAndRepropose(
+  action: ActionRow,
+  newTitle: string,
+  senderPhone: string,
+): Promise<void> {
+  // Update the action title so the next "sim" saves the correct title
+  await db
+    .update(suggestedActionsTable)
+    .set({ title: newTitle })
+    .where(eq(suggestedActionsTable.id, action.id));
+
+  // Update the conversation's proposed_payload snapshot (stay in awaiting_confirmation)
+  await db
+    .update(waConversationsTable)
+    .set({
+      proposed_payload: {
+        title: newTitle,
+        type: action.type,
+        category: action.category,
+        datetime: action.datetime,
+      },
+      last_message_at: new Date(),
+    })
+    .where(
+      and(
+        eq(waConversationsTable.household_id, action.household_id),
+        eq(waConversationsTable.sender_phone, normalisePhone(senderPhone)),
+        eq(waConversationsTable.state, "awaiting_confirmation"),
+      ),
+    );
+}
+
+// ── Main handler ──────────────────────────────────────────────────────────────
+
+/**
+ * Attempts to interpret `body` as an approval/dismissal/edit/undo command.
+ * Returns a typed outcome or undefined if this is a new inbound message.
  */
 export async function handleApprovalResponse(
   body: string,
@@ -125,26 +205,33 @@ export async function handleApprovalResponse(
   log: Logger,
 ): Promise<ApprovalHandlerOutcome | undefined> {
   const trimmed = body.trim();
+  const phoneNorm = normalisePhone(senderPhone);
+  const now = new Date();
 
-  // ── undo: check first (doesn't need a pending action) ────────────────────
-  if (UNDO_RE.test(trimmed)) {
-    return handleUndo(householdId, log);
-  }
+  // ── Phase 0: awaiting_edit state ─────────────────────────────────────────
+  // If the user said "editar" in a previous turn, the next message is the
+  // edit instruction. Check for this state before all regex matching so that
+  // "não" or other keywords during an edit session aren't misinterpreted.
+  const [awaitingEditConv] = await db
+    .select({
+      id: waConversationsTable.id,
+      pending_action_id: waConversationsTable.pending_action_id,
+      proposed_payload: waConversationsTable.proposed_payload,
+    })
+    .from(waConversationsTable)
+    .where(
+      and(
+        eq(waConversationsTable.household_id, householdId),
+        eq(waConversationsTable.sender_phone, phoneNorm),
+        eq(waConversationsTable.state, "awaiting_edit"),
+        gt(waConversationsTable.expires_at, now),
+      ),
+    )
+    .orderBy(desc(waConversationsTable.created_at))
+    .limit(1);
 
-  const isApprove = APPROVE_RE.test(trimmed);
-  const isDismiss = DISMISS_RE.test(trimmed);
-  const editMatch = EDIT_RE.exec(trimmed);
-  const nlEditMatch = APPROVE_WITH_NL_EDIT_RE.exec(trimmed);
-
-  if (!isApprove && !isDismiss && !editMatch && !nlEditMatch) return undefined;
-
-  // ── find the specific action that was proposed to this sender ─────────────
-  const promptedActionId = await getPromptedActionId(senderPhone, householdId);
-
-  let action: ActionRow | undefined;
-
-  if (promptedActionId !== null) {
-    const [found] = await db
+  if (awaitingEditConv?.pending_action_id) {
+    const [action] = await db
       .select({
         id: suggestedActionsTable.id,
         inbox_item_id: suggestedActionsTable.inbox_item_id,
@@ -159,54 +246,148 @@ export async function handleApprovalResponse(
       .from(suggestedActionsTable)
       .where(
         and(
-          eq(suggestedActionsTable.id, promptedActionId),
+          eq(suggestedActionsTable.id, awaitingEditConv.pending_action_id),
           eq(suggestedActionsTable.household_id, householdId),
           eq(suggestedActionsTable.status, "pending"),
         ),
       )
       .limit(1);
-    action = found;
+
+    if (action) {
+      const newTitle = await resolveNlEdit(action.title, trimmed);
+      await applyEditAndRepropose(action, newTitle, senderPhone);
+
+      // Transition back to awaiting_confirmation
+      await db
+        .update(waConversationsTable)
+        .set({ state: "awaiting_confirmation", last_message_at: new Date() })
+        .where(eq(waConversationsTable.id, awaitingEditConv.id));
+
+      await auditTurn(
+        householdId,
+        "action_edit_content_received_via_wa",
+        "pending",
+        action.category,
+        `Instrução de edição recebida: "${trimmed}" → novo título: "${newTitle}"`,
+      );
+
+      log.info({ actionId: action.id, newTitle }, "Edit content received — re-proposing (awaiting_edit → awaiting_confirmation)");
+      return { kind: "nl_edit_proposed_via_wa", actionId: action.id, newTitle, householdId };
+    }
   }
 
-  if (!action) {
-    log.info(
-      { senderPhone, householdId, promptedActionId },
-      "No bound pending action for sender — treating as new message",
-    );
+  // ── Phase 1: undo / cancel ────────────────────────────────────────────────
+  if (UNDO_RE.test(trimmed)) {
+    return handleUndoOrCancel(householdId, senderPhone, log);
+  }
+
+  // ── Phase 2: match approve / dismiss / edit intents ───────────────────────
+  const isApprove = APPROVE_RE.test(trimmed);
+  const isDismiss = DISMISS_RE.test(trimmed);
+  const editMatch = EDIT_RE.exec(trimmed);
+  const nlEditMatch = APPROVE_WITH_NL_EDIT_RE.exec(trimmed);
+  const isStandaloneEdit = STANDALONE_EDIT_RE.test(trimmed);
+
+  if (!isApprove && !isDismiss && !editMatch && !nlEditMatch && !isStandaloneEdit) {
     return undefined;
+  }
+
+  // ── Look up the specific action proposed to this sender ───────────────────
+  const promptedActionId = await getPromptedActionId(senderPhone, householdId);
+  if (promptedActionId === null) {
+    log.info({ senderPhone, householdId }, "No bound pending action — treating as new message");
+    return undefined;
+  }
+
+  const [action] = await db
+    .select({
+      id: suggestedActionsTable.id,
+      inbox_item_id: suggestedActionsTable.inbox_item_id,
+      household_id: suggestedActionsTable.household_id,
+      title: suggestedActionsTable.title,
+      type: suggestedActionsTable.type,
+      category: suggestedActionsTable.category,
+      datetime: suggestedActionsTable.datetime,
+      notes: suggestedActionsTable.notes,
+      workflow_tags: suggestedActionsTable.workflow_tags,
+    })
+    .from(suggestedActionsTable)
+    .where(
+      and(
+        eq(suggestedActionsTable.id, promptedActionId),
+        eq(suggestedActionsTable.household_id, householdId),
+        eq(suggestedActionsTable.status, "pending"),
+      ),
+    )
+    .limit(1);
+
+  if (!action) {
+    log.info({ promptedActionId, householdId }, "Prompted action not found or not pending — treating as new message");
+    return undefined;
+  }
+
+  // ── Standalone "editar" → prompt user for edit content ───────────────────
+  if (isStandaloneEdit) {
+    await db
+      .update(waConversationsTable)
+      .set({ state: "awaiting_edit", last_message_at: new Date() })
+      .where(
+        and(
+          eq(waConversationsTable.household_id, householdId),
+          eq(waConversationsTable.sender_phone, phoneNorm),
+          eq(waConversationsTable.state, "awaiting_confirmation"),
+        ),
+      );
+
+    await auditTurn(
+      householdId,
+      "action_edit_requested_via_wa",
+      "pending",
+      action.category,
+      `Usuário solicitou edição via WhatsApp: ${action.title}`,
+    );
+
+    log.info({ actionId: action.id }, "Edit requested — transitioning to awaiting_edit");
+    return { kind: "edit_prompt_via_wa", actionId: action.id, householdId };
   }
 
   // ── Natural-language inline edit ("sim mas troca pra Pedro") ─────────────
   if (nlEditMatch) {
     const editInstruction = nlEditMatch[1]?.trim() ?? "";
     const newTitle = await resolveNlEdit(action.title, editInstruction);
+    await applyEditAndRepropose(action, newTitle, senderPhone);
 
-    // Update wa_conversations with the new proposed payload then re-propose.
-    // We keep state as awaiting_confirmation so the user can confirm the edit.
-    await db
-      .update(waConversationsTable)
-      .set({
-        proposed_payload: { title: newTitle, type: action.type, category: action.category, datetime: action.datetime },
-        last_message_at: new Date(),
-      })
-      .where(
-        and(
-          eq(waConversationsTable.household_id, householdId),
-          eq(waConversationsTable.sender_phone, normalisePhone(senderPhone)),
-          eq(waConversationsTable.state, "awaiting_confirmation"),
-        ),
-      );
-
-    // Also update the pending action's title so if finally approved it saves correctly
-    await db
-      .update(suggestedActionsTable)
-      .set({ title: newTitle })
-      .where(eq(suggestedActionsTable.id, action.id));
+    await auditTurn(
+      householdId,
+      "action_nl_edit_proposed_via_wa",
+      "pending",
+      action.category,
+      `Edição inline proposta: "${editInstruction}" → "${newTitle}"`,
+    );
 
     log.info({ actionId: action.id, newTitle, editInstruction }, "NL inline edit applied — re-proposing");
     return { kind: "nl_edit_proposed_via_wa", actionId: action.id, newTitle, householdId };
   }
 
+  // ── Structured edit ("editar: nova versão") → re-propose ────────────────
+  if (editMatch) {
+    const newTitle = editMatch[1]!.trim().substring(0, 120);
+    await applyEditAndRepropose(action, newTitle, senderPhone);
+
+    await auditTurn(
+      householdId,
+      "action_edit_proposed_via_wa",
+      "pending",
+      action.category,
+      `Edição proposta via WhatsApp: "${newTitle}"`,
+    );
+
+    // DO NOT clearPrompt — conversation stays awaiting_confirmation
+    log.info({ actionId: action.id, newTitle }, "Structured edit re-proposed via WhatsApp");
+    return { kind: "nl_edit_proposed_via_wa", actionId: action.id, newTitle, householdId };
+  }
+
+  // ── Approve ───────────────────────────────────────────────────────────────
   if (isApprove) {
     await createEventOrTask(action, householdId);
     await markActionStatus(action.id, action.inbox_item_id, householdId, "approved", {
@@ -215,15 +396,12 @@ export async function handleApprovalResponse(
       category: action.category,
     });
     await clearPrompt(senderPhone);
+
     log.info({ actionId: action.id, title: action.title }, "Action approved via WhatsApp");
-    return {
-      kind: "approved_via_wa",
-      actionId: action.id,
-      actionTitle: action.title,
-      householdId,
-    };
+    return { kind: "approved_via_wa", actionId: action.id, actionTitle: action.title, householdId };
   }
 
+  // ── Dismiss ───────────────────────────────────────────────────────────────
   if (isDismiss) {
     await markActionStatus(action.id, action.inbox_item_id, householdId, "dismissed", {
       auditAction: "action_dismissed_via_wa",
@@ -231,44 +409,15 @@ export async function handleApprovalResponse(
       category: action.category,
     });
     await clearPrompt(senderPhone);
-    log.info({ actionId: action.id, title: action.title }, "Action dismissed via WhatsApp");
+
+    log.info({ actionId: action.id }, "Action dismissed via WhatsApp");
     return { kind: "dismissed_via_wa", actionId: action.id, householdId };
-  }
-
-  if (editMatch) {
-    const newTitle = editMatch[1]!.trim().substring(0, 120);
-    const editedAction: ActionRow = { ...action, title: newTitle };
-
-    await createEventOrTask(editedAction, householdId);
-
-    await db
-      .update(suggestedActionsTable)
-      .set({ title: newTitle, status: "approved" })
-      .where(eq(suggestedActionsTable.id, action.id));
-
-    await db
-      .update(inboxItemsTable)
-      .set({ status: "approved" })
-      .where(eq(inboxItemsTable.id, action.inbox_item_id));
-
-    await db.insert(auditLogTable).values({
-      household_id: householdId,
-      action: "action_edited_via_wa",
-      actor: "whatsapp",
-      action_type: "approved",
-      category: action.category,
-      description: `Editado via WhatsApp: ${newTitle}`,
-    });
-
-    await clearPrompt(senderPhone);
-    log.info({ actionId: action.id, newTitle }, "Action edited and approved via WhatsApp");
-    return { kind: "edited_via_wa", actionId: action.id, newTitle, householdId };
   }
 
   return undefined;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Domain helpers ────────────────────────────────────────────────────────────
 
 async function createEventOrTask(action: ActionRow, householdId: number): Promise<void> {
   if (action.type === "event" && action.datetime) {
@@ -315,29 +464,26 @@ async function markActionStatus(
     .set({ status })
     .where(eq(inboxItemsTable.id, inboxItemId));
 
-  await db.insert(auditLogTable).values({
-    household_id: householdId,
-    action: audit.auditAction,
-    actor: "whatsapp",
-    action_type: status,
-    category: audit.category,
-    description: audit.description,
-  });
+  await auditTurn(householdId, audit.auditAction, status, audit.category, audit.description);
 }
 
-async function handleUndo(
+/**
+ * Handles undo/cancel commands with context-aware disambiguation.
+ *
+ * Tries undo first (if there's a completed conversation within 5 minutes),
+ * then falls back to dismiss if a pending proposal exists.
+ * Returns undefined if neither applies.
+ */
+async function handleUndoOrCancel(
   householdId: number,
+  senderPhone: string,
   log: Logger,
 ): Promise<ApprovalHandlerOutcome | undefined> {
-  // ── 1. Find the most recently completed WA conversation (5-min undo window)
-  // The 5-min window is measured from last_message_at, which clearPrompt sets
-  // to now() at the moment of approval.
   const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
 
+  // ── 1. Try undo: completed conversation within 5-min window ──────────────
   const [conv] = await db
-    .select({
-      pending_action_id: waConversationsTable.pending_action_id,
-    })
+    .select({ pending_action_id: waConversationsTable.pending_action_id })
     .from(waConversationsTable)
     .where(
       and(
@@ -349,88 +495,114 @@ async function handleUndo(
     .orderBy(desc(waConversationsTable.last_message_at))
     .limit(1);
 
-  if (!conv?.pending_action_id) return undefined;
-
-  // ── 2. Fetch the approved action via the binding stored in wa_conversations
-  const [action] = await db
-    .select({
-      id: suggestedActionsTable.id,
-      inbox_item_id: suggestedActionsTable.inbox_item_id,
-      title: suggestedActionsTable.title,
-      type: suggestedActionsTable.type,
-      category: suggestedActionsTable.category,
-    })
-    .from(suggestedActionsTable)
-    .where(
-      and(
-        eq(suggestedActionsTable.id, conv.pending_action_id),
-        eq(suggestedActionsTable.household_id, householdId),
-        eq(suggestedActionsTable.status, "approved"),
-      ),
-    )
-    .limit(1);
-
-  if (!action) return undefined;
-
-  // ── 3. Reverse physical task/event records created by this approval
-  if (action.type === "task" || action.type === "reminder") {
-    await db
-      .update(tasksTable)
-      .set({ status: "cancelled" })
+  if (conv?.pending_action_id) {
+    const [action] = await db
+      .select({
+        id: suggestedActionsTable.id,
+        inbox_item_id: suggestedActionsTable.inbox_item_id,
+        title: suggestedActionsTable.title,
+        type: suggestedActionsTable.type,
+        category: suggestedActionsTable.category,
+      })
+      .from(suggestedActionsTable)
       .where(
         and(
-          eq(tasksTable.household_id, householdId),
-          eq(tasksTable.title, action.title),
-          gte(tasksTable.created_at, fiveMinAgo),
+          eq(suggestedActionsTable.id, conv.pending_action_id),
+          eq(suggestedActionsTable.household_id, householdId),
+          eq(suggestedActionsTable.status, "approved"),
         ),
+      )
+      .limit(1);
+
+    if (action) {
+      // Reverse physical records created by the approval
+      if (action.type === "task" || action.type === "reminder") {
+        await db
+          .update(tasksTable)
+          .set({ status: "cancelled" })
+          .where(
+            and(
+              eq(tasksTable.household_id, householdId),
+              eq(tasksTable.title, action.title),
+              gte(tasksTable.created_at, fiveMinAgo),
+            ),
+          );
+      }
+      if (action.type === "event") {
+        await db
+          .delete(calendarEventsTable)
+          .where(
+            and(
+              eq(calendarEventsTable.household_id, householdId),
+              eq(calendarEventsTable.title, action.title),
+              gte(calendarEventsTable.created_at, fiveMinAgo),
+            ),
+          );
+      }
+
+      // Flip action + inbox item
+      await db.update(suggestedActionsTable).set({ status: "dismissed" }).where(eq(suggestedActionsTable.id, action.id));
+      await db.update(inboxItemsTable).set({ status: "dismissed" }).where(eq(inboxItemsTable.id, action.inbox_item_id));
+
+      // Close the conversation row
+      await db
+        .update(waConversationsTable)
+        .set({ state: "dismissed" })
+        .where(
+          and(
+            eq(waConversationsTable.household_id, householdId),
+            eq(waConversationsTable.pending_action_id, conv.pending_action_id),
+            eq(waConversationsTable.state, "completed"),
+          ),
+        );
+
+      await auditTurn(
+        householdId,
+        "action_undone_via_wa",
+        "dismissed",
+        action.category,
+        `Desfeito via WhatsApp: ${action.title}`,
       );
+
+      log.info({ actionId: action.id, title: action.title }, "Action undone via WhatsApp");
+      return { kind: "undone_via_wa", actionTitle: action.title, householdId };
+    }
   }
 
-  if (action.type === "event") {
-    await db
-      .delete(calendarEventsTable)
+  // ── 2. Fallback: dismiss a pending proposal ───────────────────────────────
+  // "cancela" with no recently completed action → user is dismissing the
+  // current pending proposal.
+  const promptedActionId = await getPromptedActionId(senderPhone, householdId);
+  if (promptedActionId !== null) {
+    const [pendingAction] = await db
+      .select({
+        id: suggestedActionsTable.id,
+        inbox_item_id: suggestedActionsTable.inbox_item_id,
+        title: suggestedActionsTable.title,
+        category: suggestedActionsTable.category,
+      })
+      .from(suggestedActionsTable)
       .where(
         and(
-          eq(calendarEventsTable.household_id, householdId),
-          eq(calendarEventsTable.title, action.title),
-          gte(calendarEventsTable.created_at, fiveMinAgo),
+          eq(suggestedActionsTable.id, promptedActionId),
+          eq(suggestedActionsTable.household_id, householdId),
+          eq(suggestedActionsTable.status, "pending"),
         ),
-      );
+      )
+      .limit(1);
+
+    if (pendingAction) {
+      await markActionStatus(pendingAction.id, pendingAction.inbox_item_id, householdId, "dismissed", {
+        auditAction: "action_dismissed_via_wa",
+        description: `Descartado via WhatsApp (cancela): ${pendingAction.title}`,
+        category: pendingAction.category,
+      });
+      await clearPrompt(senderPhone);
+
+      log.info({ actionId: pendingAction.id }, "Pending proposal dismissed via 'cancela'");
+      return { kind: "dismissed_via_wa", actionId: pendingAction.id, householdId };
+    }
   }
 
-  // ── 4. Flip the suggested action and inbox item back
-  await db
-    .update(suggestedActionsTable)
-    .set({ status: "dismissed" })
-    .where(eq(suggestedActionsTable.id, action.id));
-
-  await db
-    .update(inboxItemsTable)
-    .set({ status: "dismissed" })
-    .where(eq(inboxItemsTable.id, action.inbox_item_id));
-
-  // ── 5. Close out the wa_conversations row
-  await db
-    .update(waConversationsTable)
-    .set({ state: "dismissed" })
-    .where(
-      and(
-        eq(waConversationsTable.household_id, householdId),
-        eq(waConversationsTable.pending_action_id, conv.pending_action_id),
-        eq(waConversationsTable.state, "completed"),
-      ),
-    );
-
-  // ── 6. Audit
-  await db.insert(auditLogTable).values({
-    household_id: householdId,
-    action: "action_undone_via_wa",
-    actor: "whatsapp",
-    action_type: "dismissed",
-    category: action.category,
-    description: `Desfeito via WhatsApp: ${action.title}`,
-  });
-
-  log.info({ actionId: action.id, title: action.title }, "Action undone via WhatsApp");
-  return { kind: "undone_via_wa", actionTitle: action.title, householdId };
+  return undefined;
 }

@@ -238,6 +238,14 @@ export function replyEdited(newTitle: string): string {
 }
 
 /**
+ * Sent when the user says "editar" without content — prompts them to
+ * describe what they want to change.
+ */
+export function replyEditPrompt(): string {
+  return "✏️ O que você quer mudar? Me diga e eu atualizo antes de confirmar.";
+}
+
+/**
  * Sent after applying a natural-language inline edit — re-proposes the
  * updated item for final confirmation.
  */

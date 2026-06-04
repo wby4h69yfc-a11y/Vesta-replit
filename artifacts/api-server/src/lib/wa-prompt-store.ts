@@ -28,6 +28,27 @@ export function normalisePhone(phone: string): string {
 }
 
 /**
+ * Transition a conversation to the awaiting_edit state so the next message
+ * from the sender is treated as edit content rather than a new inbound message.
+ */
+export async function setStateToAwaitingEdit(
+  phone: string,
+  householdId: number,
+): Promise<void> {
+  const phoneNorm = normalisePhone(phone);
+  await db
+    .update(waConversationsTable)
+    .set({ state: "awaiting_edit", last_message_at: new Date() })
+    .where(
+      and(
+        eq(waConversationsTable.household_id, householdId),
+        eq(waConversationsTable.sender_phone, phoneNorm),
+        eq(waConversationsTable.state, "awaiting_confirmation"),
+      ),
+    );
+}
+
+/**
  * Record that `phone` was just shown a proposal for `actionId` in `householdId`.
  * Dismisses any previous open conversation for that sender first.
  */

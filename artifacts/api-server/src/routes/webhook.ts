@@ -9,7 +9,7 @@ import {
   replyActionProposal,
   replyApproved,
   replyDismissed,
-  replyEdited,
+  replyEditPrompt,
   replyNlEditProposal,
   replyUndone,
   replyExplicitReviewNeeded,
@@ -162,14 +162,16 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         void sendWhatsApp(outcome.phone, replyDismissed());
         break;
 
-      case "edited_via_wa":
-        void sendWhatsApp(outcome.phone, replyEdited(outcome.newTitle));
+      // Standalone "editar" — ask the user what they want to change
+      case "edit_prompt_via_wa":
+        void sendWhatsApp(outcome.phone, replyEditPrompt());
+        req.log.info({ actionId: outcome.actionId }, "Edit prompt sent — awaiting_edit state");
         break;
 
-      // NL inline edit applied — re-propose updated item for final confirmation
+      // NL / structured edit applied — re-propose updated item for final confirmation
       case "nl_edit_proposed_via_wa":
         void sendWhatsApp(outcome.phone, replyNlEditProposal(outcome.newTitle));
-        req.log.info({ actionId: outcome.actionId, newTitle: outcome.newTitle }, "NL edit re-proposed via WhatsApp");
+        req.log.info({ actionId: outcome.actionId, newTitle: outcome.newTitle }, "Edit re-proposed via WhatsApp");
         break;
 
       case "undone_via_wa":
