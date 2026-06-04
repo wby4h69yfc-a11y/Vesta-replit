@@ -395,7 +395,7 @@ export async function handleApprovalResponse(
       description: `Aprovado via WhatsApp: ${action.title}`,
       category: action.category,
     });
-    await clearPrompt(senderPhone);
+    await clearPrompt(senderPhone, householdId);
 
     log.info({ actionId: action.id, title: action.title }, "Action approved via WhatsApp");
     return { kind: "approved_via_wa", actionId: action.id, actionTitle: action.title, householdId };
@@ -408,7 +408,7 @@ export async function handleApprovalResponse(
       description: `Descartado via WhatsApp: ${action.title}`,
       category: action.category,
     });
-    await clearPrompt(senderPhone);
+    await clearPrompt(senderPhone, householdId);
 
     log.info({ actionId: action.id }, "Action dismissed via WhatsApp");
     return { kind: "dismissed_via_wa", actionId: action.id, householdId };
@@ -482,12 +482,16 @@ async function handleUndoOrCancel(
   const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
 
   // ── 1. Try undo: completed conversation within 5-min window ──────────────
+  // Scope by BOTH household_id AND sender_phone to prevent cross-admin undo:
+  // if two admins act in the same household, "cancela" from one must not undo
+  // the other's most recent action.
   const [conv] = await db
     .select({ pending_action_id: waConversationsTable.pending_action_id })
     .from(waConversationsTable)
     .where(
       and(
         eq(waConversationsTable.household_id, householdId),
+        eq(waConversationsTable.sender_phone, normalisePhone(senderPhone)),
         eq(waConversationsTable.state, "completed"),
         gte(waConversationsTable.last_message_at, fiveMinAgo),
       ),
@@ -597,7 +601,7 @@ async function handleUndoOrCancel(
         description: `Descartado via WhatsApp (cancela): ${pendingAction.title}`,
         category: pendingAction.category,
       });
-      await clearPrompt(senderPhone);
+      await clearPrompt(senderPhone, householdId);
 
       log.info({ actionId: pendingAction.id }, "Pending proposal dismissed via 'cancela'");
       return { kind: "dismissed_via_wa", actionId: pendingAction.id, householdId };

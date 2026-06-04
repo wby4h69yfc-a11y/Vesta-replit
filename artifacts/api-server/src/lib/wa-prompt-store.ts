@@ -116,12 +116,16 @@ export async function getPromptedActionId(
 }
 
 /**
- * Mark the conversation for `phone` as completed after the approval is processed.
+ * Mark the open conversation for (phone, householdId) as completed.
  *
- * Sets last_message_at = now so the 5-minute undo window is measured from the
- * moment of approval, not from when the conversation was created.
+ * Both phone AND householdId are required to scope the update correctly.
+ * Without the household filter, a phone number shared across households (e.g.
+ * a contact in two families) would incorrectly clear the wrong conversation.
+ *
+ * Sets last_message_at = now() so the 5-minute undo window is measured from
+ * the moment of the approval turn.
  */
-export async function clearPrompt(phone: string): Promise<void> {
+export async function clearPrompt(phone: string, householdId: number): Promise<void> {
   const phoneNorm = normalisePhone(phone);
   const now = new Date();
   await db
@@ -129,6 +133,7 @@ export async function clearPrompt(phone: string): Promise<void> {
     .set({ state: "completed", last_message_at: now })
     .where(
       and(
+        eq(waConversationsTable.household_id, householdId),
         eq(waConversationsTable.sender_phone, phoneNorm),
         eq(waConversationsTable.state, "awaiting_confirmation"),
       ),

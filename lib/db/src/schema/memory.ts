@@ -1,6 +1,7 @@
 import { pgTable, text, serial, timestamp, integer, jsonb, date, boolean, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { suggestedActionsTable } from "./actions";
 
 export const householdPlacesTable = pgTable("household_places", {
   id: serial("id").primaryKey(),
@@ -93,8 +94,16 @@ export const waConversationsTable = pgTable(
     sender_phone: text("sender_phone").notNull(),
     /** awaiting_confirmation | awaiting_edit | completed | dismissed */
     state: text("state").notNull().default("awaiting_confirmation"),
+    /**
+     * Twilio MessageSid of the inbound message that opened this conversation.
+     * Nullable — populated on creation; used for thread-level traceability.
+     */
+    thread_id: text("thread_id"),
     /** FK to suggested_actions.id — the action being proposed to this sender */
-    pending_action_id: integer("pending_action_id"),
+    pending_action_id: integer("pending_action_id").references(
+      () => suggestedActionsTable.id,
+      { onDelete: "set null" },
+    ),
     /** Snapshot of the proposed action so the re-proposal message is accurate */
     proposed_payload: jsonb("proposed_payload").$type<{
       title: string;
