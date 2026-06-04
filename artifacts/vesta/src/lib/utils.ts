@@ -27,7 +27,7 @@ export function formatDate(date: string | Date): string {
 
 export function formatTime(date: string | Date): string {
   const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 export function formatDateTime(date: string | Date): string {
@@ -38,6 +38,7 @@ export function formatDateTime(date: string | Date): string {
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
