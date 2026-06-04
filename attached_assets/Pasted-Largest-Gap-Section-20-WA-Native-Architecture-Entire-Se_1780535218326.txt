@@ -1,0 +1,33 @@
+Largest Gap: Section 20 — WA-Native Architecture (Entire Section Missing)
+
+The spec's core thesis is "80% of interactions happen in WhatsApp; 20% in the app." The current build is the inverse — nearly everything requires the app. None of these are built:
+
+    Conversation Engine — Multi-turn stateful WA conversations. A user sends a message, Vesta replies in WA with "Confirmar? [Sim] [Editar] [Não]", user replies "sim", action is executed. No app required.
+    WA-native approval flow — Approvals via WhatsApp reply ("sim"/"não"/"editar") for high-confidence single-intent items (§20.3)
+    Proactive Scheduler — Daily digest at 7am, absence alerts, conflict detection, weekly Sunday look-ahead, pattern threshold alerts — all sent as WhatsApp messages, not push notifications (§20.2)
+    Conversational memory queries — "Qual o telefone da Dra Marina?" answered directly in WA (§20.4)
+    NL Delegation — "Manda pro Pedro confirmar" → Vesta drafts + sends with approval (§20.5)
+    Voice transcription pipeline — Audio notes → Whisper/Claude → classified as text (§20.6)
+
+🟡 Partially Built / Spec Gaps
+
+UX Components (§8.3)
+
+    ✅ Basic approval card (approve/dismiss/edit)
+    ❌ Cascade card — multi-item batch from single trigger ("Sofia tem febre" → school absence + pickup cancellation + doctor reminder)
+    ❌ Disruption bundle — two simultaneous urgent items surfaced as one card
+    ❌ Pattern suggestion card with evidence-first copy ("Notei que X aconteceu 4 vezes")
+    ❌ Concierge flip card — referral vs "Piloto resolve" R$29 option on servicos items
+
+Freemium (§9)
+
+    ✅ Member limits, rule limits enforced
+    ❌ Category limits (free = 3 of 7 categories) — not enforced
+    ❌ History limits (30-day free, full history premium) — not enforced
+    ❌ Soft approval auto-handle (premium only) — not differentiated
+    ❌ Partner sync read-only vs read/write distinction — not enforced
+    ❌ Weekly WA digest (premium) — not built
+
+Diarista Freemium Correction (§19.4)
+
+    Spec revised to make 1 diarista profile free (basic cancellation detection, LGPD consent). Proactive briefing and no-show detection stay premium. Need to verify the current gate matches this.
