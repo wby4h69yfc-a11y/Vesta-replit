@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { TrendingUp, Clock, User, Home, AlertCircle, Sun, Sparkles } from "lucide-react";
+import { TrendingUp, Clock, User, Home, AlertCircle, Sun, Sparkles, BookOpen, Zap } from "lucide-react";
 import {
   useListPatterns,
   useDismissPattern,
@@ -146,25 +146,60 @@ export default function PatternSuggestions({ onAcceptClick }: PatternSuggestions
         <div className="space-y-2">
           {patterns.map((p) => {
             const isDismissing = dismissingIds.includes(p.id);
+            const isSuggested = p.status === "suggested";
+            const isThresholdMet = p.status === "threshold_met";
+
+            const cardBorder = isSuggested
+              ? `2px solid ${V.primary}`
+              : isThresholdMet
+              ? `1px dashed ${V.gold}`
+              : "1px solid rgba(14,59,46,0.12)";
+
+            const barColor = isSuggested ? V.primary : V.gold;
+
             return (
               <div
                 key={p.id}
                 className="rounded-2xl p-4 space-y-2"
                 style={{
                   background: V.cream,
-                  border: "1px solid rgba(14,59,46,0.12)",
+                  border: cardBorder,
                   opacity: isDismissing ? 0 : 1,
                   transform: isDismissing ? "scale(0.97)" : "scale(1)",
                   transition: "opacity 220ms ease, transform 220ms ease",
                 }}
                 data-testid={`pattern-${p.id}`}
               >
-                <div className="flex items-start gap-2">
-                  <PatternIcon type={p.type} />
-                  <p className="text-sm flex-1" style={{ color: V.ink }}>
-                    Notei que <span className="font-medium">{p.description}</span> aconteceu{" "}
-                    {p.occurrences} {p.occurrences === 1 ? "vez" : "vezes"}.
-                  </p>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 flex-1">
+                    <PatternIcon type={p.type} />
+                    <p className="text-sm flex-1" style={{ color: V.ink }}>
+                      Notei que <span className="font-medium">{p.description}</span> aconteceu{" "}
+                      {p.occurrences} {p.occurrences === 1 ? "vez" : "vezes"}.
+                    </p>
+                  </div>
+
+                  {isSuggested && (
+                    <span
+                      className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                      style={{ background: `${V.primary}18`, color: V.primary }}
+                      data-testid={`pattern-status-${p.id}`}
+                    >
+                      <Zap className="w-2.5 h-2.5" />
+                      Pronto para virar regra
+                    </span>
+                  )}
+
+                  {isThresholdMet && (
+                    <span
+                      className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full"
+                      style={{ background: V.approvalSoft, color: V.gold }}
+                      data-testid={`pattern-status-${p.id}`}
+                    >
+                      <BookOpen className="w-2.5 h-2.5" />
+                      Em aprendizado
+                    </span>
+                  )}
                 </div>
 
                 {p.evidence && (
@@ -172,10 +207,10 @@ export default function PatternSuggestions({ onAcceptClick }: PatternSuggestions
                 )}
 
                 <div className="pl-6 flex items-center gap-2">
-                  <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: V.beige }}>
+                  <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: V.beige }}>
                     <div
                       className="h-full rounded-full transition-all"
-                      style={{ width: `${Math.round(p.confidence * 100)}%`, background: V.primary }}
+                      style={{ width: `${Math.round(p.confidence * 100)}%`, background: barColor }}
                     />
                   </div>
                   <span className="text-[10px] shrink-0" style={{ color: V.muted }}>
@@ -193,15 +228,25 @@ export default function PatternSuggestions({ onAcceptClick }: PatternSuggestions
                   >
                     Ignorar
                   </button>
-                  <button
-                    onClick={() => handleAccept(p)}
-                    disabled={isDismissing || acceptingIds.includes(p.id)}
-                    className="text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50 transition-opacity"
-                    style={{ background: "#EAF1E5", color: V.primary }}
-                    data-testid={`accept-pattern-${p.id}`}
-                  >
-                    Criar regra
-                  </button>
+                  {isSuggested && (
+                    <button
+                      onClick={() => handleAccept(p)}
+                      disabled={isDismissing || acceptingIds.includes(p.id)}
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50 transition-opacity"
+                      style={{ background: `${V.primary}18`, color: V.primary }}
+                      data-testid={`accept-pattern-${p.id}`}
+                    >
+                      Criar regra
+                    </button>
+                  )}
+                  {isThresholdMet && (
+                    <span
+                      className="text-xs px-3 py-1.5 rounded-lg"
+                      style={{ background: V.approvalSoft, color: V.gold }}
+                    >
+                      Aguardando mais dados…
+                    </span>
+                  )}
                 </div>
               </div>
             );
