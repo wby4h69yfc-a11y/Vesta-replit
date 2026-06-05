@@ -1,11 +1,19 @@
 import { useState } from "react";
-import { Check, X, Edit2, ChevronDown, ChevronUp, AlertTriangle, DollarSign } from "lucide-react";
+import { Check, X, Edit2, AlertTriangle, DollarSign, Banknote, CalendarClock } from "lucide-react";
 import { useApproveAction, useDismissAction, useEditAction, getListActionsQueryKey, getListInboxItemsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import CategoryBadge from "@/components/CategoryBadge";
 import { formatDateTime } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import PaymentSafetyChecklist from "@/components/PaymentSafetyChecklist";
+
+type PaymentData = {
+  amount_cents?: number | null;
+  recipient?: string | null;
+  due_date?: string | null;
+  payment_method?: string | null;
+};
 
 type Action = {
   id: number;
@@ -20,6 +28,7 @@ type Action = {
   notes?: string | null;
   cascade_check_needed?: boolean;
   workflow_tags?: string[];
+  payment_data?: PaymentData | null;
 };
 
 export default function ApprovalCard({ action, compact = false }: { action: Action; compact?: boolean }) {
@@ -174,6 +183,59 @@ export default function ApprovalCard({ action, compact = false }: { action: Acti
               <p className="text-xs text-muted-foreground mt-1 italic">{action.notes}</p>
             )}
           </>
+        )}
+
+        {/* Payment section for payment_admin actions */}
+        {isPayment && action.payment_data && (
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4" style={{ color: "#059669" }} />
+              <span className="text-xs font-bold uppercase tracking-wide text-emerald-700">Pagamento</span>
+            </div>
+            <div className="rounded-xl px-3 py-2.5 space-y-1.5" style={{ background: "rgba(5,150,105,0.06)", border: "1px solid rgba(5,150,105,0.15)" }}>
+              {action.payment_data.amount_cents && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Valor</span>
+                  <span className="text-sm font-bold text-emerald-700">
+                    R$&nbsp;{(action.payment_data.amount_cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+              {action.payment_data.recipient && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Para</span>
+                  <span className="text-sm font-medium text-foreground">{action.payment_data.recipient}</span>
+                </div>
+              )}
+              {action.payment_data.due_date && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <CalendarClock className="w-3 h-3" />Vencimento
+                  </span>
+                  <span className="text-sm font-medium text-foreground">
+                    {action.payment_data.due_date.split("-").reverse().join("/")}
+                  </span>
+                </div>
+              )}
+              {action.payment_data.payment_method && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Banknote className="w-3 h-3" />Método
+                  </span>
+                  <span className="text-sm font-medium text-foreground capitalize">{action.payment_data.payment_method}</span>
+                </div>
+              )}
+            </div>
+            <PaymentSafetyChecklist
+              payment={{
+                recipient:      action.payment_data.recipient,
+                amount_cents:   action.payment_data.amount_cents,
+                description:    action.title,
+                due_date:       action.payment_data.due_date,
+                payment_method: action.payment_data.payment_method,
+              }}
+            />
+          </div>
         )}
       </div>
 

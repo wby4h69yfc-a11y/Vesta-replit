@@ -13,3 +13,4 @@ export * from "./memory";
 export * from "./google-tokens";
 export * from "./invites";
 export * from "./proactive";
+export * from "./payments";

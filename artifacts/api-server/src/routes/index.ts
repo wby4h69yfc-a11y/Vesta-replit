@@ -23,6 +23,7 @@ import devRouter from "./dev";
 import memoryRouter from "./memory";
 import privacyRouter from "./privacy";
 import devPublicRouter from "./dev-public";
+import paymentObligationsRouter from "./payment-obligations";
 
 const router: IRouter = Router();
 
@@ -75,9 +76,10 @@ protectedRouter.use(patternsRouter);   // GET /patterns, POST /patterns/:id/*
 protectedRouter.use(onboardingRouter); // GET|POST /onboarding/*
 protectedRouter.use(googleRouter);     // GET|POST /google/*, DELETE /google/disconnect
 protectedRouter.use(briefingRouter);   // POST /briefing/send
-protectedRouter.use(memoryRouter);     // GET /memory/staging, POST /memory/staging/:id/confirm|dismiss, GET /audit
-protectedRouter.use(privacyRouter);    // GET /privacy/export, DELETE /account
-protectedRouter.use(adminRouter);      // GET /admin/stats
+protectedRouter.use(memoryRouter);             // GET /memory/staging, POST /memory/staging/:id/confirm|dismiss, GET /audit
+protectedRouter.use(privacyRouter);            // GET /privacy/export, DELETE /account
+protectedRouter.use(adminRouter);              // GET /admin/stats
+protectedRouter.use(paymentObligationsRouter); // GET|POST /payment-obligations, PATCH|DELETE /payment-obligations/:id, POST /payment-obligations/:id/settle|comprovante
 
 // Catch-all: any path that reaches here through the protectedRouter did not
 // match a registered route. Return 404 so callers get a deterministic error

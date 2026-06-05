@@ -1,14 +1,170 @@
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Calendar } from "lucide-react";
-import { useListEvents, useCreateEvent, getListEventsQueryKey } from "@workspace/api-client-react";
+import { ChevronLeft, ChevronRight, Plus, Banknote, CheckCircle2, Clock as ClockIcon, AlertCircle } from "lucide-react";
+import {
+  useListEvents, useCreateEvent, getListEventsQueryKey,
+  useListPaymentObligations, useUpdatePaymentObligation, getListPaymentObligationsQueryKey,
+  ListPaymentObligationsStatus,
+  type PaymentObligation,
+} from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import CategoryBadge from "@/components/CategoryBadge";
 import { CATEGORIES } from "@/lib/categories";
 import { formatTime, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { V } from "@/lib/brand";
 
 const DAYS_PT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+const METHOD_LABELS: Record<string, string> = {
+  pix: "Pix", boleto: "Boleto", cartao: "Cartão", dinheiro: "Dinheiro", ted: "TED",
+};
+
+const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  pending:               { label: "Pendente",    color: "#B45309", bg: "rgba(180,83,9,0.08)" },
+  overdue:               { label: "Vencida",     color: "#DC2626", bg: "rgba(220,38,38,0.08)" },
+  comprovante_received:  { label: "Comprovante", color: "#059669", bg: "rgba(5,150,105,0.08)" },
+  paid:                  { label: "Paga",        color: "#059669", bg: "rgba(5,150,105,0.08)" },
+  cancelled:             { label: "Cancelada",   color: "#6B7280", bg: "rgba(107,114,128,0.08)" },
+};
+
+function FinancasView() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [statusFilter, setStatusFilter] = useState<ListPaymentObligationsStatus | undefined>(undefined);
+  const { data: obligations, isLoading } = useListPaymentObligations(
+    statusFilter ? { status: statusFilter } : {}
+  );
+
+  const markPaid = useUpdatePaymentObligation({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListPaymentObligationsQueryKey() });
+        toast({ description: "Obrigação marcada como paga." });
+      },
+    },
+  });
+
+  const items = obligations ?? [];
+  const pending  = items.filter((o) => o.status === "pending" || o.status === "overdue");
+  const paid     = items.filter((o) => o.status === "paid" || o.status === "comprovante_received");
+
+  const totalPendingCents = pending.reduce((s, o) => s + (o.amount_cents ?? 0), 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Summary banner */}
+      {pending.length > 0 && (
+        <div className="rounded-2xl px-4 py-3 flex items-center justify-between"
+          style={{ background: "rgba(180,83,9,0.08)", border: "1px solid rgba(180,83,9,0.15)" }}>
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4" style={{ color: "#B45309" }} />
+            <span className="text-sm font-medium" style={{ color: "#92400E" }}>
+              {pending.length} {pending.length === 1 ? "pendência" : "pendências"}
+            </span>
+          </div>
+          {totalPendingCents > 0 && (
+            <span className="text-sm font-bold" style={{ color: "#B45309" }}>
+              R$&nbsp;{(totalPendingCents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Status filter pills */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+        {([
+          { key: undefined,                                   label: "Todas" },
+          { key: ListPaymentObligationsStatus.pending,        label: "Pendentes" },
+          { key: ListPaymentObligationsStatus.overdue,        label: "Vencidas" },
+          { key: ListPaymentObligationsStatus.paid,           label: "Pagas" },
+        ] as const).map(({ key, label }) => (
+          <button
+            key={label}
+            onClick={() => setStatusFilter(key)}
+            className={cn("shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors",
+              statusFilter === key ? "bg-primary text-primary-foreground" : "bg-card border border-border text-muted-foreground")}
+          >{label}</button>
+        ))}
+      </div>
+
+      {/* Obligation list */}
+      {isLoading ? (
+        <div className="text-center py-8 text-sm" style={{ color: V.muted }}>Carregando...</div>
+      ) : items.length === 0 ? (
+        <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm" style={{ color: V.muted }}>
+          Nenhuma obrigação financeira registrada.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {items.map((ob: PaymentObligation) => {
+            const meta = STATUS_META[ob.status] ?? STATUS_META["pending"]!;
+            return (
+              <div
+                key={ob.id}
+                className="rounded-2xl p-4 space-y-2"
+                style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}
+                data-testid={`obligation-${ob.id}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold leading-snug" style={{ color: V.ink }}>{ob.description}</p>
+                    {ob.recipient && (
+                      <p className="text-xs mt-0.5" style={{ color: V.muted }}>Para: {ob.recipient}</p>
+                    )}
+                  </div>
+                  <span
+                    className="shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold"
+                    style={{ background: meta.bg, color: meta.color }}
+                  >{meta.label}</span>
+                </div>
+
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {ob.amount_cents && (
+                    <span className="text-sm font-bold" style={{ color: V.ink }}>
+                      R$&nbsp;{(ob.amount_cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </span>
+                  )}
+                  {ob.due_date && (
+                    <span className="flex items-center gap-1 text-xs" style={{ color: V.muted }}>
+                      <ClockIcon className="w-3 h-3" />
+                      {ob.due_date.split("-").reverse().join("/")}
+                    </span>
+                  )}
+                  {ob.payment_method && (
+                    <span className="flex items-center gap-1 text-xs" style={{ color: V.muted }}>
+                      <Banknote className="w-3 h-3" />
+                      {METHOD_LABELS[ob.payment_method] ?? ob.payment_method}
+                    </span>
+                  )}
+                </div>
+
+                {ob.reimbursement_note && (
+                  <p className="text-xs italic" style={{ color: V.muted }}>{ob.reimbursement_note}</p>
+                )}
+
+                {(ob.status === "pending" || ob.status === "overdue") && (
+                  <div className="pt-1 flex gap-2">
+                    <button
+                      onClick={() => markPaid.mutate({ id: ob.id, data: { status: "paid" } })}
+                      disabled={markPaid.isPending}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold disabled:opacity-50"
+                      style={{ background: "#EAF1E5", color: V.primary }}
+                      data-testid={`mark-paid-${ob.id}`}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Marcar paga
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 const MONTHS_PT = [
   "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
   "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
@@ -37,6 +193,7 @@ export default function AgendaPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const today = new Date();
+  const [activeTab, setActiveTab] = useState<"calendario" | "financas">("calendario");
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(today.getDate());
@@ -100,15 +257,44 @@ export default function AgendaPage() {
     <div className="p-4 space-y-4 animate-fade-in-up">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-foreground">Agenda</h1>
+        {activeTab === "calendario" && (
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium"
+            data-testid="button-create-event"
+          >
+            <Plus className="w-4 h-4" />
+            Evento
+          </button>
+        )}
+      </div>
+
+      {/* Tab switcher */}
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(14,59,46,0.06)" }}>
         <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium"
-          data-testid="button-create-event"
+          onClick={() => setActiveTab("calendario")}
+          className={cn("flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors",
+            activeTab === "calendario" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+          data-testid="tab-calendario"
         >
-          <Plus className="w-4 h-4" />
-          Evento
+          Calendário
+        </button>
+        <button
+          onClick={() => setActiveTab("financas")}
+          className={cn("flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5",
+            activeTab === "financas" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+          data-testid="tab-financas"
+        >
+          <Banknote className="w-3.5 h-3.5" />
+          Finanças
         </button>
       </div>
+
+      {/* Finanças view */}
+      {activeTab === "financas" && <FinancasView />}
+
+      {/* Calendar content — only rendered when on "calendário" tab */}
+      {activeTab === "calendario" && <>
 
       {/* Category filter */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
@@ -274,6 +460,7 @@ export default function AgendaPage() {
           </div>
         </div>
       )}
+      </>}
     </div>
   );
 }

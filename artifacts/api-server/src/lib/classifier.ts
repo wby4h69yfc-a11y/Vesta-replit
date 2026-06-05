@@ -4,6 +4,13 @@ import { inboxItemsTable, suggestedActionsTable, contactsTable } from "@workspac
 import { eq, and } from "drizzle-orm";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "./whatsapp";
 
+export type PaymentData = {
+  amount_cents: number | null;
+  recipient: string | null;
+  due_date: string | null;
+  payment_method: string | null;
+};
+
 export type ClassificationResult = {
   category: string;
   type: string;
@@ -14,7 +21,35 @@ export type ClassificationResult = {
   suggested_owner: string | null;
   workflow_tags: string[];
   cascade_check_needed: boolean;
+  payment_data?: PaymentData | null;
 };
+
+function extractAmountCents(text: string): number | null {
+  const match = text.match(/R\$\s*([\d.,]+)/i);
+  if (!match) return null;
+  const raw = match[1].replace(/\./g, "").replace(",", ".");
+  const value = parseFloat(raw);
+  if (isNaN(value)) return null;
+  return Math.round(value * 100);
+}
+
+function extractPaymentMethod(text: string): string | null {
+  if (/\bpix\b/i.test(text)) return "pix";
+  if (/boleto/i.test(text)) return "boleto";
+  if (/\bted\b|\bdoc\b/i.test(text)) return "ted";
+  if (/cart[ãa]o/i.test(text)) return "cartao";
+  if (/dinheiro/i.test(text)) return "dinheiro";
+  return null;
+}
+
+function extractPaymentData(text: string): PaymentData {
+  return {
+    amount_cents:   extractAmountCents(text),
+    recipient:      null,
+    due_date:       null,
+    payment_method: extractPaymentMethod(text),
+  };
+}
 
 /* ──────────────────────────────────────────────
    Keyword-based fallback classifier
@@ -125,10 +160,12 @@ export function classifyText(text: string): ClassificationResult {
     confidence = Math.min(0.98, confidence + 0.04);
   }
 
+  let payment_data: PaymentData | null = null;
   if (/r\$|reais|pagament|pix|boleto|transferência/.test(lowerText)) {
     workflow_tags = [...new Set([...workflow_tags, "payment_admin"])];
     cascade_check_needed = true;
     approval_level = "explicit";
+    payment_data = extractPaymentData(text);
   }
 
   const title = text.split(/\n/)[0]?.substring(0, 80) ?? text.substring(0, 80);
@@ -137,7 +174,7 @@ export function classifyText(text: string): ClassificationResult {
   return {
     category, type, approval_level, confidence,
     title, datetime, suggested_owner: null,
-    workflow_tags, cascade_check_needed,
+    workflow_tags, cascade_check_needed, payment_data,
   };
 }
 
@@ -156,8 +193,14 @@ Dado o texto de uma mensagem, retorne um JSON com exatamente estes campos:
   "suggested_owner": string|null, // Nome de pessoa mencionada para realizar a ação, ou null
   "approval_level": string, // Um de: soft | one_tap | explicit
   "confidence": number,    // 0.0 a 1.0
-  "workflow_tags": string[], // Array de tags relevantes, pode ser vazio
-  "cascade_check_needed": boolean // true se envolve pagamento, múltiplas pessoas ou evento recorrente
+  "workflow_tags": string[], // Array de tags relevantes. Inclua "payment_admin" se houver pagamento (R$, boleto, Pix, mensalidade, etc.)
+  "cascade_check_needed": boolean, // true se envolve pagamento, múltiplas pessoas ou evento recorrente
+  "payment_data": {         // Preencher quando workflow_tags inclui "payment_admin", senão null
+    "amount_cents": number|null, // Valor em centavos (ex: R$150,00 = 15000), ou null
+    "recipient": string|null,    // Nome de quem deve receber o pagamento, ou null
+    "due_date": string|null,     // Data de vencimento em formato YYYY-MM-DD, ou null
+    "payment_method": string|null // Um de: pix | boleto | cartao | dinheiro | ted, ou null
+  } | null
 }
 
 Regras:
@@ -165,6 +208,7 @@ Regras:
 - approval_level "one_tap" = confirmação rápida necessária
 - approval_level "explicit" = revisão cuidadosa necessária (consulta médica, pagamento, serviço)
 - cascade_check_needed = true para pagamentos, múltiplas crianças/pessoas, ou eventos com custo
+- Para mensagens com R$, boleto, Pix, mensalidade, condomínio: sempre incluir "payment_admin" em workflow_tags
 - Responda APENAS com o JSON, sem markdown, sem explicações.`;
 
 async function classifyWithAI(text: string): Promise<ClassificationResult | null> {
@@ -189,15 +233,16 @@ async function classifyWithAI(text: string): Promise<ClassificationResult | null
     if (!parsed.category || !parsed.type || !parsed.title) return null;
 
     return {
-      title:               (parsed.title ?? text.substring(0, 80)).substring(0, 80),
-      category:            parsed.category ?? "outros",
-      type:                parsed.type ?? "task",
-      datetime:            parsed.datetime ?? null,
-      suggested_owner:     parsed.suggested_owner ?? null,
-      approval_level:      parsed.approval_level ?? "one_tap",
-      confidence:          typeof parsed.confidence === "number" ? Math.min(1, Math.max(0, parsed.confidence)) : 0.85,
-      workflow_tags:       Array.isArray(parsed.workflow_tags) ? parsed.workflow_tags : [],
+      title:                (parsed.title ?? text.substring(0, 80)).substring(0, 80),
+      category:             parsed.category ?? "outros",
+      type:                 parsed.type ?? "task",
+      datetime:             parsed.datetime ?? null,
+      suggested_owner:      parsed.suggested_owner ?? null,
+      approval_level:       parsed.approval_level ?? "one_tap",
+      confidence:           typeof parsed.confidence === "number" ? Math.min(1, Math.max(0, parsed.confidence)) : 0.85,
+      workflow_tags:        Array.isArray(parsed.workflow_tags) ? parsed.workflow_tags : [],
       cascade_check_needed: parsed.cascade_check_needed ?? false,
+      payment_data:         (parsed as { payment_data?: PaymentData | null }).payment_data ?? null,
     };
   } catch {
     return null;
@@ -238,31 +283,33 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
     : result.title;
 
   await db.insert(suggestedActionsTable).values({
-    inbox_item_id:       inboxItemId,
-    household_id:        item.household_id,
-    category:            result.category,
-    type:                result.type,
-    title:               actionTitle.substring(0, 120),
-    datetime:            result.datetime,
-    suggested_owner:     result.suggested_owner,
-    approval_level:      result.approval_level,
-    confidence:          result.confidence,
-    status:              "pending",
-    cascade_check_needed:result.cascade_check_needed,
-    workflow_tags:       result.workflow_tags,
+    inbox_item_id:        inboxItemId,
+    household_id:         item.household_id,
+    category:             result.category,
+    type:                 result.type,
+    title:                actionTitle.substring(0, 120),
+    datetime:             result.datetime,
+    suggested_owner:      result.suggested_owner,
+    approval_level:       result.approval_level,
+    confidence:           result.confidence,
+    status:               "pending",
+    cascade_check_needed: result.cascade_check_needed,
+    workflow_tags:        result.workflow_tags,
+    payment_data:         result.payment_data ?? null,
   }).onConflictDoUpdate({
     target: suggestedActionsTable.inbox_item_id,
     set: {
-      category:            result.category,
-      type:                result.type,
-      title:               actionTitle.substring(0, 120),
-      datetime:            result.datetime,
-      suggested_owner:     result.suggested_owner,
-      approval_level:      result.approval_level,
-      confidence:          result.confidence,
-      cascade_check_needed:result.cascade_check_needed,
-      workflow_tags:       result.workflow_tags,
-      updated_at:          new Date(),
+      category:             result.category,
+      type:                 result.type,
+      title:                actionTitle.substring(0, 120),
+      datetime:             result.datetime,
+      suggested_owner:      result.suggested_owner,
+      approval_level:       result.approval_level,
+      confidence:           result.confidence,
+      cascade_check_needed: result.cascade_check_needed,
+      workflow_tags:        result.workflow_tags,
+      payment_data:         result.payment_data ?? null,
+      updated_at:           new Date(),
     },
   });
 

@@ -478,6 +478,17 @@ export const SuggestedActionStatus = {
   auto_handled: "auto_handled",
 } as const;
 
+export type SuggestedActionPaymentData = {
+  /** @nullable */
+  amount_cents?: number | null;
+  /** @nullable */
+  recipient?: string | null;
+  /** @nullable */
+  due_date?: string | null;
+  /** @nullable */
+  payment_method?: string | null;
+} | null;
+
 export interface SuggestedAction {
   id: number;
   inbox_item_id: number;
@@ -495,6 +506,7 @@ export interface SuggestedAction {
   notes?: string | null;
   cascade_check_needed?: boolean;
   workflow_tags?: string[];
+  payment_data?: SuggestedActionPaymentData;
   created_at?: string;
 }
 
@@ -557,6 +569,36 @@ export const TaskStatus = {
   cancelled: "cancelled",
 } as const;
 
+/**
+ * @nullable
+ */
+export type TaskPaymentStatus =
+  | (typeof TaskPaymentStatus)[keyof typeof TaskPaymentStatus]
+  | null;
+
+export const TaskPaymentStatus = {
+  pending: "pending",
+  paid: "paid",
+  overdue: "overdue",
+  cancelled: "cancelled",
+  comprovante_received: "comprovante_received",
+} as const;
+
+/**
+ * @nullable
+ */
+export type TaskPaymentMethod =
+  | (typeof TaskPaymentMethod)[keyof typeof TaskPaymentMethod]
+  | null;
+
+export const TaskPaymentMethod = {
+  pix: "pix",
+  boleto: "boleto",
+  cartao: "cartao",
+  dinheiro: "dinheiro",
+  ted: "ted",
+} as const;
+
 export interface Task {
   id: number;
   title: string;
@@ -575,6 +617,25 @@ export interface Task {
   created_at: string;
   /** @nullable */
   completed_at?: string | null;
+  /** @nullable */
+  payment_status?: TaskPaymentStatus;
+  /** @nullable */
+  payment_amount_cents?: number | null;
+  /** @nullable */
+  payment_currency?: string | null;
+  /**
+   * ISO date YYYY-MM-DD
+   * @nullable
+   */
+  payment_due_date?: string | null;
+  /** @nullable */
+  payment_method?: TaskPaymentMethod;
+  /** @nullable */
+  proof_attachment_url?: string | null;
+  /** @nullable */
+  reimbursement_note?: string | null;
+  /** @nullable */
+  reimbursement_owed_by?: number | null;
 }
 
 export type RuleCategory = (typeof RuleCategory)[keyof typeof RuleCategory];
@@ -814,6 +875,9 @@ export interface TaskInput {
   due_at?: string;
   category?: string;
   workflow_tags?: string[];
+  payment_amount_cents?: number;
+  payment_due_date?: string;
+  payment_method?: string;
 }
 
 export type TaskUpdateStatus =
@@ -1009,6 +1073,148 @@ export interface BriefingSendResponse {
 }
 
 /**
+ * @nullable
+ */
+export type PaymentObligationPaymentMethod =
+  | (typeof PaymentObligationPaymentMethod)[keyof typeof PaymentObligationPaymentMethod]
+  | null;
+
+export const PaymentObligationPaymentMethod = {
+  pix: "pix",
+  boleto: "boleto",
+  cartao: "cartao",
+  dinheiro: "dinheiro",
+  ted: "ted",
+} as const;
+
+export type PaymentObligationStatus =
+  (typeof PaymentObligationStatus)[keyof typeof PaymentObligationStatus];
+
+export const PaymentObligationStatus = {
+  pending: "pending",
+  paid: "paid",
+  overdue: "overdue",
+  cancelled: "cancelled",
+  comprovante_received: "comprovante_received",
+} as const;
+
+export interface PaymentObligation {
+  id: number;
+  household_id: number;
+  /** @nullable */
+  source_inbox_id?: number | null;
+  description: string;
+  /** @nullable */
+  recipient?: string | null;
+  /** @nullable */
+  amount_cents?: number | null;
+  currency?: string;
+  /**
+   * ISO date YYYY-MM-DD
+   * @nullable
+   */
+  due_date?: string | null;
+  is_recurring?: boolean;
+  /** @nullable */
+  recurrence_pattern?: string | null;
+  /** @nullable */
+  owner_id?: number | null;
+  /** @nullable */
+  paid_by_id?: number | null;
+  /** @nullable */
+  reimbursement_owed_by_id?: number | null;
+  /** @nullable */
+  payment_method?: PaymentObligationPaymentMethod;
+  status: PaymentObligationStatus;
+  /** @nullable */
+  paid_at?: string | null;
+  /** @nullable */
+  proof_url?: string | null;
+  /** @nullable */
+  reimbursement_note?: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
+export type PaymentObligationInputPaymentMethod =
+  (typeof PaymentObligationInputPaymentMethod)[keyof typeof PaymentObligationInputPaymentMethod];
+
+export const PaymentObligationInputPaymentMethod = {
+  pix: "pix",
+  boleto: "boleto",
+  cartao: "cartao",
+  dinheiro: "dinheiro",
+  ted: "ted",
+} as const;
+
+export interface PaymentObligationInput {
+  description: string;
+  recipient?: string;
+  amount_cents?: number;
+  currency?: string;
+  /** ISO date YYYY-MM-DD */
+  due_date?: string;
+  is_recurring?: boolean;
+  recurrence_pattern?: string;
+  owner_id?: number;
+  paid_by_id?: number;
+  reimbursement_owed_by_id?: number;
+  payment_method?: PaymentObligationInputPaymentMethod;
+  source_inbox_id?: number;
+}
+
+export type PaymentObligationUpdateStatus =
+  (typeof PaymentObligationUpdateStatus)[keyof typeof PaymentObligationUpdateStatus];
+
+export const PaymentObligationUpdateStatus = {
+  pending: "pending",
+  paid: "paid",
+  overdue: "overdue",
+  cancelled: "cancelled",
+  comprovante_received: "comprovante_received",
+} as const;
+
+export interface PaymentObligationUpdate {
+  description?: string;
+  /** @nullable */
+  recipient?: string | null;
+  /** @nullable */
+  amount_cents?: number | null;
+  /** @nullable */
+  due_date?: string | null;
+  is_recurring?: boolean;
+  /** @nullable */
+  recurrence_pattern?: string | null;
+  /** @nullable */
+  owner_id?: number | null;
+  /** @nullable */
+  paid_by_id?: number | null;
+  /** @nullable */
+  reimbursement_owed_by_id?: number | null;
+  /** @nullable */
+  payment_method?: string | null;
+  status?: PaymentObligationUpdateStatus;
+  /** @nullable */
+  paid_at?: string | null;
+  /** @nullable */
+  proof_url?: string | null;
+  /** @nullable */
+  reimbursement_note?: string | null;
+}
+
+export interface PaymentReimbursementSummary {
+  owed_by_me: PaymentObligation[];
+  owed_to_me: PaymentObligation[];
+  all?: PaymentObligation[];
+  has_member: boolean;
+}
+
+export interface ComprovanteAttachResult {
+  obligation: PaymentObligation;
+  ocr_note: string;
+}
+
+/**
  * Opaque session token — `Bearer <sid>`.
  */
 export type AuthorizationSessionHeaderParameter = string;
@@ -1106,4 +1312,28 @@ export const ListPatternsStatus = {
 
 export type ListAuditLogParams = {
   limit?: number;
+};
+
+export type ListPaymentObligationsParams = {
+  status?: ListPaymentObligationsStatus;
+};
+
+export type ListPaymentObligationsStatus =
+  (typeof ListPaymentObligationsStatus)[keyof typeof ListPaymentObligationsStatus];
+
+export const ListPaymentObligationsStatus = {
+  pending: "pending",
+  paid: "paid",
+  overdue: "overdue",
+  cancelled: "cancelled",
+  comprovante_received: "comprovante_received",
+} as const;
+
+export type SettlePaymentObligationBody = {
+  note?: string;
+};
+
+export type AttachComprovanteBody = {
+  /** URL of the uploaded comprovante image */
+  proof_url: string;
 };

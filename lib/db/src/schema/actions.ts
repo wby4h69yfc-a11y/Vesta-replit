@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, boolean, uniqueIndex, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -19,12 +19,16 @@ export const suggestedActionsTable = pgTable(
     notes: text("notes"),
     cascade_check_needed: boolean("cascade_check_needed").notNull().default(false),
     workflow_tags: text("workflow_tags").array().notNull().default([]),
+    payment_data: jsonb("payment_data").$type<{
+      amount_cents?: number | null;
+      recipient?: string | null;
+      due_date?: string | null;
+      payment_method?: string | null;
+    } | null>(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (table) => [
-    // One classification result per inbox item — prevents duplicate actions
-    // and duplicate approval notifications from repeated classify calls.
     uniqueIndex("suggested_actions_inbox_item_id_unique").on(table.inbox_item_id),
   ],
 );

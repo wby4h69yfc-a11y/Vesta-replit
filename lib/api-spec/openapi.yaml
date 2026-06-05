@@ -36,6 +36,8 @@ tags:
     description: Household memory staging and audit log
   - name: privacy
     description: LGPD data portability and account deletion
+  - name: payments
+    description: Payment obligations, comprovantes, and reimbursement tracking
 
 paths:
   /auth/user:
@@ -1431,6 +1433,160 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  # ── Payment Obligations ───────────────────────────────────────────
+  /payment-obligations:
+    get:
+      operationId: listPaymentObligations
+      tags: [payments]
+      summary: List household payment obligations
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, paid, overdue, cancelled, comprovante_received]
+      responses:
+        "200":
+          description: List of payment obligations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PaymentObligation"
+    post:
+      operationId: createPaymentObligation
+      tags: [payments]
+      summary: Create a payment obligation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentObligationInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentObligation"
+
+  /payment-obligations/reimbursements:
+    get:
+      operationId: getPaymentReimbursements
+      tags: [payments]
+      summary: Get pending reimbursements split by direction (owed by me / owed to me)
+      responses:
+        "200":
+          description: Reimbursement summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentReimbursementSummary"
+
+  /payment-obligations/{id}:
+    patch:
+      operationId: updatePaymentObligation
+      tags: [payments]
+      summary: Update a payment obligation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentObligationUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentObligation"
+        "404":
+          description: Not found
+    delete:
+      operationId: deletePaymentObligation
+      tags: [payments]
+      summary: Delete a payment obligation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /payment-obligations/{id}/settle:
+    post:
+      operationId: settlePaymentObligation
+      tags: [payments]
+      summary: Mark a reimbursement as settled (paid off between parties)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note:
+                  type: string
+      responses:
+        "200":
+          description: Settled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentObligation"
+        "404":
+          description: Not found
+
+  /payment-obligations/{id}/comprovante:
+    post:
+      operationId: attachComprovante
+      tags: [payments]
+      summary: Attach proof of payment (comprovante) and mark obligation as paid
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [proof_url]
+              properties:
+                proof_url:
+                  type: string
+                  description: URL of the uploaded comprovante image
+      responses:
+        "200":
+          description: Comprovante attached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComprovanteAttachResult"
+        "404":
+          description: Not found
+
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -2081,6 +2237,18 @@ components:
           type: array
           items:
             type: string
+        payment_data:
+          nullable: true
+          type: object
+          properties:
+            amount_cents:
+              type: ["integer", "null"]
+            recipient:
+              type: ["string", "null"]
+            due_date:
+              type: ["string", "null"]
+            payment_method:
+              type: ["string", "null"]
         created_at:
           type: string
           format: date-time
@@ -2139,6 +2307,25 @@ components:
           format: date-time
         completed_at:
           type: ["string", "null"]
+        payment_status:
+          type: ["string", "null"]
+          enum: [pending, paid, overdue, cancelled, comprovante_received]
+        payment_amount_cents:
+          type: ["integer", "null"]
+        payment_currency:
+          type: ["string", "null"]
+        payment_due_date:
+          type: ["string", "null"]
+          description: ISO date YYYY-MM-DD
+        payment_method:
+          type: ["string", "null"]
+          enum: [pix, boleto, cartao, dinheiro, ted]
+        proof_attachment_url:
+          type: ["string", "null"]
+        reimbursement_note:
+          type: ["string", "null"]
+        reimbursement_owed_by:
+          type: ["integer", "null"]
 
     TaskInput:
       type: object
@@ -2157,6 +2344,12 @@ components:
           type: array
           items:
             type: string
+        payment_amount_cents:
+          type: integer
+        payment_due_date:
+          type: string
+        payment_method:
+          type: string
 
     TaskUpdate:
       type: object
@@ -2582,3 +2775,148 @@ components:
         timestamp:
           type: string
           format: date-time
+
+    # ── Payments ──────────────────────────────────────────────────
+    PaymentObligation:
+      type: object
+      required: [id, household_id, description, status, created_at]
+      properties:
+        id:
+          type: integer
+        household_id:
+          type: integer
+        source_inbox_id:
+          type: ["integer", "null"]
+        description:
+          type: string
+        recipient:
+          type: ["string", "null"]
+        amount_cents:
+          type: ["integer", "null"]
+        currency:
+          type: string
+          default: BRL
+        due_date:
+          type: ["string", "null"]
+          description: ISO date YYYY-MM-DD
+        is_recurring:
+          type: boolean
+        recurrence_pattern:
+          type: ["string", "null"]
+        owner_id:
+          type: ["integer", "null"]
+        paid_by_id:
+          type: ["integer", "null"]
+        reimbursement_owed_by_id:
+          type: ["integer", "null"]
+        payment_method:
+          type: ["string", "null"]
+          enum: [pix, boleto, cartao, dinheiro, ted]
+        status:
+          type: string
+          enum: [pending, paid, overdue, cancelled, comprovante_received]
+        paid_at:
+          type: ["string", "null"]
+          format: date-time
+        proof_url:
+          type: ["string", "null"]
+        reimbursement_note:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PaymentObligationInput:
+      type: object
+      required: [description]
+      properties:
+        description:
+          type: string
+        recipient:
+          type: string
+        amount_cents:
+          type: integer
+        currency:
+          type: string
+        due_date:
+          type: string
+          description: ISO date YYYY-MM-DD
+        is_recurring:
+          type: boolean
+        recurrence_pattern:
+          type: string
+        owner_id:
+          type: integer
+        paid_by_id:
+          type: integer
+        reimbursement_owed_by_id:
+          type: integer
+        payment_method:
+          type: string
+          enum: [pix, boleto, cartao, dinheiro, ted]
+        source_inbox_id:
+          type: integer
+
+    PaymentObligationUpdate:
+      type: object
+      properties:
+        description:
+          type: string
+        recipient:
+          type: ["string", "null"]
+        amount_cents:
+          type: ["integer", "null"]
+        due_date:
+          type: ["string", "null"]
+        is_recurring:
+          type: boolean
+        recurrence_pattern:
+          type: ["string", "null"]
+        owner_id:
+          type: ["integer", "null"]
+        paid_by_id:
+          type: ["integer", "null"]
+        reimbursement_owed_by_id:
+          type: ["integer", "null"]
+        payment_method:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, paid, overdue, cancelled, comprovante_received]
+        paid_at:
+          type: ["string", "null"]
+        proof_url:
+          type: ["string", "null"]
+        reimbursement_note:
+          type: ["string", "null"]
+
+    PaymentReimbursementSummary:
+      type: object
+      required: [owed_by_me, owed_to_me, has_member]
+      properties:
+        owed_by_me:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentObligation"
+        owed_to_me:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentObligation"
+        all:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentObligation"
+        has_member:
+          type: boolean
+
+    ComprovanteAttachResult:
+      type: object
+      required: [obligation, ocr_note]
+      properties:
+        obligation:
+          $ref: "#/components/schemas/PaymentObligation"
+        ocr_note:
+          type: string

@@ -154,6 +154,18 @@ export const GetUpcomingTasksResponseItem = zod.object({
   workflow_tags: zod.array(zod.string()).optional(),
   created_at: zod.coerce.date(),
   completed_at: zod.string().nullish(),
+  payment_status: zod
+    .enum(["pending", "paid", "overdue", "cancelled", "comprovante_received"])
+    .nullish(),
+  payment_amount_cents: zod.number().nullish(),
+  payment_currency: zod.string().nullish(),
+  payment_due_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+  payment_method: zod
+    .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+    .nullish(),
+  proof_attachment_url: zod.string().nullish(),
+  reimbursement_note: zod.string().nullish(),
+  reimbursement_owed_by: zod.number().nullish(),
 });
 export const GetUpcomingTasksResponse = zod.array(GetUpcomingTasksResponseItem);
 
@@ -276,6 +288,14 @@ export const GetInboxItemResponse = zod.object({
       notes: zod.string().nullish(),
       cascade_check_needed: zod.boolean().optional(),
       workflow_tags: zod.array(zod.string()).optional(),
+      payment_data: zod
+        .object({
+          amount_cents: zod.number().nullish(),
+          recipient: zod.string().nullish(),
+          due_date: zod.string().nullish(),
+          payment_method: zod.string().nullish(),
+        })
+        .nullish(),
       created_at: zod.coerce.date().optional(),
     }),
   ),
@@ -340,6 +360,14 @@ export const ListActionsResponseItem = zod.object({
   notes: zod.string().nullish(),
   cascade_check_needed: zod.boolean().optional(),
   workflow_tags: zod.array(zod.string()).optional(),
+  payment_data: zod
+    .object({
+      amount_cents: zod.number().nullish(),
+      recipient: zod.string().nullish(),
+      due_date: zod.string().nullish(),
+      payment_method: zod.string().nullish(),
+    })
+    .nullish(),
   created_at: zod.coerce.date().optional(),
 });
 export const ListActionsResponse = zod.array(ListActionsResponseItem);
@@ -378,6 +406,14 @@ export const ApproveActionResponse = zod.object({
   notes: zod.string().nullish(),
   cascade_check_needed: zod.boolean().optional(),
   workflow_tags: zod.array(zod.string()).optional(),
+  payment_data: zod
+    .object({
+      amount_cents: zod.number().nullish(),
+      recipient: zod.string().nullish(),
+      due_date: zod.string().nullish(),
+      payment_method: zod.string().nullish(),
+    })
+    .nullish(),
   created_at: zod.coerce.date().optional(),
 });
 
@@ -411,6 +447,14 @@ export const DismissActionResponse = zod.object({
   notes: zod.string().nullish(),
   cascade_check_needed: zod.boolean().optional(),
   workflow_tags: zod.array(zod.string()).optional(),
+  payment_data: zod
+    .object({
+      amount_cents: zod.number().nullish(),
+      recipient: zod.string().nullish(),
+      due_date: zod.string().nullish(),
+      payment_method: zod.string().nullish(),
+    })
+    .nullish(),
   created_at: zod.coerce.date().optional(),
 });
 
@@ -453,6 +497,14 @@ export const EditActionResponse = zod.object({
   notes: zod.string().nullish(),
   cascade_check_needed: zod.boolean().optional(),
   workflow_tags: zod.array(zod.string()).optional(),
+  payment_data: zod
+    .object({
+      amount_cents: zod.number().nullish(),
+      recipient: zod.string().nullish(),
+      due_date: zod.string().nullish(),
+      payment_method: zod.string().nullish(),
+    })
+    .nullish(),
   created_at: zod.coerce.date().optional(),
 });
 
@@ -477,6 +529,18 @@ export const ListTasksResponseItem = zod.object({
   workflow_tags: zod.array(zod.string()).optional(),
   created_at: zod.coerce.date(),
   completed_at: zod.string().nullish(),
+  payment_status: zod
+    .enum(["pending", "paid", "overdue", "cancelled", "comprovante_received"])
+    .nullish(),
+  payment_amount_cents: zod.number().nullish(),
+  payment_currency: zod.string().nullish(),
+  payment_due_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+  payment_method: zod
+    .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+    .nullish(),
+  proof_attachment_url: zod.string().nullish(),
+  reimbursement_note: zod.string().nullish(),
+  reimbursement_owed_by: zod.number().nullish(),
 });
 export const ListTasksResponse = zod.array(ListTasksResponseItem);
 
@@ -489,6 +553,9 @@ export const CreateTaskBody = zod.object({
   due_at: zod.coerce.date().optional(),
   category: zod.string().optional(),
   workflow_tags: zod.array(zod.string()).optional(),
+  payment_amount_cents: zod.number().optional(),
+  payment_due_date: zod.string().optional(),
+  payment_method: zod.string().optional(),
 });
 
 /**
@@ -510,6 +577,18 @@ export const GetTaskResponse = zod.object({
   workflow_tags: zod.array(zod.string()).optional(),
   created_at: zod.coerce.date(),
   completed_at: zod.string().nullish(),
+  payment_status: zod
+    .enum(["pending", "paid", "overdue", "cancelled", "comprovante_received"])
+    .nullish(),
+  payment_amount_cents: zod.number().nullish(),
+  payment_currency: zod.string().nullish(),
+  payment_due_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+  payment_method: zod
+    .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+    .nullish(),
+  proof_attachment_url: zod.string().nullish(),
+  reimbursement_note: zod.string().nullish(),
+  reimbursement_owed_by: zod.number().nullish(),
 });
 
 /**
@@ -539,6 +618,18 @@ export const UpdateTaskResponse = zod.object({
   workflow_tags: zod.array(zod.string()).optional(),
   created_at: zod.coerce.date(),
   completed_at: zod.string().nullish(),
+  payment_status: zod
+    .enum(["pending", "paid", "overdue", "cancelled", "comprovante_received"])
+    .nullish(),
+  payment_amount_cents: zod.number().nullish(),
+  payment_currency: zod.string().nullish(),
+  payment_due_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+  payment_method: zod
+    .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+    .nullish(),
+  proof_attachment_url: zod.string().nullish(),
+  reimbursement_note: zod.string().nullish(),
+  reimbursement_owed_by: zod.number().nullish(),
 });
 
 /**
@@ -567,6 +658,18 @@ export const CompleteTaskResponse = zod.object({
   workflow_tags: zod.array(zod.string()).optional(),
   created_at: zod.coerce.date(),
   completed_at: zod.string().nullish(),
+  payment_status: zod
+    .enum(["pending", "paid", "overdue", "cancelled", "comprovante_received"])
+    .nullish(),
+  payment_amount_cents: zod.number().nullish(),
+  payment_currency: zod.string().nullish(),
+  payment_due_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+  payment_method: zod
+    .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+    .nullish(),
+  proof_attachment_url: zod.string().nullish(),
+  reimbursement_note: zod.string().nullish(),
+  reimbursement_owed_by: zod.number().nullish(),
 });
 
 /**
@@ -1085,6 +1188,14 @@ export const ExportPrivacyDataResponse = zod.object({
         notes: zod.string().nullish(),
         cascade_check_needed: zod.boolean().optional(),
         workflow_tags: zod.array(zod.string()).optional(),
+        payment_data: zod
+          .object({
+            amount_cents: zod.number().nullish(),
+            recipient: zod.string().nullish(),
+            due_date: zod.string().nullish(),
+            payment_method: zod.string().nullish(),
+          })
+          .nullish(),
         created_at: zod.coerce.date().optional(),
       }),
     )
@@ -1132,6 +1243,27 @@ export const ExportPrivacyDataResponse = zod.object({
         workflow_tags: zod.array(zod.string()).optional(),
         created_at: zod.coerce.date(),
         completed_at: zod.string().nullish(),
+        payment_status: zod
+          .enum([
+            "pending",
+            "paid",
+            "overdue",
+            "cancelled",
+            "comprovante_received",
+          ])
+          .nullish(),
+        payment_amount_cents: zod.number().nullish(),
+        payment_currency: zod.string().nullish(),
+        payment_due_date: zod
+          .string()
+          .nullish()
+          .describe("ISO date YYYY-MM-DD"),
+        payment_method: zod
+          .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+          .nullish(),
+        proof_attachment_url: zod.string().nullish(),
+        reimbursement_note: zod.string().nullish(),
+        reimbursement_owed_by: zod.number().nullish(),
       }),
     )
     .optional(),
@@ -2052,4 +2184,347 @@ export const SendDailyBriefingResponse = zod.object({
   sid: zod.string().optional(),
   eventsCount: zod.number().optional(),
   tasksCount: zod.number().optional(),
+});
+
+/**
+ * @summary List household payment obligations
+ */
+export const ListPaymentObligationsQueryParams = zod.object({
+  status: zod
+    .enum(["pending", "paid", "overdue", "cancelled", "comprovante_received"])
+    .optional(),
+});
+
+export const listPaymentObligationsResponseCurrencyDefault = `BRL`;
+
+export const ListPaymentObligationsResponseItem = zod.object({
+  id: zod.number(),
+  household_id: zod.number(),
+  source_inbox_id: zod.number().nullish(),
+  description: zod.string(),
+  recipient: zod.string().nullish(),
+  amount_cents: zod.number().nullish(),
+  currency: zod.string().default(listPaymentObligationsResponseCurrencyDefault),
+  due_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+  is_recurring: zod.boolean().optional(),
+  recurrence_pattern: zod.string().nullish(),
+  owner_id: zod.number().nullish(),
+  paid_by_id: zod.number().nullish(),
+  reimbursement_owed_by_id: zod.number().nullish(),
+  payment_method: zod
+    .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+    .nullish(),
+  status: zod.enum([
+    "pending",
+    "paid",
+    "overdue",
+    "cancelled",
+    "comprovante_received",
+  ]),
+  paid_at: zod.coerce.date().nullish(),
+  proof_url: zod.string().nullish(),
+  reimbursement_note: zod.string().nullish(),
+  created_at: zod.coerce.date(),
+  updated_at: zod.coerce.date().optional(),
+});
+export const ListPaymentObligationsResponse = zod.array(
+  ListPaymentObligationsResponseItem,
+);
+
+/**
+ * @summary Create a payment obligation
+ */
+export const CreatePaymentObligationBody = zod.object({
+  description: zod.string(),
+  recipient: zod.string().optional(),
+  amount_cents: zod.number().optional(),
+  currency: zod.string().optional(),
+  due_date: zod.string().optional().describe("ISO date YYYY-MM-DD"),
+  is_recurring: zod.boolean().optional(),
+  recurrence_pattern: zod.string().optional(),
+  owner_id: zod.number().optional(),
+  paid_by_id: zod.number().optional(),
+  reimbursement_owed_by_id: zod.number().optional(),
+  payment_method: zod
+    .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+    .optional(),
+  source_inbox_id: zod.number().optional(),
+});
+
+/**
+ * @summary Get pending reimbursements split by direction (owed by me / owed to me)
+ */
+export const getPaymentReimbursementsResponseOwedByMeItemCurrencyDefault = `BRL`;
+export const getPaymentReimbursementsResponseOwedToMeItemCurrencyDefault = `BRL`;
+export const getPaymentReimbursementsResponseAllItemCurrencyDefault = `BRL`;
+
+export const GetPaymentReimbursementsResponse = zod.object({
+  owed_by_me: zod.array(
+    zod.object({
+      id: zod.number(),
+      household_id: zod.number(),
+      source_inbox_id: zod.number().nullish(),
+      description: zod.string(),
+      recipient: zod.string().nullish(),
+      amount_cents: zod.number().nullish(),
+      currency: zod
+        .string()
+        .default(getPaymentReimbursementsResponseOwedByMeItemCurrencyDefault),
+      due_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+      is_recurring: zod.boolean().optional(),
+      recurrence_pattern: zod.string().nullish(),
+      owner_id: zod.number().nullish(),
+      paid_by_id: zod.number().nullish(),
+      reimbursement_owed_by_id: zod.number().nullish(),
+      payment_method: zod
+        .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+        .nullish(),
+      status: zod.enum([
+        "pending",
+        "paid",
+        "overdue",
+        "cancelled",
+        "comprovante_received",
+      ]),
+      paid_at: zod.coerce.date().nullish(),
+      proof_url: zod.string().nullish(),
+      reimbursement_note: zod.string().nullish(),
+      created_at: zod.coerce.date(),
+      updated_at: zod.coerce.date().optional(),
+    }),
+  ),
+  owed_to_me: zod.array(
+    zod.object({
+      id: zod.number(),
+      household_id: zod.number(),
+      source_inbox_id: zod.number().nullish(),
+      description: zod.string(),
+      recipient: zod.string().nullish(),
+      amount_cents: zod.number().nullish(),
+      currency: zod
+        .string()
+        .default(getPaymentReimbursementsResponseOwedToMeItemCurrencyDefault),
+      due_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+      is_recurring: zod.boolean().optional(),
+      recurrence_pattern: zod.string().nullish(),
+      owner_id: zod.number().nullish(),
+      paid_by_id: zod.number().nullish(),
+      reimbursement_owed_by_id: zod.number().nullish(),
+      payment_method: zod
+        .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+        .nullish(),
+      status: zod.enum([
+        "pending",
+        "paid",
+        "overdue",
+        "cancelled",
+        "comprovante_received",
+      ]),
+      paid_at: zod.coerce.date().nullish(),
+      proof_url: zod.string().nullish(),
+      reimbursement_note: zod.string().nullish(),
+      created_at: zod.coerce.date(),
+      updated_at: zod.coerce.date().optional(),
+    }),
+  ),
+  all: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        household_id: zod.number(),
+        source_inbox_id: zod.number().nullish(),
+        description: zod.string(),
+        recipient: zod.string().nullish(),
+        amount_cents: zod.number().nullish(),
+        currency: zod
+          .string()
+          .default(getPaymentReimbursementsResponseAllItemCurrencyDefault),
+        due_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+        is_recurring: zod.boolean().optional(),
+        recurrence_pattern: zod.string().nullish(),
+        owner_id: zod.number().nullish(),
+        paid_by_id: zod.number().nullish(),
+        reimbursement_owed_by_id: zod.number().nullish(),
+        payment_method: zod
+          .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+          .nullish(),
+        status: zod.enum([
+          "pending",
+          "paid",
+          "overdue",
+          "cancelled",
+          "comprovante_received",
+        ]),
+        paid_at: zod.coerce.date().nullish(),
+        proof_url: zod.string().nullish(),
+        reimbursement_note: zod.string().nullish(),
+        created_at: zod.coerce.date(),
+        updated_at: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  has_member: zod.boolean(),
+});
+
+/**
+ * @summary Update a payment obligation
+ */
+export const UpdatePaymentObligationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdatePaymentObligationBody = zod.object({
+  description: zod.string().optional(),
+  recipient: zod.string().nullish(),
+  amount_cents: zod.number().nullish(),
+  due_date: zod.string().nullish(),
+  is_recurring: zod.boolean().optional(),
+  recurrence_pattern: zod.string().nullish(),
+  owner_id: zod.number().nullish(),
+  paid_by_id: zod.number().nullish(),
+  reimbursement_owed_by_id: zod.number().nullish(),
+  payment_method: zod.string().nullish(),
+  status: zod
+    .enum(["pending", "paid", "overdue", "cancelled", "comprovante_received"])
+    .optional(),
+  paid_at: zod.string().nullish(),
+  proof_url: zod.string().nullish(),
+  reimbursement_note: zod.string().nullish(),
+});
+
+export const updatePaymentObligationResponseCurrencyDefault = `BRL`;
+
+export const UpdatePaymentObligationResponse = zod.object({
+  id: zod.number(),
+  household_id: zod.number(),
+  source_inbox_id: zod.number().nullish(),
+  description: zod.string(),
+  recipient: zod.string().nullish(),
+  amount_cents: zod.number().nullish(),
+  currency: zod
+    .string()
+    .default(updatePaymentObligationResponseCurrencyDefault),
+  due_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+  is_recurring: zod.boolean().optional(),
+  recurrence_pattern: zod.string().nullish(),
+  owner_id: zod.number().nullish(),
+  paid_by_id: zod.number().nullish(),
+  reimbursement_owed_by_id: zod.number().nullish(),
+  payment_method: zod
+    .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+    .nullish(),
+  status: zod.enum([
+    "pending",
+    "paid",
+    "overdue",
+    "cancelled",
+    "comprovante_received",
+  ]),
+  paid_at: zod.coerce.date().nullish(),
+  proof_url: zod.string().nullish(),
+  reimbursement_note: zod.string().nullish(),
+  created_at: zod.coerce.date(),
+  updated_at: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Delete a payment obligation
+ */
+export const DeletePaymentObligationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary Mark a reimbursement as settled (paid off between parties)
+ */
+export const SettlePaymentObligationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SettlePaymentObligationBody = zod.object({
+  note: zod.string().optional(),
+});
+
+export const settlePaymentObligationResponseCurrencyDefault = `BRL`;
+
+export const SettlePaymentObligationResponse = zod.object({
+  id: zod.number(),
+  household_id: zod.number(),
+  source_inbox_id: zod.number().nullish(),
+  description: zod.string(),
+  recipient: zod.string().nullish(),
+  amount_cents: zod.number().nullish(),
+  currency: zod
+    .string()
+    .default(settlePaymentObligationResponseCurrencyDefault),
+  due_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+  is_recurring: zod.boolean().optional(),
+  recurrence_pattern: zod.string().nullish(),
+  owner_id: zod.number().nullish(),
+  paid_by_id: zod.number().nullish(),
+  reimbursement_owed_by_id: zod.number().nullish(),
+  payment_method: zod
+    .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+    .nullish(),
+  status: zod.enum([
+    "pending",
+    "paid",
+    "overdue",
+    "cancelled",
+    "comprovante_received",
+  ]),
+  paid_at: zod.coerce.date().nullish(),
+  proof_url: zod.string().nullish(),
+  reimbursement_note: zod.string().nullish(),
+  created_at: zod.coerce.date(),
+  updated_at: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Attach proof of payment (comprovante) and mark obligation as paid
+ */
+export const AttachComprovanteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AttachComprovanteBody = zod.object({
+  proof_url: zod.string().describe("URL of the uploaded comprovante image"),
+});
+
+export const attachComprovanteResponseObligationCurrencyDefault = `BRL`;
+
+export const AttachComprovanteResponse = zod.object({
+  obligation: zod.object({
+    id: zod.number(),
+    household_id: zod.number(),
+    source_inbox_id: zod.number().nullish(),
+    description: zod.string(),
+    recipient: zod.string().nullish(),
+    amount_cents: zod.number().nullish(),
+    currency: zod
+      .string()
+      .default(attachComprovanteResponseObligationCurrencyDefault),
+    due_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+    is_recurring: zod.boolean().optional(),
+    recurrence_pattern: zod.string().nullish(),
+    owner_id: zod.number().nullish(),
+    paid_by_id: zod.number().nullish(),
+    reimbursement_owed_by_id: zod.number().nullish(),
+    payment_method: zod
+      .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
+      .nullish(),
+    status: zod.enum([
+      "pending",
+      "paid",
+      "overdue",
+      "cancelled",
+      "comprovante_received",
+    ]),
+    paid_at: zod.coerce.date().nullish(),
+    proof_url: zod.string().nullish(),
+    reimbursement_note: zod.string().nullish(),
+    created_at: zod.coerce.date(),
+    updated_at: zod.coerce.date().optional(),
+  }),
+  ocr_note: zod.string(),
 });

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { suggestedActionsTable, inboxItemsTable, calendarEventsTable, tasksTable, auditLogTable, contactsTable } from "@workspace/db";
+import { suggestedActionsTable, inboxItemsTable, calendarEventsTable, tasksTable, auditLogTable, contactsTable, paymentObligationsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/whatsapp";
 import { getHouseholdId } from "../lib/tenant";
@@ -57,13 +57,33 @@ router.post("/actions/:id/approve", async (req, res) => {
 
     // Write task if task type
     if (action.type === "task" || action.type === "reminder") {
+      const pd = action.payment_data as { amount_cents?: number | null; payment_method?: string | null; due_date?: string | null } | null;
       await db.insert(tasksTable).values({
-        household_id: hid,
-        title: action.title,
-        status: "pending",
-        category: action.category,
-        due_at: action.datetime ? new Date(action.datetime) : undefined,
-        workflow_tags: action.workflow_tags,
+        household_id:         hid,
+        title:                action.title,
+        status:               "pending",
+        category:             action.category,
+        due_at:               action.datetime ? new Date(action.datetime) : undefined,
+        workflow_tags:        action.workflow_tags,
+        payment_status:       action.workflow_tags.includes("payment_admin") ? "pending" : null,
+        payment_amount_cents: pd?.amount_cents ?? null,
+        payment_method:       pd?.payment_method ?? null,
+        payment_due_date:     pd?.due_date ?? null,
+      });
+    }
+
+    // Create payment_obligation for payment_admin actions
+    if (action.workflow_tags.includes("payment_admin")) {
+      const pd = action.payment_data as { amount_cents?: number | null; recipient?: string | null; due_date?: string | null; payment_method?: string | null } | null;
+      await db.insert(paymentObligationsTable).values({
+        household_id:    hid,
+        source_inbox_id: action.inbox_item_id,
+        description:     action.title,
+        amount_cents:    pd?.amount_cents ?? null,
+        recipient:       pd?.recipient ?? null,
+        due_date:        pd?.due_date ?? null,
+        payment_method:  pd?.payment_method ?? null,
+        status:          "pending",
       });
     }
 

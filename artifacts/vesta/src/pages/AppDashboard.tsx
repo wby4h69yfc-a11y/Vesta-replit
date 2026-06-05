@@ -1,4 +1,4 @@
-import { Clock, ListChecks, Inbox as InboxIcon, Zap, ChevronRight, ArrowRight } from "lucide-react";
+import { Clock, ListChecks, Inbox as InboxIcon, Zap, ChevronRight, ArrowRight, Banknote, CheckCircle2 } from "lucide-react";
 import { Link } from "wouter";
 import {
   useGetDashboardSummary,
@@ -6,7 +6,13 @@ import {
   useGetUpcomingTasks,
   useGetActivityFeed,
   useListPatterns,
+  useGetPaymentReimbursements,
+  useSettlePaymentObligation,
+  getGetPaymentReimbursementsQueryKey,
+  type PaymentObligation,
 } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import CategoryBadge from "@/components/CategoryBadge";
 import { formatTime, formatDate, formatRelativeTime, isPast } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -14,6 +20,85 @@ import { cn } from "@/lib/utils";
 import { V } from "@/lib/brand";
 
 const NUDGE_STATUSES = new Set(["suggested", "threshold_met"]);
+
+const METHOD_LABELS: Record<string, string> = {
+  pix: "Pix", boleto: "Boleto", cartao: "Cartão", dinheiro: "Dinheiro", ted: "TED",
+};
+
+function formatCents(cents: number) {
+  return `R$\u00A0${(cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+}
+
+function ReimbursementsCard() {
+  const { data, isLoading } = useGetPaymentReimbursements();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const settle = useSettlePaymentObligation({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetPaymentReimbursementsQueryKey() });
+        toast({ description: "Acerto registrado." });
+      },
+    },
+  });
+
+  if (isLoading) return null;
+  if (!data?.has_member) return null;
+
+  const owedByMe = data?.owed_by_me ?? [];
+  const owedToMe = data?.owed_to_me ?? [];
+  if (owedByMe.length === 0 && owedToMe.length === 0) return null;
+
+  function ObligationRow({ ob, dir }: { ob: PaymentObligation; dir: "by_me" | "to_me" }) {
+    return (
+      <div className="flex items-center gap-3 py-2.5" style={{ borderBottom: "1px solid rgba(14,59,46,0.07)" }}>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm leading-snug truncate" style={{ color: V.ink }}>{ob.description}</p>
+          <p className="text-xs mt-0.5" style={{ color: V.muted }}>
+            {ob.amount_cents ? formatCents(ob.amount_cents) : "—"}
+            {ob.due_date ? ` · vence ${ob.due_date.split("-").reverse().join("/")}` : ""}
+            {ob.payment_method ? ` · ${METHOD_LABELS[ob.payment_method] ?? ob.payment_method}` : ""}
+          </p>
+        </div>
+        {dir === "to_me" && (
+          <button
+            onClick={() => settle.mutate({ id: ob.id, data: {} })}
+            disabled={settle.isPending}
+            className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-opacity disabled:opacity-50"
+            style={{ background: "#EAF1E5", color: V.primary }}
+            data-testid={`settle-${ob.id}`}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Acertar
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <section data-testid="reimbursements-card">
+      <div className="flex items-center gap-2 mb-3">
+        <Banknote className="w-4 h-4" style={{ color: V.sage }} />
+        <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: V.muted }}>Reembolsos</h2>
+      </div>
+      <div className="rounded-3xl overflow-hidden" style={{ background: V.cream, border: `1px solid rgba(14,59,46,0.10)` }}>
+        {owedByMe.length > 0 && (
+          <div className="px-4 pt-3 pb-1">
+            <p className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: "#DC2626" }}>Você deve</p>
+            {owedByMe.map((ob) => <ObligationRow key={ob.id} ob={ob} dir="by_me" />)}
+          </div>
+        )}
+        {owedToMe.length > 0 && (
+          <div className="px-4 pt-3 pb-1">
+            <p className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: "#059669" }}>Te devem</p>
+            {owedToMe.map((ob) => <ObligationRow key={ob.id} ob={ob} dir="to_me" />)}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
 
 function PatternNudge() {
   const { data: allPatterns } = useListPatterns();
@@ -116,6 +201,9 @@ export default function AppDashboard() {
 
       {/* Pattern nudge — surfaces when AI has detected new rule suggestions */}
       <PatternNudge />
+
+      {/* Reimbursements tracker — only shows when there are pending reimbursements */}
+      <ReimbursementsCard />
 
       {/* Today's events */}
       <section>

@@ -29,6 +29,13 @@
       "when": 1749168000000,
       "tag": "0003_quiet_hours",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1749254400000,
+      "tag": "0004_payment_obligations",
+      "breakpoints": true
     }
   ]
 }
