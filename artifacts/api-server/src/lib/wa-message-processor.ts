@@ -16,6 +16,7 @@ import {
   contactsTable,
   membersTable,
   suggestedActionsTable,
+  proactiveMessageQueueTable,
 } from "@workspace/db";
 import { eq, and, or } from "drizzle-orm";
 import { classifyAndSaveAction } from "./classifier";
@@ -313,6 +314,23 @@ export async function processInboundWAMessage(
   const senderIsAdmin = matchedMembers.some(
     (m) => m.household_id === householdId && m.role === "admin",
   );
+
+  // When the household admin sends ANY inbound message, mark pending proactive
+  // rows as user_replied so the unread-backlog suppression (≥2 unread) clears.
+  // This is the only place that sets user_replied=true — without it, suppression
+  // becomes permanent after 2 sends.
+  if (senderIsAdmin) {
+    await db
+      .update(proactiveMessageQueueTable)
+      .set({ user_replied: true })
+      .where(
+        and(
+          eq(proactiveMessageQueueTable.household_id, householdId),
+          eq(proactiveMessageQueueTable.status, "sent"),
+          eq(proactiveMessageQueueTable.user_replied, false),
+        ),
+      );
+  }
 
   if (bodyText && senderIsAdmin) {
     const approvalOutcome = await handleApprovalResponse(bodyText, householdId, phoneRaw, log);

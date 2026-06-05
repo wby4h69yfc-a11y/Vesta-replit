@@ -15,7 +15,7 @@ const TICK_INTERVAL_MS = 60_000;
 const PATTERN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const CONSENT_RENEWAL_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const WA_CONV_EXPIRY_INTERVAL_MS = 15 * 60 * 1000;
-const PROACTIVE_SCHEDULE_INTERVAL_MS = 24 * 60 * 60 * 1000; // once daily
+const PROACTIVE_SCHEDULE_INTERVAL_MS = 60 * 60 * 1000; // hourly (idempotent dedup inside)
 const PROACTIVE_SEND_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
 
 let briefingIntervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -76,13 +76,17 @@ async function tick(): Promise<void> {
         ),
       );
 
-    const currentUTCHour = now.getUTCHours();
-    const dueHouseholds = allVerified.filter((h) => h.briefing_hour === currentUTCHour);
+    // briefing_hour is stored as a local hour — compare against the household's
+    // current local time so DST changes are handled correctly.
+    const dueHouseholds = allVerified.filter((h) => {
+      const tz = h.timezone ?? "America/Sao_Paulo";
+      return h.briefing_hour === localHourInTimezone(now, tz);
+    });
 
     if (dueHouseholds.length === 0) return;
 
     logger.info(
-      { utcHour: currentUTCHour, count: dueHouseholds.length },
+      { count: dueHouseholds.length },
       "Scheduler: enqueuing proactive messages for due households",
     );
 

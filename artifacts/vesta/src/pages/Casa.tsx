@@ -406,16 +406,15 @@ function BriefingHourSelector() {
   const savedTz = household?.timezone ?? "America/Sao_Paulo";
   const tzLabel = TZ_LABELS[savedTz] ?? "horário local";
 
-  // briefing_hour is stored in UTC; convert to local for display.
-  const savedUTC = household?.briefing_hour ?? 7;
-  const savedLocal = utcHourToLocal(savedUTC, savedTz);
+  // briefing_hour is stored as a household-local hour (e.g., 7 = 07h00 local).
+  const savedLocal = household?.briefing_hour ?? 7;
 
   const [selectedLocal, setSelectedLocal] = useState<number>(savedLocal);
   const [selectedTz, setSelectedTz] = useState<string>(savedTz);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setSelectedLocal(utcHourToLocal(household?.briefing_hour ?? 7, savedTz));
+    setSelectedLocal(household?.briefing_hour ?? 7);
     setSelectedTz(savedTz);
   }, [household?.briefing_hour, savedTz]);
 
@@ -424,9 +423,8 @@ function BriefingHourSelector() {
   }
 
   async function handleSave() {
-    const utcHour = localHourToUTC(selectedLocal, selectedTz);
     try {
-      await updateHousehold.mutateAsync({ data: { briefing_hour: utcHour, timezone: selectedTz } });
+      await updateHousehold.mutateAsync({ data: { briefing_hour: selectedLocal, timezone: selectedTz } });
       setSaved(true);
       const label = TZ_LABELS[selectedTz] ?? selectedTz;
       toast({ title: "Configurações salvas", description: `Resumo diário às ${formatHour(selectedLocal)} (horário de ${label})` });

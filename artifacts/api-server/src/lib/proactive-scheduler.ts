@@ -493,24 +493,20 @@ export async function scheduleProactiveMessages(householdId: number): Promise<vo
     !household.digest_stopped &&
     !(household.digest_paused_until && household.digest_paused_until > now)
   ) {
-    const alreadyQueued = await alreadyScheduledToday(householdId, "daily_digest", tz);
-    const alreadyWeekly = await alreadyScheduledToday(householdId, "weekly_lookahead", tz);
+    // briefing_hour is stored as a household-local hour (e.g., 7 = 07h00 local).
+    const targetLocalHour = household.briefing_hour;
 
-    if (!alreadyQueued && !alreadyWeekly) {
-      // Compute the next occurrence of the household's configured briefing hour
-      const briefingLocalHour = localHour(
-        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), household.briefing_hour, 0, 0)),
-        tz,
-      );
-      let scheduledAt = nextLocalHourAfter(now, briefingLocalHour, tz);
-      scheduledAt = enforceQuietHours(scheduledAt, tz);
+    // Sunday 19h–20h local: enqueue weekly look-ahead if not already done today.
+    // This check is against NOW (not the computed scheduledAt) so the window is
+    // not missed when the daily digest time differs from 19h.
+    const nowLocalDOW = localDayOfWeek(now, tz);
+    const nowLocalHour = localHour(now, tz);
+    const isSundayEveningNow = nowLocalDOW === 0 && nowLocalHour >= 19 && nowLocalHour < 20;
 
-      // Sunday 19h–20h local → weekly look-ahead instead of daily digest
-      const dayOfWeek = localDayOfWeek(scheduledAt, tz);
-      const hour = localHour(scheduledAt, tz);
-      const isSundayEvening = dayOfWeek === 0 && hour >= 19 && hour < 20;
-
-      if (isSundayEvening) {
+    if (isSundayEveningNow) {
+      const alreadyWeekly = await alreadyScheduledToday(householdId, "weekly_lookahead", tz);
+      if (!alreadyWeekly) {
+        const scheduledAt = enforceQuietHours(now, tz);
         const { message, event_titles } = await buildWeeklyLookaheadMessage(householdId, tz);
         await db.insert(proactiveMessageQueueTable).values({
           household_id: householdId,
@@ -520,7 +516,12 @@ export async function scheduleProactiveMessages(householdId: number): Promise<vo
           status: "queued",
         });
         logger.info({ householdId, scheduledAt }, "Proactive: weekly look-ahead enqueued");
-      } else {
+      }
+    } else {
+      const alreadyQueued = await alreadyScheduledToday(householdId, "daily_digest", tz);
+      if (!alreadyQueued) {
+        let scheduledAt = nextLocalHourAfter(now, targetLocalHour, tz);
+        scheduledAt = enforceQuietHours(scheduledAt, tz);
         const { message, event_titles, task_titles } = await buildDailyDigestMessage(householdId, tz);
         await db.insert(proactiveMessageQueueTable).values({
           household_id: householdId,
