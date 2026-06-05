@@ -322,32 +322,62 @@ interface TemplateItem {
   activated: boolean;
 }
 
+/** Returns up to `max` templates ranked by household composition. */
+function selectRelevantTemplates(
+  all: TemplateItem[],
+  hasChildren: boolean,
+  hasDiarista: boolean,
+  max = 5,
+): TemplateItem[] {
+  const result: TemplateItem[] = [];
+  const seen = new Set<number>();
+
+  function add(items: TemplateItem[], n: number) {
+    for (const t of items) {
+      if (result.length >= max) return;
+      if (!seen.has(t.id)) { seen.add(t.id); result.push(t); n--; if (n <= 0) return; }
+    }
+  }
+
+  // 1. Always include saúde (universal)
+  add(all.filter((t) => t.category === "saude"), 2);
+  // 2. Children signal → escola
+  if (hasChildren) add(all.filter((t) => t.category === "escola"), 3);
+  // 3. Diarista signal → diarista
+  if (hasDiarista) add(all.filter((t) => t.category === "diarista"), 2);
+  // 4. Fill remaining: escola (if no children yet), then casa
+  if (result.length < max && !hasChildren) add(all.filter((t) => t.category === "escola"), 2);
+  if (result.length < max) add(all.filter((t) => t.category === "casa"), max - result.length);
+
+  return result;
+}
+
 function Step3Rules({ onNext, onBack }: StepProps) {
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [selected, setSelected]   = useState<Set<number>>(new Set());
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
+  const [limitBanner, setLimitBanner] = useState(false);
 
   useEffect(() => {
-    fetch("/api/rule-templates", { credentials: "include" })
-      .then((r) => r.json())
-      .then((all: TemplateItem[]) => {
-        const filtered = all.filter((t: TemplateItem) =>
-          ONBOARDING_TEMPLATE_SLUGS.includes(t.slug),
+    Promise.all([
+      fetch("/api/rule-templates",    { credentials: "include" }).then((r) => r.json()).catch(() => []),
+      fetch("/api/household/members", { credentials: "include" }).then((r) => r.json()).catch(() => []),
+      fetch("/api/contacts",          { credentials: "include" }).then((r) => r.json()).catch(() => []),
+    ])
+      .then(([allTemplates, members, contacts]) => {
+        const hasChildren = Array.isArray(members) &&
+          members.some((m: { relationship_type?: string }) => m.relationship_type === "child");
+        const hasDiarista = Array.isArray(contacts) &&
+          contacts.some((c: { category?: string }) => c.category === "diarista");
+        const relevant = selectRelevantTemplates(
+          allTemplates as TemplateItem[],
+          hasChildren,
+          hasDiarista,
         );
-        // Sort by slug order to keep the curated ordering
-        filtered.sort(
-          (a, b) =>
-            ONBOARDING_TEMPLATE_SLUGS.indexOf(a.slug) -
-            ONBOARDING_TEMPLATE_SLUGS.indexOf(b.slug),
-        );
-        setTemplates(filtered);
-        // Pre-select those not already activated
-        setSelected(
-          new Set(filtered.filter((t) => !t.activated).map((t) => t.id)),
-        );
+        setTemplates(relevant);
+        setSelected(new Set(relevant.filter((t) => !t.activated).map((t) => t.id)));
       })
-      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
@@ -364,18 +394,26 @@ function Step3Rules({ onNext, onBack }: StepProps) {
     const toActivate = [...selected];
     if (toActivate.length === 0) { onNext({}); return; }
     setSaving(true);
+    let successCount = 0;
+    let hitLimit = false;
     try {
-      await Promise.allSettled(
-        toActivate.map((id) =>
-          fetch(`/api/rule-templates/${id}/activate`, {
-            method: "POST",
-            credentials: "include",
-          }),
-        ),
-      );
+      for (const id of toActivate) {
+        const resp = await fetch(`/api/rule-templates/${id}/activate`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (resp.status === 402) { hitLimit = true; break; }
+        if (resp.ok) successCount++;
+      }
     } finally {
       setSaving(false);
-      onNext({ activated_templates: toActivate.length });
+      if (hitLimit) {
+        setLimitBanner(true);
+        // Auto-advance after 2.5 s so the user sees the notice
+        setTimeout(() => onNext({ activated_templates: successCount }), 2500);
+      } else {
+        onNext({ activated_templates: successCount });
+      }
     }
   }
 
@@ -392,6 +430,16 @@ function Step3Rules({ onNext, onBack }: StepProps) {
           A Vesta vai cuidar disso automaticamente. Mude quando quiser.
         </p>
       </div>
+
+      {/* Freemium limit notice */}
+      {limitBanner && (
+        <div
+          className="rounded-xl px-4 py-3 text-sm font-medium"
+          style={{ background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A" }}
+        >
+          Limite do plano gratuito atingido (3 regras). Faça upgrade para adicionar mais depois.
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-2">

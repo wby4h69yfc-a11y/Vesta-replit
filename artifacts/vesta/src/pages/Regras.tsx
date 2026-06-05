@@ -108,9 +108,26 @@ function TemplateCard({
 
       {/* CTA */}
       {template.activated ? (
-        <div className="flex items-center gap-1.5 mt-auto pt-1">
+        <div className="flex items-center gap-2 mt-auto pt-1">
           <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "#059669" }} />
           <span className="text-xs font-semibold" style={{ color: "#059669" }}>Ativa</span>
+          {template.activated_rule_id != null && (
+            <button
+              onClick={() => {
+                const el = document.querySelector<HTMLElement>(`[data-testid="rule-${template.activated_rule_id}"]`);
+                if (el) {
+                  el.scrollIntoView({ behavior: "smooth", block: "center" });
+                  el.style.outline = `2px solid ${V.primary}`;
+                  setTimeout(() => { el.style.outline = ""; }, 1800);
+                }
+              }}
+              className="ml-auto text-xs font-semibold underline"
+              style={{ color: V.primary }}
+              data-testid={`edit-link-template-${template.slug}`}
+            >
+              Editar →
+            </button>
+          )}
         </div>
       ) : (
         <button
