@@ -44,6 +44,31 @@ export interface LogoutSuccess {
   success: boolean;
 }
 
+export interface RequestUploadUrlBody {
+  /**
+   * Original file name
+   * @minLength 1
+   */
+  name: string;
+  /**
+   * File size in bytes
+   * @minimum 1
+   */
+  size: number;
+  /**
+   * MIME type (e.g. image/jpeg)
+   * @minLength 1
+   */
+  contentType: string;
+}
+
+export interface RequestUploadUrlResponse {
+  /** Presigned GCS URL for PUT upload */
+  uploadURL: string;
+  /** Normalized object path to store in DB */
+  objectPath: string;
+}
+
 export interface ErrorEnvelope {
   error: string;
 }
@@ -633,6 +658,8 @@ export interface Task {
   /** @nullable */
   proof_attachment_url?: string | null;
   /** @nullable */
+  payment_obligation_id?: number | null;
+  /** @nullable */
   reimbursement_note?: string | null;
   /** @nullable */
   reimbursement_owed_by?: number | null;
@@ -858,6 +885,8 @@ export interface InboxItemInput {
 
 export interface ActionApproval {
   notes?: string;
+  /** Member ID to assign as task owner on approval */
+  suggested_owner?: string | null;
 }
 
 export interface ActionEdit {
@@ -1334,6 +1363,6 @@ export type SettlePaymentObligationBody = {
 };
 
 export type AttachComprovanteBody = {
-  /** URL of the uploaded comprovante image */
-  proof_url: string;
+  /** Comprovante image file field name (multipart binary upload — JPEG, PNG, WebP, PDF) */
+  file?: string;
 };

@@ -21,6 +21,7 @@ export const tasksTable = pgTable("tasks", {
   proof_attachment_url: text("proof_attachment_url"),
   reimbursement_note: text("reimbursement_note"),
   reimbursement_owed_by: integer("reimbursement_owed_by"),
+  payment_obligation_id: integer("payment_obligation_id"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

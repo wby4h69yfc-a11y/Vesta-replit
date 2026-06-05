@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Plus, Banknote, CheckCircle2, Clock as Clock
 import {
   useListEvents, useCreateEvent, getListEventsQueryKey,
   useListPaymentObligations, useUpdatePaymentObligation, getListPaymentObligationsQueryKey,
+  useGetHousehold,
   ListPaymentObligationsStatus,
   type PaymentObligation,
 } from "@workspace/api-client-react";
@@ -196,7 +197,8 @@ export default function AgendaPage() {
   const today = new Date();
   const [activeTab, setActiveTab] = useState<"calendario" | "financas">("calendario");
   const [showFinancasUpgrade, setShowFinancasUpgrade] = useState(false);
-  const [financasUnlocked, setFinancasUnlocked] = useState(false);
+  const { data: household } = useGetHousehold();
+  const financasUnlocked = household?.plan === "premium";
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(today.getDate());

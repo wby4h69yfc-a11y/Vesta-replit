@@ -1,9 +1,13 @@
 import { Router } from "express";
+import multer from "multer";
 import { db } from "@workspace/db";
 import { paymentObligationsTable, membersTable } from "@workspace/db";
 import { eq, and, isNotNull } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { objectStorageClient } from "../lib/objectStorage";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -121,7 +125,7 @@ router.patch("/payment-obligations/:id", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const hid = getHouseholdId(req);
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
 
     const [existing] = await db
       .select()
@@ -170,7 +174,7 @@ router.delete("/payment-obligations/:id", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const hid = getHouseholdId(req);
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     await db
       .delete(paymentObligationsTable)
       .where(and(eq(paymentObligationsTable.id, id), eq(paymentObligationsTable.household_id, hid)));
@@ -185,7 +189,7 @@ router.post("/payment-obligations/:id/settle", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const hid = getHouseholdId(req);
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     const { note } = req.body as { note?: string };
 
     const [existing] = await db
@@ -212,12 +216,11 @@ router.post("/payment-obligations/:id/settle", async (req, res) => {
   }
 });
 
-router.post("/payment-obligations/:id/comprovante", async (req, res) => {
+router.post("/payment-obligations/:id/comprovante", upload.single("file"), async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const hid = getHouseholdId(req);
-    const id = parseInt(req.params.id, 10);
-    const { proof_url } = req.body as { proof_url?: string };
+    const id = parseInt(String(req.params.id), 10);
 
     const [existing] = await db
       .select()
@@ -225,7 +228,27 @@ router.post("/payment-obligations/:id/comprovante", async (req, res) => {
       .where(and(eq(paymentObligationsTable.id, id), eq(paymentObligationsTable.household_id, hid)));
 
     if (!existing) return res.status(404).json({ error: "Not found" });
-    if (!proof_url) return res.status(400).json({ error: "proof_url is required" });
+    if (!req.file) return res.status(400).json({ error: "file is required" });
+
+    // Upload file to object storage (GCS) and get a URL for OCR
+    let proof_url: string;
+    try {
+      const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+      if (!bucketId) throw new Error("DEFAULT_OBJECT_STORAGE_BUCKET_ID not set");
+      const objectName = `comprovantes/${hid}/${id}/${Date.now()}-${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+      const fileRef = objectStorageClient.bucket(bucketId).file(objectName);
+      await fileRef.save(req.file.buffer, {
+        metadata: { contentType: req.file.mimetype },
+      });
+      const [signedUrl] = await fileRef.getSignedUrl({
+        action: "read",
+        expires: Date.now() + 60 * 60 * 1000, // 1h window — enough for OCR
+      });
+      proof_url = signedUrl;
+    } catch (uploadErr) {
+      req.log.warn({ uploadErr }, "Object storage upload failed, falling back to base64 for OCR");
+      proof_url = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+    }
 
     // OCR-based verification: use GPT-4o vision to extract payment details from the image
     let ocr_note = "Comprovante registrado com sucesso.";

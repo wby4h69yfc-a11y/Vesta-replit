@@ -8,6 +8,35 @@
 import * as zod from "zod";
 
 /**
+ * @summary Request a presigned URL for file upload
+ */
+
+export const RequestUploadUrlBody = zod.object({
+  name: zod.string().min(1).describe("Original file name"),
+  size: zod.number().min(1).describe("File size in bytes"),
+  contentType: zod.string().min(1).describe("MIME type (e.g. image\/jpeg)"),
+});
+
+export const RequestUploadUrlResponse = zod.object({
+  uploadURL: zod.string().describe("Presigned GCS URL for PUT upload"),
+  objectPath: zod.string().describe("Normalized object path to store in DB"),
+});
+
+/**
+ * @summary Serve a public asset
+ */
+export const GetPublicObjectParams = zod.object({
+  filePath: zod.coerce.string(),
+});
+
+/**
+ * @summary Serve a private object entity
+ */
+export const GetStorageObjectParams = zod.object({
+  objectPath: zod.coerce.string(),
+});
+
+/**
  * @summary Get the currently authenticated user
  */
 export const GetCurrentAuthUserHeader = zod.object({
@@ -164,6 +193,7 @@ export const GetUpcomingTasksResponseItem = zod.object({
     .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
     .nullish(),
   proof_attachment_url: zod.string().nullish(),
+  payment_obligation_id: zod.number().nullish(),
   reimbursement_note: zod.string().nullish(),
   reimbursement_owed_by: zod.number().nullish(),
 });
@@ -381,6 +411,10 @@ export const ApproveActionParams = zod.object({
 
 export const ApproveActionBody = zod.object({
   notes: zod.string().optional(),
+  suggested_owner: zod
+    .string()
+    .nullish()
+    .describe("Member ID to assign as task owner on approval"),
 });
 
 export const ApproveActionResponse = zod.object({
@@ -539,6 +573,7 @@ export const ListTasksResponseItem = zod.object({
     .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
     .nullish(),
   proof_attachment_url: zod.string().nullish(),
+  payment_obligation_id: zod.number().nullish(),
   reimbursement_note: zod.string().nullish(),
   reimbursement_owed_by: zod.number().nullish(),
 });
@@ -587,6 +622,7 @@ export const GetTaskResponse = zod.object({
     .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
     .nullish(),
   proof_attachment_url: zod.string().nullish(),
+  payment_obligation_id: zod.number().nullish(),
   reimbursement_note: zod.string().nullish(),
   reimbursement_owed_by: zod.number().nullish(),
 });
@@ -628,6 +664,7 @@ export const UpdateTaskResponse = zod.object({
     .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
     .nullish(),
   proof_attachment_url: zod.string().nullish(),
+  payment_obligation_id: zod.number().nullish(),
   reimbursement_note: zod.string().nullish(),
   reimbursement_owed_by: zod.number().nullish(),
 });
@@ -668,6 +705,7 @@ export const CompleteTaskResponse = zod.object({
     .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
     .nullish(),
   proof_attachment_url: zod.string().nullish(),
+  payment_obligation_id: zod.number().nullish(),
   reimbursement_note: zod.string().nullish(),
   reimbursement_owed_by: zod.number().nullish(),
 });
@@ -1262,6 +1300,7 @@ export const ExportPrivacyDataResponse = zod.object({
           .enum(["pix", "boleto", "cartao", "dinheiro", "ted"])
           .nullish(),
         proof_attachment_url: zod.string().nullish(),
+        payment_obligation_id: zod.number().nullish(),
         reimbursement_note: zod.string().nullish(),
         reimbursement_owed_by: zod.number().nullish(),
       }),
@@ -2481,14 +2520,19 @@ export const SettlePaymentObligationResponse = zod.object({
 });
 
 /**
- * @summary Attach proof of payment (comprovante) and mark obligation as paid
+ * @summary Upload proof of payment image (multipart), store in object storage, run OCR and mark obligation as paid
  */
 export const AttachComprovanteParams = zod.object({
   id: zod.coerce.number(),
 });
 
 export const AttachComprovanteBody = zod.object({
-  proof_url: zod.string().describe("URL of the uploaded comprovante image"),
+  file: zod
+    .string()
+    .optional()
+    .describe(
+      "Comprovante image file field name (multipart binary upload — JPEG, PNG, WebP, PDF)",
+    ),
 });
 
 export const attachComprovanteResponseObligationCurrencyDefault = `BRL`;

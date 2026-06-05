@@ -38,8 +38,66 @@ tags:
     description: LGPD data portability and account deletion
   - name: payments
     description: Payment obligations, comprovantes, and reimbursement tracking
+  - name: storage
+    description: Object storage upload and serving endpoints
 
 paths:
+  /storage/uploads/request-url:
+    post:
+      tags: [storage]
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestUploadUrlBody"
+      responses:
+        "200":
+          description: Presigned upload URL generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestUploadUrlResponse"
+        "400":
+          description: Missing or invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /storage/public-objects/{filePath}:
+    get:
+      tags: [storage]
+      operationId: getPublicObject
+      summary: Serve a public asset
+      parameters:
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Object content streamed
+        "404":
+          description: Not found
+  /storage/objects/{objectPath}:
+    get:
+      tags: [storage]
+      operationId: getStorageObject
+      summary: Serve a private object entity
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Object content streamed
+        "404":
+          description: Not found
   /auth/user:
     get:
       tags: [auth]
@@ -1559,7 +1617,7 @@ paths:
     post:
       operationId: attachComprovante
       tags: [payments]
-      summary: Attach proof of payment (comprovante) and mark obligation as paid
+      summary: Upload proof of payment image (multipart), store in object storage, run OCR and mark obligation as paid
       parameters:
         - name: id
           in: path
@@ -1569,21 +1627,22 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
-              required: [proof_url]
               properties:
-                proof_url:
+                file:
                   type: string
-                  description: URL of the uploaded comprovante image
+                  description: Comprovante image file field name (multipart binary upload — JPEG, PNG, WebP, PDF)
       responses:
         "200":
-          description: Comprovante attached
+          description: Comprovante attached, OCR result returned
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ComprovanteAttachResult"
+        "400":
+          description: No file uploaded
         "404":
           description: Not found
 
@@ -1662,6 +1721,32 @@ components:
       properties:
         success:
           type: boolean
+    RequestUploadUrlBody:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Original file name
+        size:
+          type: integer
+          minimum: 1
+          description: File size in bytes
+        contentType:
+          type: string
+          minLength: 1
+          description: MIME type (e.g. image/jpeg)
+    RequestUploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+          description: Presigned GCS URL for PUT upload
+        objectPath:
+          type: string
+          description: Normalized object path to store in DB
     ErrorEnvelope:
       type: object
       required: [error]
@@ -2258,6 +2343,10 @@ components:
       properties:
         notes:
           type: string
+        suggested_owner:
+          type: string
+          nullable: true
+          description: Member ID to assign as task owner on approval
 
     ActionEdit:
       type: object
@@ -2322,6 +2411,8 @@ components:
           enum: [pix, boleto, cartao, dinheiro, ted]
         proof_attachment_url:
           type: ["string", "null"]
+        payment_obligation_id:
+          type: ["integer", "null"]
         reimbursement_note:
           type: ["string", "null"]
         reimbursement_owed_by:

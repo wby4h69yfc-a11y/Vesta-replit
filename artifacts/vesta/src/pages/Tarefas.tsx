@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { CheckSquare, Plus, Circle, CheckCircle2, Clock, User, Trash2, ChevronDown, ChevronUp, DollarSign } from "lucide-react";
+import { useRef, useState } from "react";
+import { CheckSquare, Plus, Circle, CheckCircle2, Clock, User, Trash2, ChevronDown, ChevronUp, DollarSign, Paperclip } from "lucide-react";
 import {
   useListTasks,
   useCreateTask,
@@ -14,6 +14,78 @@ import { formatDate, isPast } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import PaymentSafetyChecklist from "@/components/PaymentSafetyChecklist";
+
+function ComprovanteUpload({ obligationId, alreadyUploaded }: { obligationId: number; alreadyUploaded: boolean }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [ocrNote, setOcrNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (alreadyUploaded && !ocrNote) {
+    return (
+      <p className="text-xs text-emerald-700 font-medium flex items-center gap-1">
+        <CheckCircle2 className="w-3.5 h-3.5" />
+        Comprovante já enviado
+      </p>
+    );
+  }
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const resp = await fetch(`/api/payment-obligations/${obligationId}/comprovante`, {
+        method: "POST",
+        body: form,
+        credentials: "include",
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({ error: "Erro ao enviar" }));
+        throw new Error((body as { error?: string }).error ?? "Erro ao enviar");
+      }
+      const data = await resp.json() as { ocr_note?: string };
+      setOcrNote(data.ocr_note ?? "Comprovante enviado com sucesso.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao enviar comprovante");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  if (ocrNote) {
+    return (
+      <div className="rounded-xl px-3 py-2.5 space-y-1" style={{ background: "rgba(5,150,105,0.06)", border: "1px solid rgba(5,150,105,0.15)" }}>
+        <p className="text-xs font-semibold text-emerald-700">Comprovante verificado ✓</p>
+        <p className="text-xs text-muted-foreground">{ocrNote}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); }}
+        data-testid={`comprovante-input-${obligationId}`}
+      />
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={uploading}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+        data-testid={`comprovante-upload-${obligationId}`}
+      >
+        <Paperclip className="w-3.5 h-3.5" />
+        {uploading ? "Enviando…" : "Anexar comprovante"}
+      </button>
+      {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+    </div>
+  );
+}
 
 const STATUS_FILTERS = [
   { value: undefined,     label: "Todas" },
@@ -241,7 +313,7 @@ export default function TarefasPage() {
 
                 {/* Payment detail — expanded when task has payment_status */}
                 {expandedId === task.id && task.payment_status && (
-                  <div className="px-3 pb-3 pt-0 border-t border-border/50">
+                  <div className="px-3 pb-3 pt-0 border-t border-border/50 space-y-3">
                     <PaymentSafetyChecklist
                       payment={{
                         amount_cents:   task.payment_amount_cents,
@@ -250,6 +322,13 @@ export default function TarefasPage() {
                         payment_method: task.payment_method,
                       }}
                     />
+                    {/* Comprovante upload — only shown if there's a linked obligation */}
+                    {task.payment_obligation_id && (
+                      <ComprovanteUpload
+                        obligationId={task.payment_obligation_id}
+                        alreadyUploaded={task.payment_status === "comprovante_received" || task.payment_status === "paid"}
+                      />
+                    )}
                   </div>
                 )}
               </div>

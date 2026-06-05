@@ -87,6 +87,14 @@ router.post("/actions/:id/approve", async (req, res) => {
         status:          "pending",
       }).returning();
       createdObligationId = newOb?.id ?? null;
+
+      // Backlink the obligation onto the task so the frontend can upload comprovante directly
+      if (createdObligationId != null) {
+        await db
+          .update(tasksTable)
+          .set({ payment_obligation_id: createdObligationId })
+          .where(and(eq(tasksTable.household_id, hid), eq(tasksTable.title, action.title)));
+      }
     }
 
     const [updated] = await db

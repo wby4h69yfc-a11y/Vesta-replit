@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Check, X, Edit2, AlertTriangle, DollarSign, Banknote, CalendarClock } from "lucide-react";
-import { useApproveAction, useDismissAction, useEditAction, getListActionsQueryKey, getListInboxItemsQueryKey } from "@workspace/api-client-react";
+import { Check, X, Edit2, AlertTriangle, DollarSign, Banknote, CalendarClock, User } from "lucide-react";
+import { useApproveAction, useDismissAction, useEditAction, useListMembers, getListActionsQueryKey, getListInboxItemsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import CategoryBadge from "@/components/CategoryBadge";
@@ -38,6 +38,8 @@ export default function ApprovalCard({ action, compact = false }: { action: Acti
   const [editMode, setEditMode] = useState(false);
   const [editTitle, setEditTitle] = useState(action.title);
   const [editNotes, setEditNotes] = useState(action.notes ?? "");
+  const [selectedOwner, setSelectedOwner] = useState<string>(action.suggested_owner ?? "");
+  const { data: members } = useListMembers();
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: getListActionsQueryKey() });
@@ -225,6 +227,25 @@ export default function ApprovalCard({ action, compact = false }: { action: Acti
                   <span className="text-sm font-medium text-foreground capitalize">{action.payment_data.payment_method}</span>
                 </div>
               )}
+              {/* Owner assignment — lets the reviewer pick who is responsible */}
+              {members && members.length > 0 && (
+                <div className="flex items-center justify-between pt-0.5">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <User className="w-3 h-3" />Responsável
+                  </span>
+                  <select
+                    value={selectedOwner}
+                    onChange={(e) => setSelectedOwner(e.target.value)}
+                    className="text-sm bg-transparent border-0 text-foreground font-medium focus:outline-none cursor-pointer"
+                    data-testid={`owner-select-${action.id}`}
+                  >
+                    <option value="">Não atribuído</option>
+                    {members.map((m) => (
+                      <option key={m.id} value={m.name}>{m.display_name ?? m.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
             <PaymentSafetyChecklist
               payment={{
@@ -267,7 +288,7 @@ export default function ApprovalCard({ action, compact = false }: { action: Acti
         </button>
         <div className="w-px bg-border" />
         <button
-          onClick={() => approve.mutate({ id: action.id, data: {} })}
+          onClick={() => approve.mutate({ id: action.id, data: { suggested_owner: selectedOwner || undefined } })}
           disabled={approve.isPending || editMode}
           className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold text-primary hover:bg-primary/5 transition-colors disabled:opacity-40"
           data-testid={`approve-explicit-${action.id}`}

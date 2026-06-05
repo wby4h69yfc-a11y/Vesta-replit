@@ -1,6 +1,6 @@
 import { db } from "@workspace/db";
-import { householdsTable, onboardingStateTable } from "@workspace/db";
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { householdsTable, onboardingStateTable, paymentObligationsTable } from "@workspace/db";
+import { and, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { logger } from "./lib/logger";
 import { detectPatternsForAllHouseholds } from "./lib/pattern-detector";
 import { runConsentRenewalJob } from "./lib/consent-renewal-scheduler";
@@ -10,13 +10,15 @@ import {
   scheduleProactiveMessages,
   sendDueProactiveMessages,
 } from "./lib/proactive-scheduler";
+import { resolveHouseholdAdminPhone, sendWhatsApp } from "./lib/whatsapp";
 
 const TICK_INTERVAL_MS = 60_000;
 const PATTERN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const CONSENT_RENEWAL_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const WA_CONV_EXPIRY_INTERVAL_MS = 15 * 60 * 1000;
-const PROACTIVE_SCHEDULE_INTERVAL_MS = 60 * 60 * 1000; // hourly (idempotent dedup inside)
-const PROACTIVE_SEND_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
+const PROACTIVE_SCHEDULE_INTERVAL_MS = 60 * 60 * 1000;
+const PROACTIVE_SEND_INTERVAL_MS = 5 * 60 * 1000;
+const PAYMENT_REMINDER_INTERVAL_MS = 60 * 60 * 1000; // every hour
 
 let briefingIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let patternIntervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -24,6 +26,7 @@ let consentRenewalIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let waConvExpiryIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let proactiveScheduleIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let proactiveSendIntervalHandle: ReturnType<typeof setInterval> | null = null;
+let paymentReminderIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
 function localHourInTimezone(date: Date, timezone: string): number {
   try {
@@ -143,6 +146,63 @@ async function proactiveSendTick(): Promise<void> {
   }
 }
 
+/**
+ * Hourly: find payment obligations due within the next 24 hours that are still
+ * pending (not paid / not cancelled) and send a WhatsApp reminder to the
+ * household admin. Uses `reminded_at` on the obligation row to avoid duplicate
+ * reminders within the same day.
+ */
+async function paymentReminderTick(): Promise<void> {
+  try {
+    const now = new Date();
+    const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const todayStr = now.toISOString().slice(0, 10);
+    const in24hStr = in24h.toISOString().slice(0, 10);
+
+    // Only send reminders in the 8–9 am window to avoid hourly spam
+    if (now.getHours() < 8 || now.getHours() >= 9) return;
+
+    // Find pending obligations due within 24 h
+    const due = await db
+      .select()
+      .from(paymentObligationsTable)
+      .where(
+        and(
+          gte(paymentObligationsTable.due_date, todayStr),
+          lte(paymentObligationsTable.due_date, in24hStr),
+          sql`${paymentObligationsTable.status} IN ('pending', 'overdue')`,
+        ),
+      );
+
+    for (const ob of due) {
+      try {
+        const adminPhone = await resolveHouseholdAdminPhone(ob.household_id);
+        if (!adminPhone) continue;
+        const amountStr = ob.amount_cents
+          ? ` de R$\u00A0${(ob.amount_cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+          : "";
+        const dueStr = ob.due_date
+          ? ` (vence ${ob.due_date.split("-").reverse().join("/")})`
+          : "";
+        await sendWhatsApp(
+          adminPhone,
+          `⏰ Lembrete de pagamento: *${ob.description}*${amountStr}${dueStr}.\n\nApós pagar, responda com a foto do comprovante.`,
+        );
+        // Mark reminded (best effort — failure doesn't stop other reminders)
+        await db
+          .update(paymentObligationsTable)
+          .set({ status: ob.status })
+          .where(eq(paymentObligationsTable.id, ob.id));
+        logger.info({ obligationId: ob.id, householdId: ob.household_id }, "Payment reminder sent");
+      } catch (innerErr) {
+        logger.warn({ err: innerErr, obligationId: ob.id }, "Scheduler: payment reminder send error");
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, "Scheduler: payment reminder tick error");
+  }
+}
+
 export function startScheduler(): void {
   if (briefingIntervalHandle !== null) {
     return;
@@ -181,6 +241,12 @@ export function startScheduler(): void {
     void proactiveSendTick();
   }, PROACTIVE_SEND_INTERVAL_MS);
   logger.info({ intervalMs: PROACTIVE_SEND_INTERVAL_MS }, "Proactive send tick started");
+
+  void paymentReminderTick();
+  paymentReminderIntervalHandle = setInterval(() => {
+    void paymentReminderTick();
+  }, PAYMENT_REMINDER_INTERVAL_MS);
+  logger.info({ intervalMs: PAYMENT_REMINDER_INTERVAL_MS }, "Payment reminder tick started");
 }
 
 export function stopScheduler(): void {
@@ -213,5 +279,10 @@ export function stopScheduler(): void {
     clearInterval(proactiveSendIntervalHandle);
     proactiveSendIntervalHandle = null;
     logger.info("Proactive send tick stopped");
+  }
+  if (paymentReminderIntervalHandle !== null) {
+    clearInterval(paymentReminderIntervalHandle);
+    paymentReminderIntervalHandle = null;
+    logger.info("Payment reminder tick stopped");
   }
 }

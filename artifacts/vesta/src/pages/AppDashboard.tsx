@@ -60,18 +60,16 @@ function ReimbursementsCard() {
             {ob.payment_method ? ` · ${METHOD_LABELS[ob.payment_method] ?? ob.payment_method}` : ""}
           </p>
         </div>
-        {dir === "to_me" && (
-          <button
-            onClick={() => settle.mutate({ id: ob.id, data: {} })}
-            disabled={settle.isPending}
-            className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-opacity disabled:opacity-50"
-            style={{ background: "#EAF1E5", color: V.primary }}
-            data-testid={`settle-${ob.id}`}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Acertar
-          </button>
-        )}
+        <button
+          onClick={() => settle.mutate({ id: ob.id, data: {} })}
+          disabled={settle.isPending}
+          className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-opacity disabled:opacity-50"
+          style={{ background: "#EAF1E5", color: V.primary }}
+          data-testid={`settle-${ob.id}`}
+        >
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Acertar
+        </button>
       </div>
     );
   }
