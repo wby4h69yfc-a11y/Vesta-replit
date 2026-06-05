@@ -244,12 +244,11 @@ router.post("/payment-obligations/:id/comprovante", upload.single("file"), async
       await fileRef.save(req.file.buffer, {
         metadata: { contentType: req.file.mimetype },
       });
-      // Grant read access to any authenticated user (household-scoped route already
-      // enforces session + household; "public" visibility in ACL just means the
-      // ACL check passes for any valid authenticated caller).
+      // Private: only the uploader is the ACL owner. Household peers are
+      // authorized by the path-based household check in GET /storage/objects/*.
       await setObjectAclPolicy(fileRef, {
         owner: String(req.user!.id),
-        visibility: "public",
+        visibility: "private",
       });
       const [signedUrl] = await fileRef.getSignedUrl({
         action: "read",

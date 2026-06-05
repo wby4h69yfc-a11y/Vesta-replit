@@ -85,7 +85,13 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
  * GET /storage/objects/*
  *
  * Serve object entities from PRIVATE_OBJECT_DIR.
- * Requires authentication — mounted on protectedRouter. ACL enforced below.
+ * Requires authentication — mounted on protectedRouter.
+ *
+ * Authorization is layered:
+ * 1. Comprovante paths (`comprovantes/{hid}/*`) — verified by matching the
+ *    household ID embedded in the path against the caller's session household.
+ *    This enforces the multi-tenant boundary without needing ACL-rule group types.
+ * 2. All other paths — standard ACL check (owner or visibility=public).
  */
 privateRouter.get("/storage/objects/*path", async (req: Request, res: Response) => {
   try {
@@ -94,14 +100,25 @@ privateRouter.get("/storage/objects/*path", async (req: Request, res: Response) 
     const objectPath = `/objects/${wildcardPath}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
 
-    const canAccess = await objectStorageService.canAccessObjectEntity({
-      userId: req.user!.id,
-      objectFile,
-      requestedPermission: ObjectPermission.READ,
-    });
-    if (!canAccess) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
+    // Comprovante paths encode the household ID: comprovantes/{hid}/{id}/filename
+    const comprovanteMatch = wildcardPath.match(/^comprovantes\/(\d+)\//);
+    if (comprovanteMatch) {
+      const pathHid = parseInt(comprovanteMatch[1], 10);
+      if (pathHid !== req.user!.household_id) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      // Household matches — proceed to serve without ACL lookup
+    } else {
+      const canAccess = await objectStorageService.canAccessObjectEntity({
+        userId: String(req.user!.id),
+        objectFile,
+        requestedPermission: ObjectPermission.READ,
+      });
+      if (!canAccess) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
     }
 
     const response = await objectStorageService.downloadObject(objectFile);
