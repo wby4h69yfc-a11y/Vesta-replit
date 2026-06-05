@@ -3,6 +3,7 @@ import { Plus, MessageCircle, Mail, Camera, PenLine, RefreshCw, Brain, CheckCirc
 import {
   useListInboxItems,
   useListActions,
+  useListActionCascades,
   useCreateInboxItem,
   useClassifyInboxItem,
   useListMemoryStaging,
@@ -10,9 +11,11 @@ import {
   useDismissMemoryStaging,
   getListInboxItemsQueryKey,
   getListActionsQueryKey,
+  getListActionCascadesQueryKey,
   getListMemoryStagingQueryKey,
   type SuggestedAction,
 } from "@workspace/api-client-react";
+import CascadeCard from "@/components/CascadeCard";
 import { useQueryClient } from "@tanstack/react-query";
 import ApprovalCard from "@/components/ApprovalCard";
 import CategoryBadge from "@/components/CategoryBadge";
@@ -208,6 +211,7 @@ export default function InboxPage() {
     filter ? { status: filter } : {},
   );
   const { data: pendingActions } = useListActions({ status: "pending" });
+  const { data: activeCascades = [] } = useListActionCascades();
 
   const createItem = useCreateInboxItem({
     mutation: {
@@ -226,6 +230,7 @@ export default function InboxPage() {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getListInboxItemsQueryKey() });
         qc.invalidateQueries({ queryKey: getListActionsQueryKey() });
+        qc.invalidateQueries({ queryKey: getListActionCascadesQueryKey() });
         toast({ description: "Classificado!" });
       },
     },
@@ -286,9 +291,25 @@ export default function InboxPage() {
       {/* Memory confirmations — Vesta learned something, needs sign-off */}
       <MemoryConfirmationSection />
 
-      {/* Escalation section — pending actions grouped by approval level */}
+      {/* Cascade cards — multi-action batches grouped from a single trigger */}
+      {filter === "ready_for_review" && activeCascades.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-2">
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Em cascata ({activeCascades.length})
+            </h2>
+          </div>
+          <div className="space-y-2">
+            {activeCascades.map((cascade) => (
+              <CascadeCard key={cascade.id} cascade={cascade} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Escalation section — individual pending actions */}
       {filter === "ready_for_review" && (pendingActions?.length ?? 0) > 0 && (
-        <AppEscalationSection actions={pendingActions ?? []} />
+        <AppEscalationSection actions={(pendingActions ?? []).filter((a) => !a.cascade_id)} />
       )}
 
       {/* Filter tabs */}

@@ -475,6 +475,59 @@ paths:
               schema:
                 $ref: "#/components/schemas/SuggestedAction"
 
+  /actions/cascades:
+    get:
+      operationId: listActionCascades
+      tags: [actions]
+      summary: List active cascade groups with their nested actions
+      responses:
+        "200":
+          description: Active cascades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActionCascadeWithActions"
+
+  /actions/cascades/{id}/approve-all:
+    post:
+      operationId: approveCascadeAll
+      tags: [actions]
+      summary: Approve all pending sub-items in a cascade
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CascadeBulkResult"
+
+  /actions/cascades/{id}/dismiss-all:
+    post:
+      operationId: dismissCascadeAll
+      tags: [actions]
+      summary: Dismiss all pending sub-items in a cascade
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CascadeBulkResult"
+
   # ── Tasks ────────────────────────────────────────────────────────
   /tasks:
     get:
@@ -2286,6 +2339,34 @@ components:
           type: string
 
     # ── Suggested Actions ────────────────────────────────────────
+    ActionCascadeWithActions:
+      type: object
+      required: [id, household_id, source_inbox_id, trigger_description, created_at, actions]
+      properties:
+        id:
+          type: integer
+        household_id:
+          type: integer
+        source_inbox_id:
+          type: integer
+        trigger_description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SuggestedAction"
+
+    CascadeBulkResult:
+      type: object
+      properties:
+        approved:
+          type: integer
+        dismissed:
+          type: integer
+
     SuggestedAction:
       type: object
       required: [id, inbox_item_id, category, type, title, approval_level, status, confidence]
@@ -2294,12 +2375,14 @@ components:
           type: integer
         inbox_item_id:
           type: integer
+        cascade_id:
+          type: ["integer", "null"]
         category:
           type: string
           enum: [escola, saude, casa, social, logistica, refeicoes, servicos, outros]
         type:
           type: string
-          enum: [event, task, reminder, fyi]
+          enum: [event, task, reminder, fyi, payment]
         title:
           type: string
         datetime:

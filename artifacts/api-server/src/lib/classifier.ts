@@ -1,14 +1,26 @@
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { db } from "@workspace/db";
-import { inboxItemsTable, suggestedActionsTable, contactsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { inboxItemsTable, suggestedActionsTable, contactsTable, actionCascadesTable } from "@workspace/db";
+import { eq, and, isNull } from "drizzle-orm";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "./whatsapp";
+import { notifyCascadeDeepLink } from "../routes/cascades";
 
 export type PaymentData = {
   amount_cents: number | null;
   recipient: string | null;
   due_date: string | null;
   payment_method: string | null;
+};
+
+export type CascadeIntent = {
+  title: string;
+  type: string;
+  category: string;
+  datetime: string | null;
+  suggested_owner: string | null;
+  approval_level: string;
+  workflow_tags: string[];
+  payment_data?: PaymentData | null;
 };
 
 export type ClassificationResult = {
@@ -22,6 +34,7 @@ export type ClassificationResult = {
   workflow_tags: string[];
   cascade_check_needed: boolean;
   payment_data?: PaymentData | null;
+  cascade_intents?: CascadeIntent[];
 };
 
 function extractAmountCents(text: string): number | null {
@@ -186,7 +199,7 @@ const SYSTEM_PROMPT = `Você é um assistente que extrai informações de mensag
 
 Dado o texto de uma mensagem, retorne um JSON com exatamente estes campos:
 {
-  "title": string,         // Título conciso da ação (máx 80 chars, em português)
+  "title": string,         // Título conciso da ação PRINCIPAL (máx 80 chars, em português)
   "category": string,      // Um de: escola | saude | casa | social | logistica | refeicoes | servicos | outros
   "type": string,          // Um de: event | task | reminder | fyi | payment
   "datetime": string|null, // Data/hora mencionada em texto simples (ex: "quinta-feira 19h", "dia 15/06"), ou null
@@ -196,18 +209,34 @@ Dado o texto de uma mensagem, retorne um JSON com exatamente estes campos:
   "workflow_tags": string[], // Array de tags relevantes. Inclua "payment_admin" se houver pagamento (R$, boleto, Pix, mensalidade, etc.)
   "cascade_check_needed": boolean, // true se envolve pagamento, múltiplas pessoas ou evento recorrente
   "payment_data": {         // Preencher quando workflow_tags inclui "payment_admin", senão null
-    "amount_cents": number|null, // Valor em centavos (ex: R$150,00 = 15000), ou null
-    "recipient": string|null,    // Nome de quem deve receber o pagamento, ou null
-    "due_date": string|null,     // Data de vencimento em formato YYYY-MM-DD, ou null
-    "payment_method": string|null // Um de: pix | boleto | cartao | dinheiro | ted, ou null
-  } | null
+    "amount_cents": number|null,
+    "recipient": string|null,
+    "due_date": string|null,
+    "payment_method": string|null
+  } | null,
+  "cascade_intents": [      // Array de intenções SEPARADAS quando a mensagem contém 2+ ações distintas
+    {                        // Deixar VAZIO [] para mensagens de intenção única
+      "title": string,
+      "type": string,
+      "category": string,
+      "datetime": string|null,
+      "suggested_owner": string|null,
+      "approval_level": string,
+      "workflow_tags": string[]
+    }
+  ]
 }
 
-Regras:
+Regras para cascade_intents:
+- Preencher cascade_intents apenas quando a mensagem dispara 2 ou mais ações INDEPENDENTES
+- Exemplos: "escola fechada — avise os pais E cancele o transporte", "diarista cancelou E Pedro tem consulta"
+- Para mensagens de intenção única, retornar cascade_intents: []
+- Quando cascade_intents tem 2+ itens, o campo "title" no raiz descreve o gatilho geral
+
+Regras gerais:
 - approval_level "soft" = só aviso, não requer ação
 - approval_level "one_tap" = confirmação rápida necessária
 - approval_level "explicit" = revisão cuidadosa necessária (consulta médica, pagamento, serviço)
-- cascade_check_needed = true para pagamentos, múltiplas crianças/pessoas, ou eventos com custo
 - Para mensagens com R$, boleto, Pix, mensalidade, condomínio: sempre incluir "payment_admin" em workflow_tags
 - Responda APENAS com o JSON, sem markdown, sem explicações.`;
 
@@ -215,7 +244,7 @@ async function classifyWithAI(text: string): Promise<ClassificationResult | null
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-5-mini",
-      max_completion_tokens: 400,
+      max_completion_tokens: 600,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: text.substring(0, 1500) },
@@ -232,6 +261,10 @@ async function classifyWithAI(text: string): Promise<ClassificationResult | null
     // Validate required fields
     if (!parsed.category || !parsed.type || !parsed.title) return null;
 
+    const cascadeIntents = Array.isArray(parsed.cascade_intents)
+      ? (parsed.cascade_intents as CascadeIntent[])
+      : [];
+
     return {
       title:                (parsed.title ?? text.substring(0, 80)).substring(0, 80),
       category:             parsed.category ?? "outros",
@@ -243,6 +276,7 @@ async function classifyWithAI(text: string): Promise<ClassificationResult | null
       workflow_tags:        Array.isArray(parsed.workflow_tags) ? parsed.workflow_tags : [],
       cascade_check_needed: parsed.cascade_check_needed ?? false,
       payment_data:         (parsed as { payment_data?: PaymentData | null }).payment_data ?? null,
+      cascade_intents:      cascadeIntents,
     };
   } catch {
     return null;
@@ -278,40 +312,118 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
     if (contacts.length > 0) senderDisplayName = contacts[0].name;
   }
 
-  const actionTitle = senderDisplayName
-    ? `${result.title} — de ${senderDisplayName}`
-    : result.title;
+  const labelSuffix = senderDisplayName ? ` — de ${senderDisplayName}` : "";
 
-  await db.insert(suggestedActionsTable).values({
-    inbox_item_id:        inboxItemId,
-    household_id:         item.household_id,
-    category:             result.category,
-    type:                 result.type,
-    title:                actionTitle.substring(0, 120),
-    datetime:             result.datetime,
-    suggested_owner:      result.suggested_owner,
-    approval_level:       result.approval_level,
-    confidence:           result.confidence,
-    status:               "pending",
-    cascade_check_needed: result.cascade_check_needed,
-    workflow_tags:        result.workflow_tags,
-    payment_data:         result.payment_data ?? null,
-  }).onConflictDoUpdate({
-    target: suggestedActionsTable.inbox_item_id,
-    set: {
+  // ── Cascade path: ≥2 distinct intents from the same message ──────────────
+  const intents = result.cascade_intents ?? [];
+  if (intents.length >= 2) {
+    const triggerDescription = result.title.substring(0, 120);
+
+    const [cascade] = await db
+      .insert(actionCascadesTable)
+      .values({
+        household_id:        item.household_id,
+        source_inbox_id:     inboxItemId,
+        trigger_description: triggerDescription,
+      })
+      .returning();
+
+    if (!cascade) throw new Error("Failed to create cascade");
+
+    for (const intent of intents) {
+      await db.insert(suggestedActionsTable).values({
+        inbox_item_id:        inboxItemId,
+        household_id:         item.household_id,
+        cascade_id:           cascade.id,
+        category:             intent.category ?? result.category,
+        type:                 intent.type ?? "task",
+        title:                (intent.title + labelSuffix).substring(0, 120),
+        datetime:             intent.datetime ?? null,
+        suggested_owner:      intent.suggested_owner ?? null,
+        approval_level:       intent.approval_level ?? "one_tap",
+        confidence:           result.confidence,
+        status:               "pending",
+        cascade_check_needed: true,
+        workflow_tags:        Array.isArray(intent.workflow_tags) ? intent.workflow_tags : [],
+        payment_data:         intent.payment_data ?? null,
+      });
+    }
+
+    await db
+      .update(inboxItemsTable)
+      .set({ status: "ready_for_review" })
+      .where(eq(inboxItemsTable.id, inboxItemId));
+
+    // For ≥4 sub-items: send deep-link WA notification (in-app resolution required)
+    if (intents.length >= 4) {
+      try {
+        await notifyCascadeDeepLink(item.household_id, triggerDescription, intents.length);
+      } catch {
+        // non-blocking
+      }
+    } else if (result.approval_level === "explicit") {
+      const adminPhone = await resolveHouseholdAdminPhone(item.household_id);
+      if (adminPhone) {
+        const senderLabel = senderDisplayName ?? "alguém";
+        void sendWhatsApp(
+          adminPhone,
+          `📬 ${intents.length} ações de *${senderLabel}* aguardam revisão no Vesta.`,
+        );
+      }
+    }
+
+    return;
+  }
+
+  // ── Single-intent path ────────────────────────────────────────────────────
+  const actionTitle = (result.title + labelSuffix).substring(0, 120);
+
+  // Check for an existing non-cascade action for this inbox item (re-classification)
+  const [existing] = await db
+    .select({ id: suggestedActionsTable.id })
+    .from(suggestedActionsTable)
+    .where(
+      and(
+        eq(suggestedActionsTable.inbox_item_id, inboxItemId),
+        isNull(suggestedActionsTable.cascade_id),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(suggestedActionsTable)
+      .set({
+        category:             result.category,
+        type:                 result.type,
+        title:                actionTitle,
+        datetime:             result.datetime,
+        suggested_owner:      result.suggested_owner,
+        approval_level:       result.approval_level,
+        confidence:           result.confidence,
+        cascade_check_needed: result.cascade_check_needed,
+        workflow_tags:        result.workflow_tags,
+        payment_data:         result.payment_data ?? null,
+        updated_at:           new Date(),
+      })
+      .where(eq(suggestedActionsTable.id, existing.id));
+  } else {
+    await db.insert(suggestedActionsTable).values({
+      inbox_item_id:        inboxItemId,
+      household_id:         item.household_id,
       category:             result.category,
       type:                 result.type,
-      title:                actionTitle.substring(0, 120),
+      title:                actionTitle,
       datetime:             result.datetime,
       suggested_owner:      result.suggested_owner,
       approval_level:       result.approval_level,
       confidence:           result.confidence,
+      status:               "pending",
       cascade_check_needed: result.cascade_check_needed,
       workflow_tags:        result.workflow_tags,
       payment_data:         result.payment_data ?? null,
-      updated_at:           new Date(),
-    },
-  });
+    });
+  }
 
   await db
     .update(inboxItemsTable)

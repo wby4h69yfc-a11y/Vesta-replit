@@ -24,6 +24,7 @@ import memoryRouter from "./memory";
 import privacyRouter from "./privacy";
 import devPublicRouter from "./dev-public";
 import paymentObligationsRouter from "./payment-obligations";
+import cascadesRouter from "./cascades";
 import storageRouter, { storagePrivateRouter } from "./storage";
 
 const router: IRouter = Router();
@@ -82,6 +83,7 @@ protectedRouter.use(memoryRouter);             // GET /memory/staging, POST /mem
 protectedRouter.use(privacyRouter);            // GET /privacy/export, DELETE /account
 protectedRouter.use(adminRouter);              // GET /admin/stats
 protectedRouter.use(paymentObligationsRouter); // GET|POST /payment-obligations, PATCH|DELETE /payment-obligations/:id, POST /payment-obligations/:id/settle|comprovante
+protectedRouter.use(cascadesRouter);           // GET /actions/cascades, POST /actions/cascades/:id/approve-all|dismiss-all
 protectedRouter.use(storagePrivateRouter);     // POST /storage/uploads/request-url, GET /storage/objects/*
 
 // Catch-all: any path that reaches here through the protectedRouter did not

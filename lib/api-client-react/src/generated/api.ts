@@ -18,6 +18,7 @@ import type {
 
 import type {
   ActionApproval,
+  ActionCascadeWithActions,
   ActionEdit,
   ActivityItem,
   AttachComprovanteBody,
@@ -28,6 +29,7 @@ import type {
   CalendarEvent,
   CalendarEventInput,
   CalendarEventUpdate,
+  CascadeBulkResult,
   CategoryCount,
   ComprovanteAttachResult,
   ConsentRateLimitError,
@@ -2037,6 +2039,249 @@ export const useEditAction = <
   TContext
 > => {
   return useMutation(getEditActionMutationOptions(options));
+};
+
+/**
+ * @summary List active cascade groups with their nested actions
+ */
+export const getListActionCascadesUrl = () => {
+  return `/api/actions/cascades`;
+};
+
+export const listActionCascades = async (
+  options?: RequestInit,
+): Promise<ActionCascadeWithActions[]> => {
+  return customFetch<ActionCascadeWithActions[]>(getListActionCascadesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListActionCascadesQueryKey = () => {
+  return [`/api/actions/cascades`] as const;
+};
+
+export const getListActionCascadesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listActionCascades>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listActionCascades>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListActionCascadesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listActionCascades>>
+  > = ({ signal }) => listActionCascades({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listActionCascades>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListActionCascadesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listActionCascades>>
+>;
+export type ListActionCascadesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List active cascade groups with their nested actions
+ */
+
+export function useListActionCascades<
+  TData = Awaited<ReturnType<typeof listActionCascades>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listActionCascades>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListActionCascadesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Approve all pending sub-items in a cascade
+ */
+export const getApproveCascadeAllUrl = (id: number) => {
+  return `/api/actions/cascades/${id}/approve-all`;
+};
+
+export const approveCascadeAll = async (
+  id: number,
+  options?: RequestInit,
+): Promise<CascadeBulkResult> => {
+  return customFetch<CascadeBulkResult>(getApproveCascadeAllUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getApproveCascadeAllMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveCascadeAll>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof approveCascadeAll>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["approveCascadeAll"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof approveCascadeAll>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return approveCascadeAll(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ApproveCascadeAllMutationResult = NonNullable<
+  Awaited<ReturnType<typeof approveCascadeAll>>
+>;
+
+export type ApproveCascadeAllMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Approve all pending sub-items in a cascade
+ */
+export const useApproveCascadeAll = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveCascadeAll>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof approveCascadeAll>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getApproveCascadeAllMutationOptions(options));
+};
+
+/**
+ * @summary Dismiss all pending sub-items in a cascade
+ */
+export const getDismissCascadeAllUrl = (id: number) => {
+  return `/api/actions/cascades/${id}/dismiss-all`;
+};
+
+export const dismissCascadeAll = async (
+  id: number,
+  options?: RequestInit,
+): Promise<CascadeBulkResult> => {
+  return customFetch<CascadeBulkResult>(getDismissCascadeAllUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getDismissCascadeAllMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof dismissCascadeAll>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof dismissCascadeAll>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["dismissCascadeAll"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof dismissCascadeAll>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return dismissCascadeAll(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DismissCascadeAllMutationResult = NonNullable<
+  Awaited<ReturnType<typeof dismissCascadeAll>>
+>;
+
+export type DismissCascadeAllMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Dismiss all pending sub-items in a cascade
+ */
+export const useDismissCascadeAll = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof dismissCascadeAll>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof dismissCascadeAll>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDismissCascadeAllMutationOptions(options));
 };
 
 /**

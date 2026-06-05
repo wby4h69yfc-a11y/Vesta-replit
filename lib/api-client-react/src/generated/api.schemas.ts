@@ -482,6 +482,7 @@ export const SuggestedActionType = {
   task: "task",
   reminder: "reminder",
   fyi: "fyi",
+  payment: "payment",
 } as const;
 
 export type SuggestedActionApprovalLevel =
@@ -517,6 +518,8 @@ export type SuggestedActionPaymentData = {
 export interface SuggestedAction {
   id: number;
   inbox_item_id: number;
+  /** @nullable */
+  cascade_id?: number | null;
   category: SuggestedActionCategory;
   type: SuggestedActionType;
   title: string;
@@ -881,6 +884,20 @@ export interface InboxItemInput {
   raw_content: string;
   source: InboxItemInputSource;
   sender_name?: string;
+}
+
+export interface ActionCascadeWithActions {
+  id: number;
+  household_id: number;
+  source_inbox_id: number;
+  trigger_description: string;
+  created_at: string;
+  actions: SuggestedAction[];
+}
+
+export interface CascadeBulkResult {
+  approved?: number;
+  dismissed?: number;
 }
 
 export interface ActionApproval {

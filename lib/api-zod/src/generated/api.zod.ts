@@ -298,6 +298,7 @@ export const GetInboxItemResponse = zod.object({
     zod.object({
       id: zod.number(),
       inbox_item_id: zod.number(),
+      cascade_id: zod.number().nullish(),
       category: zod.enum([
         "escola",
         "saude",
@@ -308,7 +309,7 @@ export const GetInboxItemResponse = zod.object({
         "servicos",
         "outros",
       ]),
-      type: zod.enum(["event", "task", "reminder", "fyi"]),
+      type: zod.enum(["event", "task", "reminder", "fyi", "payment"]),
       title: zod.string(),
       datetime: zod.string().nullish(),
       suggested_owner: zod.string().nullish(),
@@ -370,6 +371,7 @@ export const ListActionsQueryParams = zod.object({
 export const ListActionsResponseItem = zod.object({
   id: zod.number(),
   inbox_item_id: zod.number(),
+  cascade_id: zod.number().nullish(),
   category: zod.enum([
     "escola",
     "saude",
@@ -380,7 +382,7 @@ export const ListActionsResponseItem = zod.object({
     "servicos",
     "outros",
   ]),
-  type: zod.enum(["event", "task", "reminder", "fyi"]),
+  type: zod.enum(["event", "task", "reminder", "fyi", "payment"]),
   title: zod.string(),
   datetime: zod.string().nullish(),
   suggested_owner: zod.string().nullish(),
@@ -420,6 +422,7 @@ export const ApproveActionBody = zod.object({
 export const ApproveActionResponse = zod.object({
   id: zod.number(),
   inbox_item_id: zod.number(),
+  cascade_id: zod.number().nullish(),
   category: zod.enum([
     "escola",
     "saude",
@@ -430,7 +433,7 @@ export const ApproveActionResponse = zod.object({
     "servicos",
     "outros",
   ]),
-  type: zod.enum(["event", "task", "reminder", "fyi"]),
+  type: zod.enum(["event", "task", "reminder", "fyi", "payment"]),
   title: zod.string(),
   datetime: zod.string().nullish(),
   suggested_owner: zod.string().nullish(),
@@ -461,6 +464,7 @@ export const DismissActionParams = zod.object({
 export const DismissActionResponse = zod.object({
   id: zod.number(),
   inbox_item_id: zod.number(),
+  cascade_id: zod.number().nullish(),
   category: zod.enum([
     "escola",
     "saude",
@@ -471,7 +475,7 @@ export const DismissActionResponse = zod.object({
     "servicos",
     "outros",
   ]),
-  type: zod.enum(["event", "task", "reminder", "fyi"]),
+  type: zod.enum(["event", "task", "reminder", "fyi", "payment"]),
   title: zod.string(),
   datetime: zod.string().nullish(),
   suggested_owner: zod.string().nullish(),
@@ -511,6 +515,7 @@ export const EditActionBody = zod.object({
 export const EditActionResponse = zod.object({
   id: zod.number(),
   inbox_item_id: zod.number(),
+  cascade_id: zod.number().nullish(),
   category: zod.enum([
     "escola",
     "saude",
@@ -521,7 +526,7 @@ export const EditActionResponse = zod.object({
     "servicos",
     "outros",
   ]),
-  type: zod.enum(["event", "task", "reminder", "fyi"]),
+  type: zod.enum(["event", "task", "reminder", "fyi", "payment"]),
   title: zod.string(),
   datetime: zod.string().nullish(),
   suggested_owner: zod.string().nullish(),
@@ -540,6 +545,80 @@ export const EditActionResponse = zod.object({
     })
     .nullish(),
   created_at: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary List active cascade groups with their nested actions
+ */
+export const ListActionCascadesResponseItem = zod.object({
+  id: zod.number(),
+  household_id: zod.number(),
+  source_inbox_id: zod.number(),
+  trigger_description: zod.string(),
+  created_at: zod.coerce.date(),
+  actions: zod.array(
+    zod.object({
+      id: zod.number(),
+      inbox_item_id: zod.number(),
+      cascade_id: zod.number().nullish(),
+      category: zod.enum([
+        "escola",
+        "saude",
+        "casa",
+        "social",
+        "logistica",
+        "refeicoes",
+        "servicos",
+        "outros",
+      ]),
+      type: zod.enum(["event", "task", "reminder", "fyi", "payment"]),
+      title: zod.string(),
+      datetime: zod.string().nullish(),
+      suggested_owner: zod.string().nullish(),
+      approval_level: zod.enum(["soft", "one_tap", "explicit"]),
+      confidence: zod.number(),
+      status: zod.enum(["pending", "approved", "dismissed", "auto_handled"]),
+      notes: zod.string().nullish(),
+      cascade_check_needed: zod.boolean().optional(),
+      workflow_tags: zod.array(zod.string()).optional(),
+      payment_data: zod
+        .object({
+          amount_cents: zod.number().nullish(),
+          recipient: zod.string().nullish(),
+          due_date: zod.string().nullish(),
+          payment_method: zod.string().nullish(),
+        })
+        .nullish(),
+      created_at: zod.coerce.date().optional(),
+    }),
+  ),
+});
+export const ListActionCascadesResponse = zod.array(
+  ListActionCascadesResponseItem,
+);
+
+/**
+ * @summary Approve all pending sub-items in a cascade
+ */
+export const ApproveCascadeAllParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ApproveCascadeAllResponse = zod.object({
+  approved: zod.number().optional(),
+  dismissed: zod.number().optional(),
+});
+
+/**
+ * @summary Dismiss all pending sub-items in a cascade
+ */
+export const DismissCascadeAllParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DismissCascadeAllResponse = zod.object({
+  approved: zod.number().optional(),
+  dismissed: zod.number().optional(),
 });
 
 /**
@@ -1206,6 +1285,7 @@ export const ExportPrivacyDataResponse = zod.object({
       zod.object({
         id: zod.number(),
         inbox_item_id: zod.number(),
+        cascade_id: zod.number().nullish(),
         category: zod.enum([
           "escola",
           "saude",
@@ -1216,7 +1296,7 @@ export const ExportPrivacyDataResponse = zod.object({
           "servicos",
           "outros",
         ]),
-        type: zod.enum(["event", "task", "reminder", "fyi"]),
+        type: zod.enum(["event", "task", "reminder", "fyi", "payment"]),
         title: zod.string(),
         datetime: zod.string().nullish(),
         suggested_owner: zod.string().nullish(),
