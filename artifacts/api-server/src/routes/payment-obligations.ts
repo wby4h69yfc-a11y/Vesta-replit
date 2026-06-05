@@ -6,6 +6,7 @@ import { eq, and, isNotNull } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { objectStorageClient } from "../lib/objectStorage";
+import { setObjectAclPolicy } from "../lib/objectAcl";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -242,6 +243,13 @@ router.post("/payment-obligations/:id/comprovante", upload.single("file"), async
       const fileRef = objectStorageClient.bucket(bucketId).file(objectName);
       await fileRef.save(req.file.buffer, {
         metadata: { contentType: req.file.mimetype },
+      });
+      // Grant read access to any authenticated user (household-scoped route already
+      // enforces session + household; "public" visibility in ACL just means the
+      // ACL check passes for any valid authenticated caller).
+      await setObjectAclPolicy(fileRef, {
+        owner: String(req.user!.id),
+        visibility: "public",
       });
       const [signedUrl] = await fileRef.getSignedUrl({
         action: "read",
