@@ -36,7 +36,7 @@ type SubItemProps = {
   onMutate: () => void;
 };
 
-function SubItem({ action, onMutate }: SubItemProps) {
+function SubItem({ action, onMutate, index }: SubItemProps & { index: number }) {
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -73,6 +73,7 @@ function SubItem({ action, onMutate }: SubItemProps) {
       )}
       style={{ background: V.ivory }}
     >
+      <span className="text-xs font-bold w-5 shrink-0 text-center" style={{ color: V.muted }}>{index}.</span>
       <span className="text-base shrink-0 leading-none">{icon}</span>
       <div className="flex-1 min-w-0">
         <p className="text-sm leading-snug truncate" style={{ color: V.ink }}>{action.title}</p>
@@ -227,11 +228,12 @@ export default function CascadeCard({ cascade }: { cascade: ActionCascadeWithAct
       {/* Sub-items */}
       {!collapsed && (
         <div className="px-3 space-y-1.5 pb-3">
-          {cascade.actions.map((action) => (
+          {cascade.actions.map((action, i) => (
             <SubItem
               key={action.id}
               action={action}
               cascadeId={cascade.id}
+              index={i + 1}
               onMutate={() => {}}
             />
           ))}
