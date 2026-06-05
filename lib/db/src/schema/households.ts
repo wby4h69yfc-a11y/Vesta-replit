@@ -17,6 +17,10 @@ export const householdsTable = pgTable("households", {
   digest_paused_until: timestamp("digest_paused_until", { withTimezone: true }),
   /** When true, all proactive messages are permanently stopped (PARAR command) */
   digest_stopped: boolean("digest_stopped").notNull().default(false),
+  /** Local hour (0-23) at which the quiet window starts — messages scheduled after this are held until quiet_hour_end */
+  quiet_hour_start: integer("quiet_hour_start").notNull().default(21),
+  /** Local hour (0-23) at which the quiet window ends — held messages are released at this hour */
+  quiet_hour_end: integer("quiet_hour_end").notNull().default(7),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

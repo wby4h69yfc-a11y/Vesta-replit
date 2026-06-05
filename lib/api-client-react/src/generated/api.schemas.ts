@@ -67,7 +67,8 @@ export interface Household {
   plan: HouseholdPlan;
   concierge_eligible?: boolean;
   /**
-   * Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.
+   * Digest time as a local hour (0–23) in the household's timezone. This is the household's configured digest/briefing time with hour granularity (e.g. 7 = 07h00 local). Serves as the digest_time field for this product.
+
    * @minimum 0
    * @maximum 23
    */
@@ -88,6 +89,18 @@ export interface Household {
   digest_paused_until?: string | null;
   /** When true, all proactive messages are permanently stopped (set by PARAR command). */
   digest_stopped?: boolean;
+  /**
+   * Local hour (0–23) at which the household's quiet window starts. Messages scheduled after this are held until quiet_hour_end. Default 21 (21h00 local).
+   * @minimum 0
+   * @maximum 23
+   */
+  quiet_hour_start?: number;
+  /**
+   * Local hour (0–23) at which the household's quiet window ends. Held messages are released at this hour. Default 7 (07h00 local).
+   * @minimum 0
+   * @maximum 23
+   */
+  quiet_hour_end?: number;
   created_at?: string;
 }
 
@@ -95,7 +108,7 @@ export interface HouseholdUpdate {
   name?: string;
   location?: string;
   /**
-   * Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.
+   * Digest time as a local hour (0–23) in the household's timezone (e.g. 7 = 07h00 local).
    * @minimum 0
    * @maximum 23
    */
@@ -106,6 +119,18 @@ export interface HouseholdUpdate {
   digest_enabled?: boolean;
   /** When true, all proactive messages are permanently stopped. */
   digest_stopped?: boolean;
+  /**
+   * Local hour at which the quiet window starts (default 21). Messages scheduled after this are held.
+   * @minimum 0
+   * @maximum 23
+   */
+  quiet_hour_start?: number;
+  /**
+   * Local hour at which the quiet window ends (default 7). Held messages are released at this hour.
+   * @minimum 0
+   * @maximum 23
+   */
+  quiet_hour_end?: number;
 }
 
 export type MemberRole = (typeof MemberRole)[keyof typeof MemberRole];

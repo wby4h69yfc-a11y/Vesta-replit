@@ -96,20 +96,35 @@ function nextLocalHourAfter(from: Date, targetHour: number, tz: string): Date {
 // ── Quiet hours ───────────────────────────────────────────────────────────────
 
 /**
- * Returns true if `date` falls in quiet hours (21h–07h local).
+ * Returns true if `date` falls in the household's quiet window.
+ * qStart defaults to QUIET_HOUR_START (21h), qEnd defaults to QUIET_HOUR_END (7h).
  */
-function isInQuietHours(date: Date, tz: string): boolean {
+function isInQuietHours(
+  date: Date,
+  tz: string,
+  qStart: number = QUIET_HOUR_START,
+  qEnd: number = QUIET_HOUR_END,
+): boolean {
   const h = localHour(date, tz);
-  return h >= QUIET_HOUR_START || h < QUIET_HOUR_END;
+  // Handles overnight quiet window (e.g. 21h–07h) and daytime window (e.g. 10h–14h)
+  if (qStart > qEnd) {
+    return h >= qStart || h < qEnd;
+  }
+  return h >= qStart && h < qEnd;
 }
 
 /**
- * If `scheduledAt` is in quiet hours, returns the next 07h00 local.
- * Otherwise returns `scheduledAt` unchanged.
+ * If `scheduledAt` falls in the household's quiet window, returns the next
+ * occurrence of `qEnd` (quiet window end) local time. Otherwise unchanged.
  */
-function enforceQuietHours(scheduledAt: Date, tz: string): Date {
-  if (!isInQuietHours(scheduledAt, tz)) return scheduledAt;
-  return nextLocalHourAfter(scheduledAt, QUIET_HOUR_END, tz);
+function enforceQuietHours(
+  scheduledAt: Date,
+  tz: string,
+  qStart: number = QUIET_HOUR_START,
+  qEnd: number = QUIET_HOUR_END,
+): Date {
+  if (!isInQuietHours(scheduledAt, tz, qStart, qEnd)) return scheduledAt;
+  return nextLocalHourAfter(scheduledAt, qEnd, tz);
 }
 
 // ── Suppression checks ────────────────────────────────────────────────────────
@@ -477,6 +492,8 @@ export async function scheduleProactiveMessages(householdId: number): Promise<vo
       digest_enabled: householdsTable.digest_enabled,
       digest_stopped: householdsTable.digest_stopped,
       digest_paused_until: householdsTable.digest_paused_until,
+      quiet_hour_start: householdsTable.quiet_hour_start,
+      quiet_hour_end: householdsTable.quiet_hour_end,
     })
     .from(householdsTable)
     .where(eq(householdsTable.id, householdId))
@@ -486,6 +503,8 @@ export async function scheduleProactiveMessages(householdId: number): Promise<vo
 
   const tz = household.timezone ?? "America/Sao_Paulo";
   const now = new Date();
+  const qStart = household.quiet_hour_start ?? QUIET_HOUR_START;
+  const qEnd = household.quiet_hour_end ?? QUIET_HOUR_END;
 
   // ── 1. Daily digest / weekly look-ahead ─────────────────────────────────────
   if (
@@ -494,19 +513,28 @@ export async function scheduleProactiveMessages(householdId: number): Promise<vo
     !(household.digest_paused_until && household.digest_paused_until > now)
   ) {
     // briefing_hour is stored as a household-local hour (e.g., 7 = 07h00 local).
+    // It is the digest time field for this product (hour granularity).
     const targetLocalHour = household.briefing_hour;
 
-    // Sunday 19h–20h local: enqueue weekly look-ahead if not already done today.
-    // This check is against NOW (not the computed scheduledAt) so the window is
-    // not missed when the daily digest time differs from 19h.
     const nowLocalDOW = localDayOfWeek(now, tz);
     const nowLocalHour = localHour(now, tz);
-    const isSundayEveningNow = nowLocalDOW === 0 && nowLocalHour >= 19 && nowLocalHour < 20;
+    const isSunday = nowLocalDOW === 0;
 
-    if (isSundayEveningNow) {
+    if (isSunday) {
+      // On Sundays, send the weekly look-ahead instead of the daily digest.
+      // Pre-schedule for 19h00 local if we haven't passed it yet; otherwise
+      // schedule for now so a missed window still delivers on the same day.
+      // alreadyScheduledToday deduplicates across multiple hourly ticks.
       const alreadyWeekly = await alreadyScheduledToday(householdId, "weekly_lookahead", tz);
       if (!alreadyWeekly) {
-        const scheduledAt = enforceQuietHours(now, tz);
+        let scheduledAt: Date;
+        if (nowLocalHour < 19) {
+          // Still before the 19h window — pre-schedule for exactly 19h00 local
+          scheduledAt = nextLocalHourAfter(new Date(now.getTime() - 60_000), 19, tz);
+        } else {
+          // At or past 19h (including catch-up after a server gap) — send now
+          scheduledAt = enforceQuietHours(now, tz, qStart, qEnd);
+        }
         const { message, event_titles } = await buildWeeklyLookaheadMessage(householdId, tz);
         await db.insert(proactiveMessageQueueTable).values({
           household_id: householdId,
@@ -515,13 +543,14 @@ export async function scheduleProactiveMessages(householdId: number): Promise<vo
           scheduled_at: scheduledAt,
           status: "queued",
         });
-        logger.info({ householdId, scheduledAt }, "Proactive: weekly look-ahead enqueued");
+        logger.info({ householdId, scheduledAt, nowLocalHour }, "Proactive: weekly look-ahead enqueued");
       }
     } else {
+      // Weekday: enqueue the daily digest at briefing_hour local.
       const alreadyQueued = await alreadyScheduledToday(householdId, "daily_digest", tz);
       if (!alreadyQueued) {
         let scheduledAt = nextLocalHourAfter(now, targetLocalHour, tz);
-        scheduledAt = enforceQuietHours(scheduledAt, tz);
+        scheduledAt = enforceQuietHours(scheduledAt, tz, qStart, qEnd);
         const { message, event_titles, task_titles } = await buildDailyDigestMessage(householdId, tz);
         await db.insert(proactiveMessageQueueTable).values({
           household_id: householdId,
@@ -555,7 +584,7 @@ export async function scheduleProactiveMessages(householdId: number): Promise<vo
       `*${a.title}* e *${b.title}* têm horários sobrepostos ${aDay} às ${aTime}.\n\n` +
       `_Acesse Agenda para resolver._`;
 
-    const scheduledAt = enforceQuietHours(now, tz);
+    const scheduledAt = enforceQuietHours(now, tz, qStart, qEnd);
     await db.insert(proactiveMessageQueueTable).values({
       household_id: householdId,
       trigger_type: "conflict_detected",
@@ -588,7 +617,7 @@ export async function scheduleProactiveMessages(householdId: number): Promise<vo
       `*${task.title}* vence ${dueDateStr} às ${dueTimeStr}.\n\n` +
       `_Acesse Agenda para confirmar._`;
 
-    const scheduledAt = enforceQuietHours(now, tz);
+    const scheduledAt = enforceQuietHours(now, tz, qStart, qEnd);
     await db.insert(proactiveMessageQueueTable).values({
       household_id: householdId,
       trigger_type: "payment_due",
@@ -692,13 +721,15 @@ async function processSingleMessage(
 ): Promise<void> {
   const now = new Date();
 
-  // Fetch household for suppression checks
+  // Fetch household for suppression checks and per-household quiet hours
   const [household] = await db
     .select({
       timezone: householdsTable.timezone,
       digest_enabled: householdsTable.digest_enabled,
       digest_stopped: householdsTable.digest_stopped,
       digest_paused_until: householdsTable.digest_paused_until,
+      quiet_hour_start: householdsTable.quiet_hour_start,
+      quiet_hour_end: householdsTable.quiet_hour_end,
     })
     .from(householdsTable)
     .where(eq(householdsTable.id, householdId))
@@ -712,6 +743,8 @@ async function processSingleMessage(
   }
 
   const tz = household.timezone ?? "America/Sao_Paulo";
+  const qStart = household.quiet_hour_start ?? QUIET_HOUR_START;
+  const qEnd = household.quiet_hour_end ?? QUIET_HOUR_END;
 
   // ── Suppressed (PAUSAR / PARAR) ───────────────────────────────────────────
   const isPaused =
@@ -727,20 +760,20 @@ async function processSingleMessage(
     return;
   }
 
-  // ── Re-enforce quiet hours at send time ───────────────────────────────────
-  if (isInQuietHours(now, tz)) {
-    const nextSlot = enforceQuietHours(now, tz);
+  // ── Re-enforce quiet hours at send time (per-household window) ────────────
+  if (isInQuietHours(now, tz, qStart, qEnd)) {
+    const nextSlot = enforceQuietHours(now, tz, qStart, qEnd);
     await db.update(proactiveMessageQueueTable)
       .set({ status: "queued", scheduled_at: nextSlot })
       .where(eq(proactiveMessageQueueTable.id, msgId));
-    logger.info({ msgId, householdId, nextSlot }, "Proactive: quiet hours — rescheduled");
+    logger.info({ msgId, householdId, nextSlot, qStart, qEnd }, "Proactive: quiet hours — rescheduled");
     return;
   }
 
   // ── Rate limit ────────────────────────────────────────────────────────────
   const sentToday = await countSentToday(householdId, tz);
   if (sentToday >= MAX_PROACTIVE_PER_DAY) {
-    const nextSlot = nextLocalHourAfter(now, QUIET_HOUR_END, tz);
+    const nextSlot = nextLocalHourAfter(now, qEnd, tz);
     await db.update(proactiveMessageQueueTable)
       .set({ status: "queued", scheduled_at: nextSlot })
       .where(eq(proactiveMessageQueueTable.id, msgId));

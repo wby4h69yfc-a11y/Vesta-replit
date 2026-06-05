@@ -911,6 +911,12 @@ export const GetPrivacyExportSummaryResponse = zod.object({
 export const exportPrivacyDataResponseHouseholdOneBriefingHourMin = 0;
 export const exportPrivacyDataResponseHouseholdOneBriefingHourMax = 23;
 
+export const exportPrivacyDataResponseHouseholdOneQuietHourStartMin = 0;
+export const exportPrivacyDataResponseHouseholdOneQuietHourStartMax = 23;
+
+export const exportPrivacyDataResponseHouseholdOneQuietHourEndMin = 0;
+export const exportPrivacyDataResponseHouseholdOneQuietHourEndMax = 23;
+
 export const ExportPrivacyDataResponse = zod.object({
   exported_at: zod.coerce.date(),
   user_id: zod.string(),
@@ -927,7 +933,7 @@ export const ExportPrivacyDataResponse = zod.object({
         .max(exportPrivacyDataResponseHouseholdOneBriefingHourMax)
         .optional()
         .describe(
-          "Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.",
+          "Digest time as a local hour (0–23) in the household's timezone. This is the household's configured digest\/briefing time with hour granularity (e.g. 7 = 07h00 local). Serves as the digest_time field for this product.\n",
         ),
       timezone: zod
         .string()
@@ -958,6 +964,22 @@ export const ExportPrivacyDataResponse = zod.object({
         .optional()
         .describe(
           "When true, all proactive messages are permanently stopped (set by PARAR command).",
+        ),
+      quiet_hour_start: zod
+        .number()
+        .min(exportPrivacyDataResponseHouseholdOneQuietHourStartMin)
+        .max(exportPrivacyDataResponseHouseholdOneQuietHourStartMax)
+        .optional()
+        .describe(
+          "Local hour (0–23) at which the household's quiet window starts. Messages scheduled after this are held until quiet_hour_end. Default 21 (21h00 local).",
+        ),
+      quiet_hour_end: zod
+        .number()
+        .min(exportPrivacyDataResponseHouseholdOneQuietHourEndMin)
+        .max(exportPrivacyDataResponseHouseholdOneQuietHourEndMax)
+        .optional()
+        .describe(
+          "Local hour (0–23) at which the household's quiet window ends. Held messages are released at this hour. Default 7 (07h00 local).",
         ),
       created_at: zod.coerce.date().optional(),
     })
@@ -1343,6 +1365,12 @@ export const ToggleRuleResponse = zod.object({
 export const getHouseholdResponseBriefingHourMin = 0;
 export const getHouseholdResponseBriefingHourMax = 23;
 
+export const getHouseholdResponseQuietHourStartMin = 0;
+export const getHouseholdResponseQuietHourStartMax = 23;
+
+export const getHouseholdResponseQuietHourEndMin = 0;
+export const getHouseholdResponseQuietHourEndMax = 23;
+
 export const GetHouseholdResponse = zod.object({
   id: zod.number(),
   name: zod.string(),
@@ -1355,7 +1383,7 @@ export const GetHouseholdResponse = zod.object({
     .max(getHouseholdResponseBriefingHourMax)
     .optional()
     .describe(
-      "Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.",
+      "Digest time as a local hour (0–23) in the household's timezone. This is the household's configured digest\/briefing time with hour granularity (e.g. 7 = 07h00 local). Serves as the digest_time field for this product.\n",
     ),
   timezone: zod
     .string()
@@ -1387,6 +1415,22 @@ export const GetHouseholdResponse = zod.object({
     .describe(
       "When true, all proactive messages are permanently stopped (set by PARAR command).",
     ),
+  quiet_hour_start: zod
+    .number()
+    .min(getHouseholdResponseQuietHourStartMin)
+    .max(getHouseholdResponseQuietHourStartMax)
+    .optional()
+    .describe(
+      "Local hour (0–23) at which the household's quiet window starts. Messages scheduled after this are held until quiet_hour_end. Default 21 (21h00 local).",
+    ),
+  quiet_hour_end: zod
+    .number()
+    .min(getHouseholdResponseQuietHourEndMin)
+    .max(getHouseholdResponseQuietHourEndMax)
+    .optional()
+    .describe(
+      "Local hour (0–23) at which the household's quiet window ends. Held messages are released at this hour. Default 7 (07h00 local).",
+    ),
   created_at: zod.coerce.date().optional(),
 });
 
@@ -1395,6 +1439,12 @@ export const GetHouseholdResponse = zod.object({
  */
 export const updateHouseholdBodyBriefingHourMin = 0;
 export const updateHouseholdBodyBriefingHourMax = 23;
+
+export const updateHouseholdBodyQuietHourStartMin = 0;
+export const updateHouseholdBodyQuietHourStartMax = 23;
+
+export const updateHouseholdBodyQuietHourEndMin = 0;
+export const updateHouseholdBodyQuietHourEndMax = 23;
 
 export const UpdateHouseholdBody = zod.object({
   name: zod.string().optional(),
@@ -1405,7 +1455,7 @@ export const UpdateHouseholdBody = zod.object({
     .max(updateHouseholdBodyBriefingHourMax)
     .optional()
     .describe(
-      "Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.",
+      "Digest time as a local hour (0–23) in the household's timezone (e.g. 7 = 07h00 local).",
     ),
   timezone: zod
     .string()
@@ -1421,10 +1471,32 @@ export const UpdateHouseholdBody = zod.object({
     .boolean()
     .optional()
     .describe("When true, all proactive messages are permanently stopped."),
+  quiet_hour_start: zod
+    .number()
+    .min(updateHouseholdBodyQuietHourStartMin)
+    .max(updateHouseholdBodyQuietHourStartMax)
+    .optional()
+    .describe(
+      "Local hour at which the quiet window starts (default 21). Messages scheduled after this are held.",
+    ),
+  quiet_hour_end: zod
+    .number()
+    .min(updateHouseholdBodyQuietHourEndMin)
+    .max(updateHouseholdBodyQuietHourEndMax)
+    .optional()
+    .describe(
+      "Local hour at which the quiet window ends (default 7). Held messages are released at this hour.",
+    ),
 });
 
 export const updateHouseholdResponseBriefingHourMin = 0;
 export const updateHouseholdResponseBriefingHourMax = 23;
+
+export const updateHouseholdResponseQuietHourStartMin = 0;
+export const updateHouseholdResponseQuietHourStartMax = 23;
+
+export const updateHouseholdResponseQuietHourEndMin = 0;
+export const updateHouseholdResponseQuietHourEndMax = 23;
 
 export const UpdateHouseholdResponse = zod.object({
   id: zod.number(),
@@ -1438,7 +1510,7 @@ export const UpdateHouseholdResponse = zod.object({
     .max(updateHouseholdResponseBriefingHourMax)
     .optional()
     .describe(
-      "Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.",
+      "Digest time as a local hour (0–23) in the household's timezone. This is the household's configured digest\/briefing time with hour granularity (e.g. 7 = 07h00 local). Serves as the digest_time field for this product.\n",
     ),
   timezone: zod
     .string()
@@ -1469,6 +1541,22 @@ export const UpdateHouseholdResponse = zod.object({
     .optional()
     .describe(
       "When true, all proactive messages are permanently stopped (set by PARAR command).",
+    ),
+  quiet_hour_start: zod
+    .number()
+    .min(updateHouseholdResponseQuietHourStartMin)
+    .max(updateHouseholdResponseQuietHourStartMax)
+    .optional()
+    .describe(
+      "Local hour (0–23) at which the household's quiet window starts. Messages scheduled after this are held until quiet_hour_end. Default 21 (21h00 local).",
+    ),
+  quiet_hour_end: zod
+    .number()
+    .min(updateHouseholdResponseQuietHourEndMin)
+    .max(updateHouseholdResponseQuietHourEndMax)
+    .optional()
+    .describe(
+      "Local hour (0–23) at which the household's quiet window ends. Held messages are released at this hour. Default 7 (07h00 local).",
     ),
   created_at: zod.coerce.date().optional(),
 });

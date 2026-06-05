@@ -43,11 +43,21 @@ router.patch("/household", async (req, res) => {
     // `plan` is intentionally excluded — plan changes must go through the
     // payment/billing flow, not this settings endpoint. Accepting it here
     // would let any admin self-upgrade without a payment.
-    const { name, location, briefing_hour, timezone, digest_enabled, digest_stopped } = req.body;
+    const { name, location, briefing_hour, timezone, digest_enabled, digest_stopped, quiet_hour_start, quiet_hour_end } = req.body;
 
     if (briefing_hour !== undefined) {
       if (!Number.isInteger(briefing_hour) || briefing_hour < 0 || briefing_hour > 23) {
         return res.status(400).json({ error: "briefing_hour deve ser um inteiro entre 0 e 23." });
+      }
+    }
+    if (quiet_hour_start !== undefined) {
+      if (!Number.isInteger(quiet_hour_start) || quiet_hour_start < 0 || quiet_hour_start > 23) {
+        return res.status(400).json({ error: "quiet_hour_start deve ser um inteiro entre 0 e 23." });
+      }
+    }
+    if (quiet_hour_end !== undefined) {
+      if (!Number.isInteger(quiet_hour_end) || quiet_hour_end < 0 || quiet_hour_end > 23) {
+        return res.status(400).json({ error: "quiet_hour_end deve ser um inteiro entre 0 e 23." });
       }
     }
 
@@ -75,6 +85,8 @@ router.patch("/household", async (req, res) => {
         timezone: timezone ?? household.timezone,
         digest_enabled: digest_enabled !== undefined ? Boolean(digest_enabled) : household.digest_enabled,
         digest_stopped: digest_stopped !== undefined ? Boolean(digest_stopped) : household.digest_stopped,
+        quiet_hour_start: quiet_hour_start !== undefined ? quiet_hour_start : household.quiet_hour_start,
+        quiet_hour_end: quiet_hour_end !== undefined ? quiet_hour_end : household.quiet_hour_end,
       })
       .where(eq(householdsTable.id, hid))
       .returning();

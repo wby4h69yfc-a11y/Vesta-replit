@@ -408,15 +408,21 @@ function BriefingHourSelector() {
 
   // briefing_hour is stored as a household-local hour (e.g., 7 = 07h00 local).
   const savedLocal = household?.briefing_hour ?? 7;
+  const savedQHStart = (household as Record<string, unknown> | undefined)?.quiet_hour_start as number | undefined ?? 21;
+  const savedQHEnd = (household as Record<string, unknown> | undefined)?.quiet_hour_end as number | undefined ?? 7;
 
   const [selectedLocal, setSelectedLocal] = useState<number>(savedLocal);
   const [selectedTz, setSelectedTz] = useState<string>(savedTz);
+  const [selectedQHStart, setSelectedQHStart] = useState<number>(savedQHStart);
+  const [selectedQHEnd, setSelectedQHEnd] = useState<number>(savedQHEnd);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setSelectedLocal(household?.briefing_hour ?? 7);
     setSelectedTz(savedTz);
-  }, [household?.briefing_hour, savedTz]);
+    setSelectedQHStart((household as Record<string, unknown> | undefined)?.quiet_hour_start as number | undefined ?? 21);
+    setSelectedQHEnd((household as Record<string, unknown> | undefined)?.quiet_hour_end as number | undefined ?? 7);
+  }, [household?.briefing_hour, savedTz, savedQHStart, savedQHEnd]);
 
   function formatHour(h: number) {
     return `${h}h`;
@@ -424,7 +430,14 @@ function BriefingHourSelector() {
 
   async function handleSave() {
     try {
-      await updateHousehold.mutateAsync({ data: { briefing_hour: selectedLocal, timezone: selectedTz } });
+      await updateHousehold.mutateAsync({
+        data: {
+          briefing_hour: selectedLocal,
+          timezone: selectedTz,
+          quiet_hour_start: selectedQHStart,
+          quiet_hour_end: selectedQHEnd,
+        },
+      });
       setSaved(true);
       const label = TZ_LABELS[selectedTz] ?? selectedTz;
       toast({ title: "Configurações salvas", description: `Resumo diário às ${formatHour(selectedLocal)} (horário de ${label})` });
@@ -458,7 +471,11 @@ function BriefingHourSelector() {
   }
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
-  const isDirty = selectedLocal !== savedLocal || selectedTz !== savedTz;
+  const isDirty =
+    selectedLocal !== savedLocal ||
+    selectedTz !== savedTz ||
+    selectedQHStart !== savedQHStart ||
+    selectedQHEnd !== savedQHEnd;
 
   const digestEnabled = household?.digest_enabled ?? true;
   const digestStopped = (household as Record<string, unknown> | undefined)?.digest_stopped as boolean | undefined ?? false;
@@ -565,33 +582,68 @@ function BriefingHourSelector() {
                 </select>
               </div>
 
-              {/* Hour selector + save */}
+              {/* Hour selector */}
               <div>
-                <p className="text-xs font-medium mb-1.5" style={{ color: V.muted }}>Horário</p>
-                <div className="flex items-center gap-3">
-                  <select
-                    value={selectedLocal}
-                    onChange={(e) => setSelectedLocal(Number(e.target.value))}
-                    className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium border-0 outline-none appearance-none"
-                    style={{ background: V.beige, color: V.ink, cursor: "pointer" }}
-                  >
-                    {hours.map((h) => (
-                      <option key={h} value={h}>
-                        {formatHour(h)}
-                      </option>
-                    ))}
-                  </select>
+                <p className="text-xs font-medium mb-1.5" style={{ color: V.muted }}>Horário do resumo</p>
+                <select
+                  value={selectedLocal}
+                  onChange={(e) => setSelectedLocal(Number(e.target.value))}
+                  className="w-full px-4 py-2.5 rounded-xl text-sm font-medium border-0 outline-none appearance-none"
+                  style={{ background: V.beige, color: V.ink, cursor: "pointer" }}
+                >
+                  {hours.map((h) => (
+                    <option key={h} value={h}>
+                      {formatHour(h)}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                  <button
-                    onClick={() => void handleSave()}
-                    disabled={updateHousehold.isPending || !isDirty}
-                    className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50 shrink-0"
-                    style={{ background: saved ? "#059669" : V.primary }}
-                  >
-                    {updateHousehold.isPending ? "…" : saved ? "Salvo ✓" : "Salvar"}
-                  </button>
+              {/* Quiet hours */}
+              <div>
+                <p className="text-xs font-medium mb-1.5" style={{ color: V.muted }}>Horário silencioso</p>
+                <p className="text-xs mb-2" style={{ color: V.muted }}>
+                  Mensagens agendadas neste período serão enviadas após o fim da janela.
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <p className="text-xs mb-1" style={{ color: V.muted }}>Início</p>
+                    <select
+                      value={selectedQHStart}
+                      onChange={(e) => setSelectedQHStart(Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-xl text-sm font-medium border-0 outline-none appearance-none"
+                      style={{ background: V.beige, color: V.ink, cursor: "pointer" }}
+                    >
+                      {hours.map((h) => (
+                        <option key={h} value={h}>{formatHour(h)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs mb-1" style={{ color: V.muted }}>Fim</p>
+                    <select
+                      value={selectedQHEnd}
+                      onChange={(e) => setSelectedQHEnd(Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-xl text-sm font-medium border-0 outline-none appearance-none"
+                      style={{ background: V.beige, color: V.ink, cursor: "pointer" }}
+                    >
+                      {hours.map((h) => (
+                        <option key={h} value={h}>{formatHour(h)}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
+
+              {/* Save button */}
+              <button
+                onClick={() => void handleSave()}
+                disabled={updateHousehold.isPending || !isDirty}
+                className="w-full px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50"
+                style={{ background: saved ? "#059669" : V.primary }}
+              >
+                {updateHousehold.isPending ? "…" : saved ? "Salvo ✓" : "Salvar"}
+              </button>
             </>
           )}
         </div>

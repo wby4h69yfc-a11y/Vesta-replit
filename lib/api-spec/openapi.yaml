@@ -1540,7 +1540,10 @@ components:
           type: integer
           minimum: 0
           maximum: 23
-          description: Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.
+          description: >
+            Digest time as a local hour (0–23) in the household's timezone.
+            This is the household's configured digest/briefing time with hour granularity
+            (e.g. 7 = 07h00 local). Serves as the digest_time field for this product.
         timezone:
           type: string
           description: IANA timezone name for this household (e.g. "America/Sao_Paulo"). Defaults to "America/Sao_Paulo".
@@ -1558,6 +1561,16 @@ components:
         digest_stopped:
           type: boolean
           description: When true, all proactive messages are permanently stopped (set by PARAR command).
+        quiet_hour_start:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Local hour (0–23) at which the household's quiet window starts. Messages scheduled after this are held until quiet_hour_end. Default 21 (21h00 local).
+        quiet_hour_end:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Local hour (0–23) at which the household's quiet window ends. Held messages are released at this hour. Default 7 (07h00 local).
         created_at:
           type: string
           format: date-time
@@ -1573,7 +1586,7 @@ components:
           type: integer
           minimum: 0
           maximum: 23
-          description: Hour (0-23) in the household's local timezone at which the daily briefing is sent automatically.
+          description: Digest time as a local hour (0–23) in the household's timezone (e.g. 7 = 07h00 local).
         timezone:
           type: string
           description: IANA timezone name for this household (e.g. "America/Sao_Paulo").
@@ -1583,6 +1596,16 @@ components:
         digest_stopped:
           type: boolean
           description: When true, all proactive messages are permanently stopped.
+        quiet_hour_start:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Local hour at which the quiet window starts (default 21). Messages scheduled after this are held.
+        quiet_hour_end:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Local hour at which the quiet window ends (default 7). Held messages are released at this hour.
 
     Member:
       type: object
