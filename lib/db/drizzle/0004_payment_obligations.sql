@@ -37,3 +37,6 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reimbursement_owed_by INTEGER;
 
 -- Payment data column on suggested_actions
 ALTER TABLE suggested_actions ADD COLUMN IF NOT EXISTS payment_data JSONB;
+
+-- Backlink column so tasks can reference their payment obligation
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS payment_obligation_id INTEGER;

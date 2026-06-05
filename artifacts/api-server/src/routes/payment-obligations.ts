@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { db } from "@workspace/db";
-import { paymentObligationsTable, membersTable } from "@workspace/db";
+import { paymentObligationsTable, membersTable, tasksTable } from "@workspace/db";
 import { eq, and, isNotNull } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 import { openai } from "@workspace/integrations-openai-ai-server";
@@ -323,6 +323,20 @@ Retorne APENAS o JSON, sem texto adicional.`,
       })
       .where(and(eq(paymentObligationsTable.id, id), eq(paymentObligationsTable.household_id, hid)))
       .returning();
+
+    // Propagate status to the linked task so task-level views stay consistent
+    await db
+      .update(tasksTable)
+      .set({
+        payment_status: "comprovante_received",
+        proof_attachment_url: proof_url,
+      })
+      .where(
+        and(
+          eq(tasksTable.household_id, hid),
+          eq(tasksTable.payment_obligation_id, id),
+        ),
+      );
 
     return res.json({ obligation: updated, ocr_note });
   } catch (err) {

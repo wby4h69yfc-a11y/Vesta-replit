@@ -24,7 +24,7 @@ import memoryRouter from "./memory";
 import privacyRouter from "./privacy";
 import devPublicRouter from "./dev-public";
 import paymentObligationsRouter from "./payment-obligations";
-import storageRouter from "./storage";
+import storageRouter, { storagePrivateRouter } from "./storage";
 
 const router: IRouter = Router();
 
@@ -33,7 +33,7 @@ const router: IRouter = Router();
 // here. Adding a business route here instead of protectedRouter below would
 // silently open it to unauthenticated access.
 router.use(healthRouter);    // GET /health
-router.use(storageRouter);   // POST /storage/uploads/request-url, GET /storage/public-objects/*, GET /storage/objects/*
+router.use(storageRouter);   // GET /storage/public-objects/* (unconditionally public)
 router.use(authRouter);      // GET /login, GET /callback, GET /logout, GET /auth/user, POST /mobile-auth/*
 router.use(devPublicRouter); // GET /dev/test-login (dev only, no auth required)
 router.use(authOtpRouter);   // POST /auth/otp/send, POST /auth/otp/verify
@@ -82,6 +82,7 @@ protectedRouter.use(memoryRouter);             // GET /memory/staging, POST /mem
 protectedRouter.use(privacyRouter);            // GET /privacy/export, DELETE /account
 protectedRouter.use(adminRouter);              // GET /admin/stats
 protectedRouter.use(paymentObligationsRouter); // GET|POST /payment-obligations, PATCH|DELETE /payment-obligations/:id, POST /payment-obligations/:id/settle|comprovante
+protectedRouter.use(storagePrivateRouter);     // POST /storage/uploads/request-url, GET /storage/objects/*
 
 // Catch-all: any path that reaches here through the protectedRouter did not
 // match a registered route. Return 404 so callers get a deterministic error
