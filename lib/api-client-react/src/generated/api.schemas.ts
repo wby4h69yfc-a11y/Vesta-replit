@@ -1292,6 +1292,11 @@ export interface CrecheWaitlist {
   creche_name: string;
   /** @nullable */
   child_id?: number | null;
+  /**
+   * Resolved from household_members join
+   * @nullable
+   */
+  child_name?: string | null;
   status: CrecheWaitlistStatus;
   /**
    * ISO date YYYY-MM-DD

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { crecheWaitlistsTable } from "@workspace/db";
+import { crecheWaitlistsTable, membersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 
@@ -15,13 +15,32 @@ router.get("/creche-waitlists", async (req, res) => {
     const conditions = [eq(crecheWaitlistsTable.household_id, hid)];
     if (status) conditions.push(eq(crecheWaitlistsTable.status, status));
 
-    const waitlists = await db
-      .select()
+    const rows = await db
+      .select({
+        id:                 crecheWaitlistsTable.id,
+        household_id:       crecheWaitlistsTable.household_id,
+        creche_name:        crecheWaitlistsTable.creche_name,
+        child_id:           crecheWaitlistsTable.child_id,
+        child_name:         membersTable.name,
+        status:             crecheWaitlistsTable.status,
+        registered_at:      crecheWaitlistsTable.registered_at,
+        estimated_call_date: crecheWaitlistsTable.estimated_call_date,
+        next_followup_at:   crecheWaitlistsTable.next_followup_at,
+        document_checklist: crecheWaitlistsTable.document_checklist,
+        notes:              crecheWaitlistsTable.notes,
+        source_inbox_id:    crecheWaitlistsTable.source_inbox_id,
+        created_at:         crecheWaitlistsTable.created_at,
+        updated_at:         crecheWaitlistsTable.updated_at,
+      })
       .from(crecheWaitlistsTable)
+      .leftJoin(
+        membersTable,
+        eq(crecheWaitlistsTable.child_id, membersTable.id),
+      )
       .where(and(...conditions))
       .orderBy(crecheWaitlistsTable.created_at);
 
-    res.json(waitlists);
+    res.json(rows);
   } catch (err) {
     req.log.error({ err }, "Failed to list creche waitlists");
     res.status(500).json({ error: "Internal server error" });
@@ -52,20 +71,20 @@ router.post("/creche-waitlists", async (req, res) => {
     const [entry] = await db
       .insert(crecheWaitlistsTable)
       .values({
-        household_id: hid,
-        creche_name: body.creche_name,
-        child_id: body.child_id ?? null,
-        status: body.status ?? "waiting",
-        registered_at: body.registered_at ?? null,
+        household_id:        hid,
+        creche_name:         body.creche_name,
+        child_id:            body.child_id ?? null,
+        status:              body.status ?? "waiting",
+        registered_at:       body.registered_at ?? null,
         estimated_call_date: body.estimated_call_date ?? null,
-        next_followup_at: body.next_followup_at ? new Date(body.next_followup_at) : null,
-        document_checklist: body.document_checklist ?? [],
-        notes: body.notes ?? null,
-        source_inbox_id: body.source_inbox_id ?? null,
+        next_followup_at:    body.next_followup_at ? new Date(body.next_followup_at) : null,
+        document_checklist:  body.document_checklist ?? [],
+        notes:               body.notes ?? null,
+        source_inbox_id:     body.source_inbox_id ?? null,
       })
       .returning();
 
-    res.status(201).json(entry);
+    res.status(201).json({ ...(entry ?? {}), child_name: null });
   } catch (err) {
     req.log.error({ err }, "Failed to create creche waitlist");
     res.status(500).json({ error: "Internal server error" });
@@ -91,16 +110,16 @@ router.patch("/creche-waitlists/:id", async (req, res) => {
     };
 
     const updates: Record<string, unknown> = {};
-    if (body.creche_name !== undefined) updates.creche_name = body.creche_name;
-    if (body.child_id !== undefined) updates.child_id = body.child_id;
-    if (body.status !== undefined) updates.status = body.status;
-    if (body.registered_at !== undefined) updates.registered_at = body.registered_at;
+    if (body.creche_name !== undefined)         updates.creche_name = body.creche_name;
+    if (body.child_id !== undefined)            updates.child_id = body.child_id;
+    if (body.status !== undefined)              updates.status = body.status;
+    if (body.registered_at !== undefined)       updates.registered_at = body.registered_at;
     if (body.estimated_call_date !== undefined) updates.estimated_call_date = body.estimated_call_date;
     if (body.next_followup_at !== undefined) {
       updates.next_followup_at = body.next_followup_at ? new Date(body.next_followup_at) : null;
     }
-    if (body.document_checklist !== undefined) updates.document_checklist = body.document_checklist;
-    if (body.notes !== undefined) updates.notes = body.notes;
+    if (body.document_checklist !== undefined)  updates.document_checklist = body.document_checklist;
+    if (body.notes !== undefined)               updates.notes = body.notes;
 
     const [updated] = await db
       .update(crecheWaitlistsTable)
@@ -109,7 +128,34 @@ router.patch("/creche-waitlists/:id", async (req, res) => {
       .returning();
 
     if (!updated) { res.status(404).json({ error: "Not found" }); return; }
-    res.json(updated);
+
+    // Re-join to get child_name after update
+    const [withChild] = await db
+      .select({
+        id:                 crecheWaitlistsTable.id,
+        household_id:       crecheWaitlistsTable.household_id,
+        creche_name:        crecheWaitlistsTable.creche_name,
+        child_id:           crecheWaitlistsTable.child_id,
+        child_name:         membersTable.name,
+        status:             crecheWaitlistsTable.status,
+        registered_at:      crecheWaitlistsTable.registered_at,
+        estimated_call_date: crecheWaitlistsTable.estimated_call_date,
+        next_followup_at:   crecheWaitlistsTable.next_followup_at,
+        document_checklist: crecheWaitlistsTable.document_checklist,
+        notes:              crecheWaitlistsTable.notes,
+        source_inbox_id:    crecheWaitlistsTable.source_inbox_id,
+        created_at:         crecheWaitlistsTable.created_at,
+        updated_at:         crecheWaitlistsTable.updated_at,
+      })
+      .from(crecheWaitlistsTable)
+      .leftJoin(
+        membersTable,
+        eq(crecheWaitlistsTable.child_id, membersTable.id),
+      )
+      .where(and(eq(crecheWaitlistsTable.id, id), eq(crecheWaitlistsTable.household_id, hid)))
+      .limit(1);
+
+    res.json(withChild ?? { ...updated, child_name: null });
   } catch (err) {
     req.log.error({ err }, "Failed to update creche waitlist");
     res.status(500).json({ error: "Internal server error" });

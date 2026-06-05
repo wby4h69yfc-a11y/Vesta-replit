@@ -1,4 +1,4 @@
-import { Clock, ListChecks, Inbox as InboxIcon, Zap, ChevronRight, ArrowRight, Banknote, CheckCircle2 } from "lucide-react";
+import { Clock, ListChecks, Inbox as InboxIcon, Zap, ChevronRight, ArrowRight, Banknote, CheckCircle2, School, AlertTriangle } from "lucide-react";
 import WaitlistCard from "@/components/WaitlistCard";
 import { Link } from "wouter";
 import {
@@ -10,7 +10,9 @@ import {
   useGetPaymentReimbursements,
   useSettlePaymentObligation,
   getGetPaymentReimbursementsQueryKey,
+  useListActionCascades,
   type PaymentObligation,
+  type ActionCascadeWithActions,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -96,6 +98,109 @@ function ReimbursementsCard() {
         )}
       </div>
     </section>
+  );
+}
+
+function CrecheEscolaSection() {
+  const { data: cascades = [] } = useListActionCascades();
+
+  const matriculaCascades = (cascades as ActionCascadeWithActions[]).filter(
+    (c) => c.cascade_type === "matricula" && c.actions?.some((a) => a.status === "pending"),
+  );
+  const backupCascades = (cascades as ActionCascadeWithActions[]).filter(
+    (c) => c.cascade_type === "backup_care" && c.actions?.some((a) => a.status === "pending"),
+  );
+
+  const hasExtras = matriculaCascades.length > 0 || backupCascades.length > 0;
+
+  return (
+    <div className="space-y-3" data-testid="creche-escola-section">
+      {/* Waitlists (WF-20) — own header inside */}
+      <WaitlistCard />
+
+      {/* Matrícula deadlines (WF-21) */}
+      {matriculaCascades.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <School className="w-4 h-4" style={{ color: V.sage }} />
+              <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: V.muted }}>
+                Matrículas pendentes
+              </h2>
+            </div>
+            <Link href="/inbox" className="text-xs font-medium" style={{ color: V.primary }}>
+              Ver na Caixa →
+            </Link>
+          </div>
+          <div className="rounded-3xl overflow-hidden" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.10)" }}>
+            {matriculaCascades.map((c, i) => {
+              const pending = c.actions?.filter((a) => a.status === "pending").length ?? 0;
+              return (
+                <Link href="/inbox" key={c.id}>
+                  <div
+                    className="flex items-center gap-3 px-4 py-3 hover:opacity-80 transition-opacity"
+                    style={{ borderTop: i > 0 ? "1px solid rgba(14,59,46,0.07)" : "none" }}
+                  >
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ background: V.primary }} />
+                    <p className="flex-1 text-sm font-medium truncate" style={{ color: V.ink }}>
+                      {c.trigger_description}
+                    </p>
+                    <span className="shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                      style={{ background: "#EAF1E5", color: V.primary }}>
+                      {pending} doc{pending !== 1 ? "s" : ""}
+                    </span>
+                    <ChevronRight className="w-3.5 h-3.5 shrink-0" style={{ color: V.muted }} />
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Active backup care cascades (WF-24) */}
+      {backupCascades.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" style={{ color: "#B45309" }} />
+              <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#B45309" }}>
+                Cuidado emergencial
+              </h2>
+            </div>
+            <Link href="/inbox" className="text-xs font-medium" style={{ color: V.primary }}>
+              Resolver →
+            </Link>
+          </div>
+          <div className="rounded-3xl overflow-hidden" style={{ background: "#FFFBEB", border: "1px solid rgba(180,83,9,0.20)" }}>
+            {backupCascades.map((c, i) => {
+              const pending = c.actions?.filter((a) => a.status === "pending").length ?? 0;
+              return (
+                <Link href="/inbox" key={c.id}>
+                  <div
+                    className="flex items-center gap-3 px-4 py-3 hover:opacity-80 transition-opacity"
+                    style={{ borderTop: i > 0 ? "1px solid rgba(180,83,9,0.12)" : "none" }}
+                  >
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ background: "#D97706" }} />
+                    <p className="flex-1 text-sm font-medium truncate" style={{ color: V.ink }}>
+                      {c.trigger_description}
+                    </p>
+                    <span className="shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                      style={{ background: "rgba(180,83,9,0.10)", color: "#B45309" }}>
+                      {pending} passo{pending !== 1 ? "s" : ""}
+                    </span>
+                    <ChevronRight className="w-3.5 h-3.5 shrink-0" style={{ color: "#B45309" }} />
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Section header — only when there are cascades beyond waitlists */}
+      {!hasExtras && null}
+    </div>
   );
 }
 
@@ -201,8 +306,8 @@ export default function AppDashboard() {
       {/* Pattern nudge — surfaces when AI has detected new rule suggestions */}
       <PatternNudge />
 
-      {/* Creche waitlist — shows when there are active waitlists (WF-20) */}
-      <WaitlistCard />
+      {/* Creche & Escola — WF-20 waitlists + WF-21 matrícula deadlines + WF-24 backup cascades */}
+      <CrecheEscolaSection />
 
       {/* Reimbursements tracker — only shows when there are pending reimbursements */}
       <ReimbursementsCard />

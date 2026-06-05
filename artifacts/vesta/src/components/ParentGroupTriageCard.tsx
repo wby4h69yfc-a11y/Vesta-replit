@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Users, ChevronDown, ChevronUp, Check, X, AlertTriangle, Info } from "lucide-react";
+import { Users, ChevronDown, ChevronUp, Check, X, AlertTriangle, Info, EyeOff } from "lucide-react";
 import {
   useApproveAction,
   useDismissAction,
@@ -20,6 +20,10 @@ function invalidateAll(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: getListActionsQueryKey() });
   void qc.invalidateQueries({ queryKey: getListActionCascadesQueryKey() });
   void qc.invalidateQueries({ queryKey: getListInboxItemsQueryKey() });
+}
+
+function hasTag(action: SuggestedAction, tag: string): boolean {
+  return Array.isArray(action.workflow_tags) && action.workflow_tags.includes(tag);
 }
 
 function TriageActionRow({ action, onDone }: { action: SuggestedAction; onDone: () => void }) {
@@ -91,11 +95,43 @@ export default function ParentGroupTriageCard({ cascade }: { cascade: ActionCasc
     },
   });
 
-  const actions = (cascade.actions ?? []).filter((a) => !done.has(a.id) && a.status === "pending");
-  const actionRequired = actions.filter((a) => a.approval_level === "explicit" || a.approval_level === "one_tap");
-  const fyiItems       = actions.filter((a) => a.approval_level === "soft");
+  const allActions = cascade.actions ?? [];
 
-  if (actions.length === 0) return null;
+  // ação necessária — pending items with explicit/one_tap approval tagged acao (or untagged pending)
+  const acaoItems = allActions.filter(
+    (a) =>
+      !done.has(a.id) &&
+      a.status === "pending" &&
+      (hasTag(a, "parent_group_triage_acao") ||
+        (!hasTag(a, "parent_group_triage_fyi") && !hasTag(a, "parent_group_triage_ignorar"))),
+  );
+
+  // só para saber — auto-approved fyi items (backed by workflow_tag; read-only)
+  const fyiItems = allActions.filter(
+    (a) => !done.has(a.id) && a.status === "approved" && hasTag(a, "parent_group_triage_fyi"),
+  );
+
+  // ignorados — auto-dismissed by backend; shown as collapsed count
+  const ignorarItems = allActions.filter(
+    (a) => a.status === "dismissed" && hasTag(a, "parent_group_triage_ignorar"),
+  );
+
+  // Card is visible as long as there are fyi or ignorar items even if acao items are all resolved
+  if (acaoItems.length === 0 && fyiItems.length === 0 && ignorarItems.length === 0) return null;
+
+  const headerSubtitle = [
+    acaoItems.length > 0
+      ? `${acaoItems.length} para aprovar`
+      : null,
+    fyiItems.length > 0
+      ? `${fyiItems.length} aviso${fyiItems.length !== 1 ? "s" : ""}`
+      : null,
+    ignorarItems.length > 0
+      ? `${ignorarItems.length} ignorado${ignorarItems.length !== 1 ? "s" : ""}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div
@@ -119,9 +155,7 @@ export default function ParentGroupTriageCard({ cascade }: { cascade: ActionCasc
           <p className="text-sm font-semibold leading-snug" style={{ color: V.ink }}>
             {cascade.trigger_description}
           </p>
-          <p className="text-xs mt-0.5" style={{ color: V.muted }}>
-            {actionRequired.length} para aprovar{fyiItems.length > 0 ? ` · ${fyiItems.length} aviso${fyiItems.length !== 1 ? "s" : ""}` : ""}
-          </p>
+          <p className="text-xs mt-0.5" style={{ color: V.muted }}>{headerSubtitle}</p>
         </div>
         {expanded
           ? <ChevronUp className="w-4 h-4 mt-1 shrink-0" style={{ color: V.muted }} />
@@ -132,7 +166,8 @@ export default function ParentGroupTriageCard({ cascade }: { cascade: ActionCasc
       {/* Expanded body */}
       {expanded && (
         <>
-          {actionRequired.length > 0 && (
+          {/* Bucket 1 — ação necessária */}
+          {acaoItems.length > 0 && (
             <div className="px-4 pb-1 pt-1">
               <div className="flex items-center gap-1.5 mb-1">
                 <AlertTriangle className="w-3 h-3" style={{ color: "#B45309" }} />
@@ -140,12 +175,13 @@ export default function ParentGroupTriageCard({ cascade }: { cascade: ActionCasc
                   Ação necessária
                 </span>
               </div>
-              {actionRequired.map((a) => (
+              {acaoItems.map((a) => (
                 <TriageActionRow key={a.id} action={a} onDone={() => markDone(a.id)} />
               ))}
             </div>
           )}
 
+          {/* Bucket 2 — só para saber (auto-approved FYI) */}
           {fyiItems.length > 0 && (
             <div className="px-4 pb-1 pt-1">
               <div className="flex items-center gap-1.5 mb-1">
@@ -155,35 +191,73 @@ export default function ParentGroupTriageCard({ cascade }: { cascade: ActionCasc
                 </span>
               </div>
               {fyiItems.map((a) => (
-                <TriageActionRow key={a.id} action={a} onDone={() => markDone(a.id)} />
+                <div
+                  key={a.id}
+                  className="flex items-center gap-2 py-2"
+                  style={{ borderBottom: "1px solid rgba(14,59,46,0.07)" }}
+                >
+                  <p className="flex-1 text-sm leading-snug" style={{ color: V.muted }}>{a.title}</p>
+                  <span className="shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: "#EAF1E5", color: V.sage }}>
+                    arquivado
+                  </span>
+                </div>
               ))}
             </div>
           )}
 
-          {/* Bulk actions */}
-          <div className="flex border-t mt-1" style={{ borderColor: "rgba(14,59,46,0.08)" }}>
-            <button
-              onClick={() => dismissAll.mutate({ id: cascade.id })}
-              disabled={dismissAll.isPending || approveAll.isPending}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs transition-colors hover:bg-red-50 disabled:opacity-50",
-              )}
-              style={{ color: V.muted }}
-            >
-              <X className="w-3.5 h-3.5" />
-              Ignorar tudo
-            </button>
-            <div className="w-px" style={{ background: "rgba(14,59,46,0.08)" }} />
-            <button
-              onClick={() => approveAll.mutate({ id: cascade.id })}
-              disabled={approveAll.isPending || dismissAll.isPending}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors hover:bg-green-50 disabled:opacity-50"
-              style={{ color: V.primary }}
-            >
-              <Check className="w-3.5 h-3.5" />
-              Aprovar tudo
-            </button>
-          </div>
+          {/* Bucket 3 — ignorados (auto-dismissed) */}
+          {ignorarItems.length > 0 && (
+            <div className="px-4 pb-2 pt-1">
+              <div className="flex items-center gap-1.5">
+                <EyeOff className="w-3 h-3" style={{ color: V.muted }} />
+                <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: V.muted }}>
+                  Ignorados automaticamente
+                </span>
+                <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                  style={{ background: "rgba(14,59,46,0.07)", color: V.muted }}>
+                  {ignorarItems.length}
+                </span>
+              </div>
+              {ignorarItems.map((a) => (
+                <div
+                  key={a.id}
+                  className="flex items-center gap-2 py-1.5"
+                  style={{ borderBottom: "1px solid rgba(14,59,46,0.05)" }}
+                >
+                  <p className="flex-1 text-xs leading-snug line-through" style={{ color: "rgba(14,59,46,0.35)" }}>
+                    {a.title}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Bulk actions — only shown when there are pending acao items */}
+          {acaoItems.length > 0 && (
+            <div className="flex border-t mt-1" style={{ borderColor: "rgba(14,59,46,0.08)" }}>
+              <button
+                onClick={() => dismissAll.mutate({ id: cascade.id })}
+                disabled={dismissAll.isPending || approveAll.isPending}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs transition-colors hover:bg-red-50 disabled:opacity-50",
+                )}
+                style={{ color: V.muted }}
+              >
+                <X className="w-3.5 h-3.5" />
+                Ignorar tudo
+              </button>
+              <div className="w-px" style={{ background: "rgba(14,59,46,0.08)" }} />
+              <button
+                onClick={() => approveAll.mutate({ id: cascade.id })}
+                disabled={approveAll.isPending || dismissAll.isPending}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors hover:bg-green-50 disabled:opacity-50"
+                style={{ color: V.primary }}
+              >
+                <Check className="w-3.5 h-3.5" />
+                Aprovar tudo
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

@@ -638,6 +638,10 @@ export const ListCrecheWaitlistsResponseItem = zod.object({
   household_id: zod.number(),
   creche_name: zod.string(),
   child_id: zod.number().nullish(),
+  child_name: zod
+    .string()
+    .nullish()
+    .describe("Resolved from household_members join"),
   status: zod.enum(["waiting", "called", "enrolled", "cancelled"]),
   registered_at: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
   estimated_call_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
@@ -711,6 +715,10 @@ export const UpdateCrecheWaitlistResponse = zod.object({
   household_id: zod.number(),
   creche_name: zod.string(),
   child_id: zod.number().nullish(),
+  child_name: zod
+    .string()
+    .nullish()
+    .describe("Resolved from household_members join"),
   status: zod.enum(["waiting", "called", "enrolled", "cancelled"]),
   registered_at: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
   estimated_call_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),

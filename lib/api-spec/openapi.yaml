@@ -3189,6 +3189,9 @@ components:
           type: string
         child_id:
           type: ["integer", "null"]
+        child_name:
+          type: ["string", "null"]
+          description: Resolved from household_members join
         status:
           type: string
           enum: [waiting, called, enrolled, cancelled]

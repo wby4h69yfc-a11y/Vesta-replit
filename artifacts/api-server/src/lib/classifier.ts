@@ -7,8 +7,9 @@ import {
   actionCascadesTable,
   crecheWaitlistsTable,
   paymentObligationsTable,
+  proactiveMessageQueueTable,
 } from "@workspace/db";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "./whatsapp";
 import { notifyCascadeDeepLink } from "../routes/cascades";
 
@@ -294,8 +295,10 @@ WF-21 (matricula): Se detectar matrícula escolar ou lista de documentos:
   - Se houver taxa de matrícula, adicionar também "payment_admin" e preencher payment_data
 
 WF-22 (parent_group_triage): Se detectar mensagem de grupo de pais com múltiplos assuntos misturados:
-  - Adicionar "parent_group_triage" em workflow_tags de TODOS os cascade_intents
-  - cascade_intents deve separar: itens de ação obrigatória (approval_level "explicit"), avisos FYI (approval_level "soft"), itens sem relevância (type "fyi", approval_level "soft")
+  - Separar em 3 buckets usando workflow_tags específicos:
+    * Itens com ação obrigatória: workflow_tags ["parent_group_triage", "parent_group_triage_acao"], approval_level "explicit" ou "one_tap"
+    * Avisos FYI (só para saber): workflow_tags ["parent_group_triage", "parent_group_triage_fyi"], approval_level "soft", type "fyi"
+    * Itens irrelevantes/spam/ruído: workflow_tags ["parent_group_triage", "parent_group_triage_ignorar"], approval_level "soft", type "fyi"
   - Precisa de ≥2 cascade_intents
 
 WF-23 (school_fee): Se detectar mensalidade escola/creche, boleto escolar ou taxa:
@@ -422,8 +425,20 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
       });
     }
     result.cascade_intents = baseIntents;
-    if (!result.title.toLowerCase().includes("matrícula")) {
-      result.title = `Matrícula — ${result.title}`.substring(0, 120);
+    // Extract school/creche name for a descriptive cascade title
+    const schoolMatch = item.raw_content.match(
+      /(?:escola|colégio|creche|EMEI|EMEF|centro educacional)\s+(?:municipal\s+)?([A-Za-záéíóúâêîôûãõàèìòùçÁÉÍÓÚÂÊÎÔÛÃÕÀ\s]{2,30})/i,
+    );
+    const schoolName = schoolMatch?.[1]?.trim();
+    const deadlinePart = result.datetime
+      ? ` — prazo ${new Date(result.datetime).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`
+      : "";
+    if (schoolName) {
+      result.title = `Matrícula — ${schoolName}${deadlinePart}`.substring(0, 120);
+    } else if (!result.title.toLowerCase().includes("matrícula")) {
+      result.title = `Matrícula — ${result.title}${deadlinePart}`.substring(0, 120);
+    } else if (deadlinePart) {
+      result.title = (result.title + deadlinePart).substring(0, 120);
     }
   }
 
@@ -487,6 +502,30 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
       .update(inboxItemsTable)
       .set({ status: "ready_for_review" })
       .where(eq(inboxItemsTable.id, inboxItemId));
+
+    // ── WF-22: parent_group_triage → auto-dismiss ignorar, auto-approve fyi ──
+    if (cascade_type === "parent_group_triage") {
+      await db
+        .update(suggestedActionsTable)
+        .set({ status: "dismissed" })
+        .where(
+          and(
+            eq(suggestedActionsTable.cascade_id, cascade.id),
+            eq(suggestedActionsTable.household_id, item.household_id),
+            sql`${suggestedActionsTable.workflow_tags} @> ARRAY['parent_group_triage_ignorar']::text[]`,
+          ),
+        );
+      await db
+        .update(suggestedActionsTable)
+        .set({ status: "approved" })
+        .where(
+          and(
+            eq(suggestedActionsTable.cascade_id, cascade.id),
+            eq(suggestedActionsTable.household_id, item.household_id),
+            sql`${suggestedActionsTable.workflow_tags} @> ARRAY['parent_group_triage_fyi']::text[]`,
+          ),
+        );
+    }
 
     // For ≥4 sub-items: send deep-link WA notification (in-app resolution required)
     if (intents.length >= 4) {
@@ -582,9 +621,11 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
     }
   }
 
-  // ── WF-23: school fee → auto-create payment obligation ────────────────────
+  // ── WF-23: school fee → auto-create payment obligation + D-3 proactive ────
   if (wfTags.includes("school_fee") && result.payment_data) {
     try {
+      const rawLower = item.raw_content.toLowerCase();
+      const isRecurring = /mensalidade|mensal|anuidade/.test(rawLower);
       await db.insert(paymentObligationsTable).values({
         household_id:       item.household_id,
         source_inbox_id:    inboxItemId,
@@ -593,11 +634,37 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
         amount_cents:       result.payment_data.amount_cents ?? null,
         currency:           "BRL",
         due_date:           result.payment_data.due_date ?? null,
-        is_recurring:       true,
-        recurrence_pattern: "monthly",
+        is_recurring:       isRecurring,
+        recurrence_pattern: isRecurring ? "monthly" : null,
         payment_method:     result.payment_data.payment_method ?? null,
         status:             "pending",
       });
+      // Enqueue proactive reminder 3 days before due date
+      if (result.payment_data.due_date) {
+        const dueDate = new Date(result.payment_data.due_date);
+        if (!isNaN(dueDate.getTime())) {
+          const d3Date = new Date(dueDate.getTime() - 3 * 24 * 60 * 60 * 1000);
+          d3Date.setUTCHours(12, 0, 0, 0); // 12h UTC ≈ 09h BRT, before quiet hours start
+          const dueDateStr = dueDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+          const feeLabel = result.payment_data.amount_cents
+            ? ` (R$\u00A0${(result.payment_data.amount_cents / 100).toFixed(2).replace(".", ",")})`
+            : "";
+          const recipient = result.payment_data.recipient ? ` — ${result.payment_data.recipient}` : "";
+          await db.insert(proactiveMessageQueueTable).values({
+            household_id:  item.household_id,
+            trigger_type:  "payment_due",
+            template_name: `school_fee_d3_inbox_${inboxItemId}`,
+            payload: {
+              message:
+                `💰 *Lembrete de pagamento:*\n\n` +
+                `*${result.title.substring(0, 80)}${recipient}${feeLabel}* vence em ${dueDateStr}.\n\n` +
+                `_Abra o Vesta para confirmar o pagamento._`,
+            },
+            scheduled_at: d3Date,
+            status:        "queued",
+          });
+        }
+      }
     } catch {
       // non-blocking — best effort
     }
