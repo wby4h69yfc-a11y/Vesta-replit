@@ -43,7 +43,7 @@ router.patch("/household", async (req, res) => {
     // `plan` is intentionally excluded — plan changes must go through the
     // payment/billing flow, not this settings endpoint. Accepting it here
     // would let any admin self-upgrade without a payment.
-    const { name, location, briefing_hour, timezone } = req.body;
+    const { name, location, briefing_hour, timezone, digest_enabled, digest_stopped } = req.body;
 
     if (briefing_hour !== undefined) {
       if (!Number.isInteger(briefing_hour) || briefing_hour < 0 || briefing_hour > 23) {
@@ -73,6 +73,8 @@ router.patch("/household", async (req, res) => {
         location: location ?? household.location,
         briefing_hour: briefing_hour !== undefined ? briefing_hour : household.briefing_hour,
         timezone: timezone ?? household.timezone,
+        digest_enabled: digest_enabled !== undefined ? Boolean(digest_enabled) : household.digest_enabled,
+        digest_stopped: digest_stopped !== undefined ? Boolean(digest_stopped) : household.digest_stopped,
       })
       .where(eq(householdsTable.id, hid))
       .returning();

@@ -436,8 +436,36 @@ function BriefingHourSelector() {
     }
   }
 
+  async function handleToggleDigest(enabled: boolean) {
+    try {
+      await updateHousehold.mutateAsync({ data: { digest_enabled: enabled } });
+      toast({
+        title: enabled ? "Resumo diário ativado" : "Resumo diário desativado",
+        description: enabled
+          ? "Você voltará a receber o resumo diário via WhatsApp."
+          : "Nenhum resumo diário será enviado até reativar.",
+      });
+    } catch {
+      toast({ title: "Erro ao salvar", description: "Tente novamente.", variant: "destructive" });
+    }
+  }
+
+  async function handleUnstop() {
+    try {
+      await updateHousehold.mutateAsync({ data: { digest_stopped: false, digest_enabled: true } });
+      toast({ title: "Resumo reativado", description: "Você voltará a receber os resumos diários." });
+    } catch {
+      toast({ title: "Erro ao salvar", description: "Tente novamente.", variant: "destructive" });
+    }
+  }
+
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const isDirty = selectedLocal !== savedLocal || selectedTz !== savedTz;
+
+  const digestEnabled = household?.digest_enabled ?? true;
+  const digestStopped = (household as Record<string, unknown> | undefined)?.digest_stopped as boolean | undefined ?? false;
+  const digestPausedUntil = (household as Record<string, unknown> | undefined)?.digest_paused_until as string | null | undefined;
+  const isPaused = digestPausedUntil ? new Date(digestPausedUntil) > new Date() : false;
 
   return (
     <section>
@@ -446,7 +474,7 @@ function BriefingHourSelector() {
       </h2>
       <div className="rounded-3xl overflow-hidden" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
         <div className="px-5 py-4 space-y-4">
-          {/* Header */}
+          {/* Header with enable toggle */}
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#EAF1E5" }}>
               <Bell className="h-4 w-4" style={{ color: V.primary }} />
@@ -467,52 +495,107 @@ function BriefingHourSelector() {
                   : "Nenhum resumo enviado ainda"}
               </p>
             </div>
+            {/* Enable/disable toggle */}
+            <button
+              onClick={() => void handleToggleDigest(!digestEnabled)}
+              disabled={updateHousehold.isPending}
+              className="shrink-0 w-11 h-6 rounded-full transition-colors relative disabled:opacity-50"
+              style={{ background: digestEnabled ? V.primary : "rgba(14,59,46,0.15)" }}
+              title={digestEnabled ? "Desativar resumo diário" : "Ativar resumo diário"}
+            >
+              <span
+                className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
+                style={{ left: digestEnabled ? "calc(100% - 22px)" : "2px" }}
+              />
+            </button>
+          </div>
+
+          {/* Paused / Stopped status banners */}
+          {digestStopped && (
+            <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl"
+              style={{ background: "#FEF2F2", border: "1px solid #FECACA" }}>
+              <AlertCircle className="h-4 w-4 shrink-0" style={{ color: "#DC2626" }} />
+              <p className="text-xs flex-1" style={{ color: "#991B1B" }}>
+                Resumos parados permanentemente (você enviou PARAR no WhatsApp).
+              </p>
+              <button
+                onClick={() => void handleUnstop()}
+                className="text-xs font-semibold shrink-0 underline"
+                style={{ color: "#DC2626" }}
+              >
+                Reativar
+              </button>
+            </div>
+          )}
+
+          {!digestStopped && isPaused && (
+            <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl"
+              style={{ background: "#FEF9C3", border: "1px solid #FDE68A" }}>
+              <Pause className="h-4 w-4 shrink-0" style={{ color: "#D97706" }} />
+              <p className="text-xs" style={{ color: "#92400E" }}>
+                Pausado por 24h (PAUSAR no WhatsApp). Retoma automaticamente em{" "}
+                {new Date(digestPausedUntil!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.
+              </p>
+            </div>
+          )}
+
+          {/* WA commands hint */}
+          <div className="px-3 py-2.5 rounded-xl text-xs space-y-1"
+            style={{ background: V.beige, color: V.muted }}>
+            <p className="font-medium" style={{ color: V.ink }}>Comandos no WhatsApp:</p>
+            <p><span className="font-mono font-semibold">PAUSAR</span> — pausa por 24h</p>
+            <p><span className="font-mono font-semibold">PARAR</span> — para indefinidamente</p>
+            <p><span className="font-mono font-semibold">RETOMAR</span> — reativa os resumos</p>
           </div>
 
           {/* Timezone selector */}
-          <div>
-            <p className="text-xs font-medium mb-1.5" style={{ color: V.muted }}>Fuso horário</p>
-            <select
-              value={selectedTz}
-              onChange={(e) => setSelectedTz(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl text-sm font-medium border-0 outline-none appearance-none"
-              style={{ background: V.beige, color: V.ink, cursor: "pointer" }}
-            >
-              {TZ_OPTIONS.map(({ value, label }) => (
-                <option key={value} value={value}>
-                  {label} ({value})
-                </option>
-              ))}
-            </select>
-          </div>
+          {digestEnabled && !digestStopped && (
+            <>
+              <div>
+                <p className="text-xs font-medium mb-1.5" style={{ color: V.muted }}>Fuso horário</p>
+                <select
+                  value={selectedTz}
+                  onChange={(e) => setSelectedTz(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl text-sm font-medium border-0 outline-none appearance-none"
+                  style={{ background: V.beige, color: V.ink, cursor: "pointer" }}
+                >
+                  {TZ_OPTIONS.map(({ value, label }) => (
+                    <option key={value} value={value}>
+                      {label} ({value})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {/* Hour selector + save */}
-          <div>
-            <p className="text-xs font-medium mb-1.5" style={{ color: V.muted }}>Horário</p>
-            <div className="flex items-center gap-3">
-              <select
-                value={selectedLocal}
-                onChange={(e) => setSelectedLocal(Number(e.target.value))}
-                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium border-0 outline-none appearance-none"
-                style={{ background: V.beige, color: V.ink, cursor: "pointer" }}
-              >
-                {hours.map((h) => (
-                  <option key={h} value={h}>
-                    {formatHour(h)}
-                  </option>
-                ))}
-              </select>
+              {/* Hour selector + save */}
+              <div>
+                <p className="text-xs font-medium mb-1.5" style={{ color: V.muted }}>Horário</p>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={selectedLocal}
+                    onChange={(e) => setSelectedLocal(Number(e.target.value))}
+                    className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium border-0 outline-none appearance-none"
+                    style={{ background: V.beige, color: V.ink, cursor: "pointer" }}
+                  >
+                    {hours.map((h) => (
+                      <option key={h} value={h}>
+                        {formatHour(h)}
+                      </option>
+                    ))}
+                  </select>
 
-              <button
-                onClick={() => void handleSave()}
-                disabled={updateHousehold.isPending || !isDirty}
-                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50 shrink-0"
-                style={{ background: saved ? "#059669" : V.primary }}
-              >
-                {updateHousehold.isPending ? "…" : saved ? "Salvo ✓" : "Salvar"}
-              </button>
-            </div>
-          </div>
+                  <button
+                    onClick={() => void handleSave()}
+                    disabled={updateHousehold.isPending || !isDirty}
+                    className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50 shrink-0"
+                    style={{ background: saved ? "#059669" : V.primary }}
+                  >
+                    {updateHousehold.isPending ? "…" : saved ? "Salvo ✓" : "Salvar"}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </section>

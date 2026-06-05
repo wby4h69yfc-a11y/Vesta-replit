@@ -2,6 +2,9 @@ import { Router, type Request, type Response } from "express";
 import { isTwilioConfigured, sendWhatsApp } from "../lib/whatsapp";
 import { resolveHouseholdAdminPhone } from "../lib/whatsapp";
 import { processInboundWAMessage } from "../lib/wa-message-processor";
+import { db } from "@workspace/db";
+import { householdsTable, onboardingStateTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import {
   replyVerificationSuccess,
   replyTokenExpired,
@@ -128,6 +131,49 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       NumMedia,
       MessageSid,
     } = req.body as Record<string, string | undefined>;
+
+    // ── Tier-0: PAUSAR / PARAR / RETOMAR keywords ──────────────────────────
+    // These are handled before the normal message processor to give users
+    // immediate control over proactive messages without any AI involvement.
+    const normalizedBody = (Body?.trim() ?? "").toUpperCase();
+    const isPausar = normalizedBody === "PAUSAR";
+    const isParar = normalizedBody === "PARAR";
+    const isRetomar = normalizedBody === "RETOMAR";
+
+    if (isPausar || isParar || isRetomar) {
+      const senderPhone = (From ?? "").replace(/^whatsapp:/i, "");
+      // Resolve household from verified phone
+      const [onboarding] = await db
+        .select({ household_id: onboardingStateTable.household_id })
+        .from(onboardingStateTable)
+        .where(eq(onboardingStateTable.whatsapp_verified_phone, senderPhone))
+        .limit(1);
+
+      if (onboarding) {
+        if (isPausar) {
+          const pausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          await db
+            .update(householdsTable)
+            .set({ digest_paused_until: pausedUntil, digest_stopped: false })
+            .where(eq(householdsTable.id, onboarding.household_id));
+          void sendWhatsApp(senderPhone, "⏸ Pausei por 24h. Manda *RETOMAR* pra voltar.");
+        } else if (isParar) {
+          await db
+            .update(householdsTable)
+            .set({ digest_stopped: true, digest_paused_until: null })
+            .where(eq(householdsTable.id, onboarding.household_id));
+          void sendWhatsApp(senderPhone, "🔕 Parei. Manda *RETOMAR* pra voltar.");
+        } else {
+          await db
+            .update(householdsTable)
+            .set({ digest_stopped: false, digest_paused_until: null, digest_enabled: true })
+            .where(eq(householdsTable.id, onboarding.household_id));
+          void sendWhatsApp(senderPhone, "▶️ Retomado! Você voltará a receber os resumos diários.");
+        }
+        req.log.info({ senderPhone, command: normalizedBody, householdId: onboarding.household_id }, "Proactive command processed");
+      }
+      return; // do not continue to normal message processing
+    }
 
     const outcome = await processInboundWAMessage(
       {

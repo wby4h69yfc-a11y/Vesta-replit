@@ -79,6 +79,15 @@ export interface Household {
    * @nullable
    */
   last_briefing_sent_at?: string | null;
+  /** Whether the proactive daily digest is enabled for this household. */
+  digest_enabled?: boolean;
+  /**
+   * When set, proactive messages are suppressed until this timestamp (set by PAUSAR command).
+   * @nullable
+   */
+  digest_paused_until?: string | null;
+  /** When true, all proactive messages are permanently stopped (set by PARAR command). */
+  digest_stopped?: boolean;
   created_at?: string;
 }
 
@@ -93,6 +102,10 @@ export interface HouseholdUpdate {
   briefing_hour?: number;
   /** IANA timezone name for this household (e.g. "America/Sao_Paulo"). */
   timezone?: string;
+  /** Whether the proactive daily digest is enabled. */
+  digest_enabled?: boolean;
+  /** When true, all proactive messages are permanently stopped. */
+  digest_stopped?: boolean;
 }
 
 export type MemberRole = (typeof MemberRole)[keyof typeof MemberRole];

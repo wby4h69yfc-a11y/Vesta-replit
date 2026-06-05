@@ -1548,6 +1548,16 @@ components:
           type: ["string", "null"]
           format: date-time
           description: Timestamp of the last successfully delivered daily briefing. Null if no briefing has been sent yet.
+        digest_enabled:
+          type: boolean
+          description: Whether the proactive daily digest is enabled for this household.
+        digest_paused_until:
+          type: ["string", "null"]
+          format: date-time
+          description: When set, proactive messages are suppressed until this timestamp (set by PAUSAR command).
+        digest_stopped:
+          type: boolean
+          description: When true, all proactive messages are permanently stopped (set by PARAR command).
         created_at:
           type: string
           format: date-time
@@ -1567,6 +1577,12 @@ components:
         timezone:
           type: string
           description: IANA timezone name for this household (e.g. "America/Sao_Paulo").
+        digest_enabled:
+          type: boolean
+          description: Whether the proactive daily digest is enabled.
+        digest_stopped:
+          type: boolean
+          description: When true, all proactive messages are permanently stopped.
 
     Member:
       type: object

@@ -6,16 +6,24 @@ import { sendHouseholdBriefing } from "./lib/briefing-core";
 import { detectPatternsForAllHouseholds } from "./lib/pattern-detector";
 import { runConsentRenewalJob } from "./lib/consent-renewal-scheduler";
 import { expireOldConversations } from "./lib/wa-prompt-store";
+import {
+  scheduleProactiveForAllHouseholds,
+  sendDueProactiveMessages,
+} from "./lib/proactive-scheduler";
 
 const TICK_INTERVAL_MS = 60_000;
 const PATTERN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const CONSENT_RENEWAL_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const WA_CONV_EXPIRY_INTERVAL_MS = 15 * 60 * 1000; // every 15 minutes
+const WA_CONV_EXPIRY_INTERVAL_MS = 15 * 60 * 1000;
+const PROACTIVE_SCHEDULE_INTERVAL_MS = 24 * 60 * 60 * 1000; // once daily
+const PROACTIVE_SEND_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
 
 let briefingIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let patternIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let consentRenewalIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let waConvExpiryIntervalHandle: ReturnType<typeof setInterval> | null = null;
+let proactiveScheduleIntervalHandle: ReturnType<typeof setInterval> | null = null;
+let proactiveSendIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
 function localHourInTimezone(date: Date, timezone: string): number {
   try {
@@ -125,6 +133,22 @@ async function waConvExpiryTick(): Promise<void> {
   }
 }
 
+async function proactiveScheduleTick(): Promise<void> {
+  try {
+    await scheduleProactiveForAllHouseholds();
+  } catch (err) {
+    logger.error({ err }, "Scheduler: proactive schedule tick error");
+  }
+}
+
+async function proactiveSendTick(): Promise<void> {
+  try {
+    await sendDueProactiveMessages();
+  } catch (err) {
+    logger.error({ err }, "Scheduler: proactive send tick error");
+  }
+}
+
 export function startScheduler(): void {
   if (briefingIntervalHandle !== null) {
     return;
@@ -151,6 +175,18 @@ export function startScheduler(): void {
     void waConvExpiryTick();
   }, WA_CONV_EXPIRY_INTERVAL_MS);
   logger.info({ intervalMs: WA_CONV_EXPIRY_INTERVAL_MS }, "WA conversation expiry scheduler started");
+
+  void proactiveScheduleTick();
+  proactiveScheduleIntervalHandle = setInterval(() => {
+    void proactiveScheduleTick();
+  }, PROACTIVE_SCHEDULE_INTERVAL_MS);
+  logger.info({ intervalMs: PROACTIVE_SCHEDULE_INTERVAL_MS }, "Proactive schedule tick started");
+
+  void proactiveSendTick();
+  proactiveSendIntervalHandle = setInterval(() => {
+    void proactiveSendTick();
+  }, PROACTIVE_SEND_INTERVAL_MS);
+  logger.info({ intervalMs: PROACTIVE_SEND_INTERVAL_MS }, "Proactive send tick started");
 }
 
 export function stopScheduler(): void {
@@ -173,5 +209,15 @@ export function stopScheduler(): void {
     clearInterval(waConvExpiryIntervalHandle);
     waConvExpiryIntervalHandle = null;
     logger.info("WA conversation expiry scheduler stopped");
+  }
+  if (proactiveScheduleIntervalHandle !== null) {
+    clearInterval(proactiveScheduleIntervalHandle);
+    proactiveScheduleIntervalHandle = null;
+    logger.info("Proactive schedule tick stopped");
+  }
+  if (proactiveSendIntervalHandle !== null) {
+    clearInterval(proactiveSendIntervalHandle);
+    proactiveSendIntervalHandle = null;
+    logger.info("Proactive send tick stopped");
   }
 }

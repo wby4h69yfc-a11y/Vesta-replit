@@ -11,6 +11,12 @@ export const householdsTable = pgTable("households", {
   last_briefing_sent_at: timestamp("last_briefing_sent_at", { withTimezone: true }),
   briefing_hour: integer("briefing_hour").notNull().default(7),
   timezone: text("timezone").notNull().default("America/Sao_Paulo"),
+  /** Whether the proactive daily digest is enabled for this household */
+  digest_enabled: boolean("digest_enabled").notNull().default(true),
+  /** When set, proactive messages are suppressed until this timestamp (PAUSAR command) */
+  digest_paused_until: timestamp("digest_paused_until", { withTimezone: true }),
+  /** When true, all proactive messages are permanently stopped (PARAR command) */
+  digest_stopped: boolean("digest_stopped").notNull().default(false),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -941,6 +941,24 @@ export const ExportPrivacyDataResponse = zod.object({
         .describe(
           "Timestamp of the last successfully delivered daily briefing. Null if no briefing has been sent yet.",
         ),
+      digest_enabled: zod
+        .boolean()
+        .optional()
+        .describe(
+          "Whether the proactive daily digest is enabled for this household.",
+        ),
+      digest_paused_until: zod.coerce
+        .date()
+        .nullish()
+        .describe(
+          "When set, proactive messages are suppressed until this timestamp (set by PAUSAR command).",
+        ),
+      digest_stopped: zod
+        .boolean()
+        .optional()
+        .describe(
+          "When true, all proactive messages are permanently stopped (set by PARAR command).",
+        ),
       created_at: zod.coerce.date().optional(),
     })
     .nullish(),
@@ -1351,6 +1369,24 @@ export const GetHouseholdResponse = zod.object({
     .describe(
       "Timestamp of the last successfully delivered daily briefing. Null if no briefing has been sent yet.",
     ),
+  digest_enabled: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether the proactive daily digest is enabled for this household.",
+    ),
+  digest_paused_until: zod.coerce
+    .date()
+    .nullish()
+    .describe(
+      "When set, proactive messages are suppressed until this timestamp (set by PAUSAR command).",
+    ),
+  digest_stopped: zod
+    .boolean()
+    .optional()
+    .describe(
+      "When true, all proactive messages are permanently stopped (set by PARAR command).",
+    ),
   created_at: zod.coerce.date().optional(),
 });
 
@@ -1377,6 +1413,14 @@ export const UpdateHouseholdBody = zod.object({
     .describe(
       'IANA timezone name for this household (e.g. \"America\/Sao_Paulo\").',
     ),
+  digest_enabled: zod
+    .boolean()
+    .optional()
+    .describe("Whether the proactive daily digest is enabled."),
+  digest_stopped: zod
+    .boolean()
+    .optional()
+    .describe("When true, all proactive messages are permanently stopped."),
 });
 
 export const updateHouseholdResponseBriefingHourMin = 0;
@@ -1407,6 +1451,24 @@ export const UpdateHouseholdResponse = zod.object({
     .nullish()
     .describe(
       "Timestamp of the last successfully delivered daily briefing. Null if no briefing has been sent yet.",
+    ),
+  digest_enabled: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether the proactive daily digest is enabled for this household.",
+    ),
+  digest_paused_until: zod.coerce
+    .date()
+    .nullish()
+    .describe(
+      "When set, proactive messages are suppressed until this timestamp (set by PAUSAR command).",
+    ),
+  digest_stopped: zod
+    .boolean()
+    .optional()
+    .describe(
+      "When true, all proactive messages are permanently stopped (set by PARAR command).",
     ),
   created_at: zod.coerce.date().optional(),
 });
