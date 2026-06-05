@@ -78,19 +78,29 @@ router.post("/actions/:id/approve", async (req, res) => {
       insertedTaskId = insertedTask?.id ?? null;
     }
 
-    // Create payment_obligation for payment_admin actions
+    // Create payment_obligation for payment_admin actions — single creation point.
+    // is_recurring was enriched into payment_data by the classifier for school_fee items.
     let createdObligationId: number | null = null;
     if (action.workflow_tags.includes("payment_admin")) {
-      const pd = action.payment_data as { amount_cents?: number | null; recipient?: string | null; due_date?: string | null; payment_method?: string | null } | null;
+      const pd = action.payment_data as {
+        amount_cents?: number | null;
+        recipient?: string | null;
+        due_date?: string | null;
+        payment_method?: string | null;
+        is_recurring?: boolean | null;
+      } | null;
+      const isRecurring = pd?.is_recurring === true;
       const [newOb] = await db.insert(paymentObligationsTable).values({
-        household_id:    hid,
-        source_inbox_id: action.inbox_item_id,
-        description:     action.title,
-        amount_cents:    pd?.amount_cents ?? null,
-        recipient:       pd?.recipient ?? null,
-        due_date:        pd?.due_date ?? null,
-        payment_method:  pd?.payment_method ?? null,
-        status:          "pending",
+        household_id:       hid,
+        source_inbox_id:    action.inbox_item_id,
+        description:        action.title,
+        amount_cents:       pd?.amount_cents ?? null,
+        recipient:          pd?.recipient ?? null,
+        due_date:           pd?.due_date ?? null,
+        payment_method:     pd?.payment_method ?? null,
+        is_recurring:       isRecurring,
+        recurrence_pattern: isRecurring ? "monthly" : null,
+        status:             "pending",
       }).returning();
       createdObligationId = newOb?.id ?? null;
 

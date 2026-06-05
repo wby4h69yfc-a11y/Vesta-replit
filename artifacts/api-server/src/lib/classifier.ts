@@ -621,24 +621,26 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
     }
   }
 
-  // ── WF-23: school fee → auto-create payment obligation + D-3 proactive ────
+  // ── WF-23: school fee → enrich payment_data with is_recurring + D-3 proactive ─
+  // Payment obligation is intentionally NOT created here — it is created exactly
+  // once in routes/actions.ts when the user approves the suggested action.
+  // Creating it here would duplicate the obligation every time a message is classified.
   if (wfTags.includes("school_fee") && result.payment_data) {
     try {
       const rawLower = item.raw_content.toLowerCase();
       const isRecurring = /mensalidade|mensal|anuidade/.test(rawLower);
-      await db.insert(paymentObligationsTable).values({
-        household_id:       item.household_id,
-        source_inbox_id:    inboxItemId,
-        description:        result.title.substring(0, 120),
-        recipient:          result.payment_data.recipient ?? null,
-        amount_cents:       result.payment_data.amount_cents ?? null,
-        currency:           "BRL",
-        due_date:           result.payment_data.due_date ?? null,
-        is_recurring:       isRecurring,
-        recurrence_pattern: isRecurring ? "monthly" : null,
-        payment_method:     result.payment_data.payment_method ?? null,
-        status:             "pending",
-      });
+      // Persist is_recurring into the suggested action's payment_data JSONB so the
+      // approval path in routes/actions.ts can use it without re-reading raw_content.
+      await db.execute(sql`
+        UPDATE suggested_actions
+        SET payment_data = jsonb_set(
+          COALESCE(payment_data, '{}'::jsonb),
+          '{is_recurring}',
+          ${isRecurring ? sql`'true'::jsonb` : sql`'false'::jsonb`}
+        )
+        WHERE inbox_item_id = ${inboxItemId}
+          AND household_id  = ${item.household_id}
+      `);
       // Enqueue proactive reminder 3 days before due date
       if (result.payment_data.due_date) {
         const dueDate = new Date(result.payment_data.due_date);
