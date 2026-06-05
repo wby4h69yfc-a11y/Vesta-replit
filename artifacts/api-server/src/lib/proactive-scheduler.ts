@@ -192,22 +192,23 @@ async function hasUnreadBacklog(householdId: number): Promise<boolean> {
   return (row?.total ?? 0) >= MAX_UNREAD_PROACTIVE;
 }
 
-async function alreadyScheduledToday(
+/**
+ * Dedup check by exact template_name key.
+ * Used for daily_digest and weekly_lookahead where the key encodes the
+ * delivery local-date, so restarts and duplicate ticks cannot enqueue a
+ * second row for the same delivery day regardless of scheduled_at.
+ */
+async function alreadyScheduledByTemplateKey(
   householdId: number,
-  triggerType: string,
-  tz: string,
+  templateName: string,
 ): Promise<boolean> {
-  const [dayStart, dayEnd] = localDayBounds(new Date(), tz);
-
   const [row] = await db
     .select({ total: count() })
     .from(proactiveMessageQueueTable)
     .where(
       and(
         eq(proactiveMessageQueueTable.household_id, householdId),
-        eq(proactiveMessageQueueTable.trigger_type, triggerType),
-        gte(proactiveMessageQueueTable.scheduled_at, dayStart),
-        lt(proactiveMessageQueueTable.scheduled_at, dayEnd),
+        eq(proactiveMessageQueueTable.template_name, templateName),
         or(
           eq(proactiveMessageQueueTable.status, "queued"),
           eq(proactiveMessageQueueTable.status, "sending"),
@@ -527,23 +528,26 @@ export async function scheduleProactiveMessages(householdId: number): Promise<vo
 
     if (isSunday) {
       // On Sundays, send the weekly look-ahead instead of the daily digest.
-      // Pre-schedule for 19h00 local if we haven't passed it yet; otherwise
-      // schedule for now so a missed window still delivers on the same day.
-      // alreadyScheduledToday deduplicates across multiple hourly ticks.
-      const alreadyWeekly = await alreadyScheduledToday(householdId, "weekly_lookahead", tz);
+      // Dedup key encodes this Sunday's local date so duplicate ticks (or
+      // restarts during the 19h hour) never insert a second row.
+      const sundayDateStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(now);
+      const weeklyTemplateKey = `weekly_lookahead_${sundayDateStr}`;
+      const alreadyWeekly = await alreadyScheduledByTemplateKey(householdId, weeklyTemplateKey);
       if (!alreadyWeekly) {
         let scheduledAt: Date;
         if (nowLocalHour < 19) {
-          // Still before the 19h window — pre-schedule for exactly 19h00 local
-          scheduledAt = nextLocalHourAfter(new Date(now.getTime() - 60_000), 19, tz);
+          // Still before the 19h window — pre-schedule for exactly 19h00 local.
+          // Subtract 1ms so nextLocalHourAfter(now-1ms, 19) targets today.
+          scheduledAt = nextLocalHourAfter(new Date(now.getTime() - 1), 19, tz);
         } else {
-          // At or past 19h (including catch-up after a server gap) — send now
+          // At or past 19h (including catch-up after a server gap) — send now.
           scheduledAt = enforceQuietHours(now, tz, qStart, qEnd);
         }
         const { message, event_titles } = await buildWeeklyLookaheadMessage(householdId, tz);
         await db.insert(proactiveMessageQueueTable).values({
           household_id: householdId,
           trigger_type: "weekly_lookahead",
+          template_name: weeklyTemplateKey,
           payload: { message, event_titles },
           scheduled_at: scheduledAt,
           status: "queued",
@@ -552,19 +556,34 @@ export async function scheduleProactiveMessages(householdId: number): Promise<vo
       }
     } else {
       // Weekday: enqueue the daily digest at briefing_hour local.
-      const alreadyQueued = await alreadyScheduledToday(householdId, "daily_digest", tz);
+      //
+      // Scheduling semantics:
+      //   nowLocalHour < target  → deliver TODAY at targetH (nextLocalHourAfter returns today)
+      //   nowLocalHour === target → we are in the window; deliver NOW
+      //   nowLocalHour > target  → missed today; deliver TOMORROW at targetH
+      //
+      // Dedup key encodes the delivery local date so repeated hourly ticks
+      // (or restarts during the digest hour) cannot insert a second row.
+      let scheduledAt: Date;
+      if (nowLocalHour === targetLocalHour) {
+        scheduledAt = enforceQuietHours(now, tz, qStart, qEnd);
+      } else {
+        scheduledAt = enforceQuietHours(nextLocalHourAfter(now, targetLocalHour, tz), tz, qStart, qEnd);
+      }
+      const deliveryDateStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(scheduledAt);
+      const digestTemplateKey = `daily_digest_${deliveryDateStr}`;
+      const alreadyQueued = await alreadyScheduledByTemplateKey(householdId, digestTemplateKey);
       if (!alreadyQueued) {
-        let scheduledAt = nextLocalHourAfter(now, targetLocalHour, tz);
-        scheduledAt = enforceQuietHours(scheduledAt, tz, qStart, qEnd);
         const { message, event_titles, task_titles } = await buildDailyDigestMessage(householdId, tz);
         await db.insert(proactiveMessageQueueTable).values({
           household_id: householdId,
           trigger_type: "daily_digest",
+          template_name: digestTemplateKey,
           payload: { message, event_titles, task_titles },
           scheduled_at: scheduledAt,
           status: "queued",
         });
-        logger.info({ householdId, scheduledAt }, "Proactive: daily digest enqueued");
+        logger.info({ householdId, scheduledAt, deliveryDateStr }, "Proactive: daily digest enqueued");
       }
     }
   }
