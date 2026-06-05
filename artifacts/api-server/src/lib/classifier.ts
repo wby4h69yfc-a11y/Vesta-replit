@@ -161,7 +161,7 @@ export function classifyText(text: string): ClassificationResult {
   }
 
   let payment_data: PaymentData | null = null;
-  if (/r\$|reais|pagament|pix|boleto|transferência/.test(lowerText)) {
+  if (/r\$|reais|pagament|pix|boleto|transferência|mensalidade|comprovante|condomínio|aluguel/.test(lowerText)) {
     workflow_tags = [...new Set([...workflow_tags, "payment_admin"])];
     cascade_check_needed = true;
     approval_level = "explicit";

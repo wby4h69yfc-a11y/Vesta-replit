@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckSquare, Plus, Circle, CheckCircle2, Clock, User, Trash2 } from "lucide-react";
+import { CheckSquare, Plus, Circle, CheckCircle2, Clock, User, Trash2, ChevronDown, ChevronUp, DollarSign } from "lucide-react";
 import {
   useListTasks,
   useCreateTask,
@@ -13,6 +13,7 @@ import { CATEGORIES } from "@/lib/categories";
 import { formatDate, isPast } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import PaymentSafetyChecklist from "@/components/PaymentSafetyChecklist";
 
 const STATUS_FILTERS = [
   { value: undefined,     label: "Todas" },
@@ -27,6 +28,7 @@ export default function TarefasPage() {
   const [statusFilter, setStatusFilter] = useState<import("@workspace/api-client-react").ListTasksStatus | undefined>("pending");
   const [catFilter, setCatFilter] = useState<string | undefined>(undefined);
   const [showCreate, setShowCreate] = useState(false);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [form, setForm] = useState({ title: "", due_at: "", category: "", workflow_tags: "" });
 
   const { data: tasks, isLoading } = useListTasks({
@@ -171,48 +173,85 @@ export default function TarefasPage() {
               <div
                 key={task.id}
                 className={cn(
-                  "flex items-start gap-3 bg-card border rounded-xl px-3 py-3 group",
+                  "bg-card border rounded-xl overflow-hidden",
                   overdue ? "border-amber-300 bg-amber-50" : "border-border",
                 )}
                 data-testid={`task-item-${task.id}`}
               >
-                <button
-                  onClick={() => task.status === "pending" && complete.mutate({ id: task.id })}
-                  disabled={task.status !== "pending" || complete.isPending}
-                  className="mt-0.5 shrink-0 disabled:cursor-default"
-                  data-testid={`complete-task-${task.id}`}
-                >
-                  {task.status === "done" ? (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                  ) : (
-                    <Circle className={cn("w-5 h-5", overdue ? "text-amber-500" : "text-muted-foreground hover:text-primary transition-colors")} />
-                  )}
-                </button>
-                <div className="flex-1 min-w-0">
-                  <p className={cn("text-sm font-medium leading-snug", task.status === "done" && "line-through text-muted-foreground")}>{task.title}</p>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    {task.category && <CategoryBadge category={task.category} />}
-                    {task.due_at && (
-                      <span className={cn("flex items-center gap-1 text-xs", overdue ? "text-amber-600 font-medium" : "text-muted-foreground")}>
-                        <Clock className="w-3 h-3" />
-                        {formatDate(task.due_at)}
-                      </span>
+                <div className="flex items-start gap-3 px-3 py-3 group">
+                  <button
+                    onClick={() => task.status === "pending" && complete.mutate({ id: task.id })}
+                    disabled={task.status !== "pending" || complete.isPending}
+                    className="mt-0.5 shrink-0 disabled:cursor-default"
+                    data-testid={`complete-task-${task.id}`}
+                  >
+                    {task.status === "done" ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                    ) : (
+                      <Circle className={cn("w-5 h-5", overdue ? "text-amber-500" : "text-muted-foreground hover:text-primary transition-colors")} />
                     )}
-                    {task.owner_name && (
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <User className="w-3 h-3" />
-                        {task.owner_name}
-                      </span>
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className={cn("text-sm font-medium leading-snug", task.status === "done" && "line-through text-muted-foreground")}>{task.title}</p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {task.category && <CategoryBadge category={task.category} />}
+                      {task.due_at && (
+                        <span className={cn("flex items-center gap-1 text-xs", overdue ? "text-amber-600 font-medium" : "text-muted-foreground")}>
+                          <Clock className="w-3 h-3" />
+                          {formatDate(task.due_at)}
+                        </span>
+                      )}
+                      {task.owner_name && (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <User className="w-3 h-3" />
+                          {task.owner_name}
+                        </span>
+                      )}
+                      {task.payment_status && (
+                        <span className="flex items-center gap-1 text-xs text-emerald-700 font-medium">
+                          <DollarSign className="w-3 h-3" />
+                          {task.payment_status === "paid" ? "Pago" : task.payment_status === "overdue" ? "Vencido" : "Pagamento pendente"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {task.payment_status && task.status !== "done" && (
+                      <button
+                        onClick={() => setExpandedId(expandedId === task.id ? null : task.id)}
+                        className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                        data-testid={`expand-task-${task.id}`}
+                        aria-expanded={expandedId === task.id}
+                      >
+                        {expandedId === task.id
+                          ? <ChevronUp className="w-4 h-4" />
+                          : <ChevronDown className="w-4 h-4" />
+                        }
+                      </button>
                     )}
+                    <button
+                      onClick={() => deleteTask.mutate({ id: task.id })}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-destructive transition-all"
+                      data-testid={`delete-task-${task.id}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={() => deleteTask.mutate({ id: task.id })}
-                  className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-destructive transition-all"
-                  data-testid={`delete-task-${task.id}`}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+
+                {/* Payment detail — expanded when task has payment_status */}
+                {expandedId === task.id && task.payment_status && (
+                  <div className="px-3 pb-3 pt-0 border-t border-border/50">
+                    <PaymentSafetyChecklist
+                      payment={{
+                        amount_cents:   task.payment_amount_cents,
+                        description:    task.title,
+                        due_date:       task.payment_due_date,
+                        payment_method: task.payment_method,
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             );
           })}

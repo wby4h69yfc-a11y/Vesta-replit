@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { paymentObligationsTable, membersTable } from "@workspace/db";
 import { eq, and, isNotNull } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
+import { openai } from "@workspace/integrations-openai-ai-server";
 
 const router = Router();
 
@@ -226,17 +227,81 @@ router.post("/payment-obligations/:id/comprovante", async (req, res) => {
     if (!existing) return res.status(404).json({ error: "Not found" });
     if (!proof_url) return res.status(400).json({ error: "proof_url is required" });
 
+    // OCR-based verification: use GPT-4o vision to extract payment details from the image
+    let ocr_note = "Comprovante registrado com sucesso.";
+    let ocr_amount_cents: number | null = null;
+    try {
+      const visionResp = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        max_tokens: 256,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Você é um assistente de verificação de comprovantes bancários brasileiros.
+Analise a imagem e extraia as seguintes informações em JSON:
+{
+  "valor": <número em reais, ex: 150.00, ou null>,
+  "destinatario": <nome do destinatário ou null>,
+  "data": <data no formato YYYY-MM-DD ou null>,
+  "metodo": <"pix"|"ted"|"boleto"|"cartao"|"dinheiro"|null>
+}
+Retorne APENAS o JSON, sem texto adicional.`,
+              },
+              {
+                type: "image_url",
+                image_url: { url: proof_url, detail: "low" },
+              },
+            ],
+          },
+        ],
+      });
+
+      const raw = visionResp.choices[0]?.message.content ?? "{}";
+      const parsed = JSON.parse(raw.trim()) as {
+        valor?: number | null;
+        destinatario?: string | null;
+        data?: string | null;
+        metodo?: string | null;
+      };
+
+      if (parsed.valor != null) {
+        ocr_amount_cents = Math.round(parsed.valor * 100);
+      }
+
+      // Build a human-readable verification note
+      const parts: string[] = ["Comprovante verificado por OCR."];
+      if (parsed.valor != null) {
+        const expectedVal = existing.amount_cents != null ? existing.amount_cents / 100 : null;
+        const match = expectedVal != null && Math.abs(parsed.valor - expectedVal) < 0.02;
+        parts.push(`Valor: R$\u00A0${parsed.valor.toFixed(2)}${expectedVal != null ? (match ? " ✓" : ` (esperado R$\u00A0${expectedVal.toFixed(2)}) ⚠️`) : ""}.`);
+      }
+      if (parsed.destinatario) parts.push(`Para: ${parsed.destinatario}.`);
+      if (parsed.data) parts.push(`Data: ${parsed.data.split("-").reverse().join("/")}.`);
+      if (parsed.metodo) parts.push(`Método: ${parsed.metodo}.`);
+      ocr_note = parts.join(" ");
+    } catch (ocrErr) {
+      req.log.warn({ ocrErr }, "OCR vision call failed, proceeding without verification");
+      ocr_note = "Comprovante registrado. Verificação automática indisponível no momento.";
+    }
+
     const [updated] = await db
       .update(paymentObligationsTable)
       .set({
         proof_url,
         status: "comprovante_received",
         paid_at: new Date(),
+        // If OCR found an amount and the obligation has none, backfill it
+        ...(ocr_amount_cents != null && existing.amount_cents == null
+          ? { amount_cents: ocr_amount_cents }
+          : {}),
       })
       .where(and(eq(paymentObligationsTable.id, id), eq(paymentObligationsTable.household_id, hid)))
       .returning();
 
-    return res.json({ obligation: updated, ocr_note: "Comprovante registrado com sucesso." });
+    return res.json({ obligation: updated, ocr_note });
   } catch (err) {
     req.log.error({ err }, "Failed to attach comprovante");
     res.status(500).json({ error: "Internal server error" });

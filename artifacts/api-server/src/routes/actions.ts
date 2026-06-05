@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { suggestedActionsTable, inboxItemsTable, calendarEventsTable, tasksTable, auditLogTable, contactsTable, paymentObligationsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { sendWhatsApp } from "../lib/whatsapp";
+import { sendWhatsApp, resolveHouseholdAdminPhone } from "../lib/whatsapp";
 import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
@@ -73,9 +73,10 @@ router.post("/actions/:id/approve", async (req, res) => {
     }
 
     // Create payment_obligation for payment_admin actions
+    let createdObligationId: number | null = null;
     if (action.workflow_tags.includes("payment_admin")) {
       const pd = action.payment_data as { amount_cents?: number | null; recipient?: string | null; due_date?: string | null; payment_method?: string | null } | null;
-      await db.insert(paymentObligationsTable).values({
+      const [newOb] = await db.insert(paymentObligationsTable).values({
         household_id:    hid,
         source_inbox_id: action.inbox_item_id,
         description:     action.title,
@@ -84,7 +85,8 @@ router.post("/actions/:id/approve", async (req, res) => {
         due_date:        pd?.due_date ?? null,
         payment_method:  pd?.payment_method ?? null,
         status:          "pending",
-      });
+      }).returning();
+      createdObligationId = newOb?.id ?? null;
     }
 
     const [updated] = await db
@@ -113,6 +115,28 @@ router.post("/actions/:id/approve", async (req, res) => {
       category: action.category,
       description: `Aprovado: ${action.title}`,
     });
+
+    // Send post-approval payment follow-up to household admin
+    if (createdObligationId != null) {
+      try {
+        const adminPhone = await resolveHouseholdAdminPhone(hid);
+        if (adminPhone) {
+          const pd = action.payment_data as { amount_cents?: number | null; due_date?: string | null } | null;
+          const amountStr = pd?.amount_cents
+            ? ` de R$\u00A0${(pd.amount_cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+            : "";
+          const dueStr = pd?.due_date
+            ? ` (vence ${pd.due_date.split("-").reverse().join("/")})`
+            : "";
+          void sendWhatsApp(
+            adminPhone,
+            `💰 Pagamento registrado: *${action.title}*${amountStr}${dueStr}.\n\nAo efetuar o pagamento, responda com uma foto do comprovante para registrar automaticamente.`,
+          );
+        }
+      } catch (waErr) {
+        req.log.warn({ waErr }, "Failed to send payment follow-up WhatsApp");
+      }
+    }
 
     // Send confirmation WhatsApp to original sender if their phone is known
     if (action.inbox_item_id) {

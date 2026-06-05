@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Banknote, CheckCircle2, Clock as ClockIcon, AlertCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Banknote, CheckCircle2, Clock as ClockIcon, AlertCircle, Sparkles } from "lucide-react";
 import {
   useListEvents, useCreateEvent, getListEventsQueryKey,
   useListPaymentObligations, useUpdatePaymentObligation, getListPaymentObligationsQueryKey,
@@ -13,6 +13,7 @@ import { formatTime, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { V } from "@/lib/brand";
+import UpgradePrompt from "@/components/UpgradePrompt";
 
 const DAYS_PT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -194,6 +195,8 @@ export default function AgendaPage() {
   const { toast } = useToast();
   const today = new Date();
   const [activeTab, setActiveTab] = useState<"calendario" | "financas">("calendario");
+  const [showFinancasUpgrade, setShowFinancasUpgrade] = useState(false);
+  const [financasUnlocked, setFinancasUnlocked] = useState(false);
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(today.getDate());
@@ -280,18 +283,33 @@ export default function AgendaPage() {
           Calendário
         </button>
         <button
-          onClick={() => setActiveTab("financas")}
+          onClick={() => {
+            if (!financasUnlocked) {
+              setShowFinancasUpgrade(true);
+            } else {
+              setActiveTab("financas");
+            }
+          }}
           className={cn("flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5",
             activeTab === "financas" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
           data-testid="tab-financas"
         >
           <Banknote className="w-3.5 h-3.5" />
           Finanças
+          {!financasUnlocked && <Sparkles className="w-3 h-3 opacity-60" />}
         </button>
       </div>
 
+      {/* Finanças upgrade prompt */}
+      {showFinancasUpgrade && (
+        <UpgradePrompt
+          limitLabel="A visão consolidada de Finanças da Casa é um recurso Premium. Faça upgrade para rastrear pagamentos, reembolsos e comprovantes."
+          onClose={() => setShowFinancasUpgrade(false)}
+        />
+      )}
+
       {/* Finanças view */}
-      {activeTab === "financas" && <FinancasView />}
+      {activeTab === "financas" && financasUnlocked && <FinancasView />}
 
       {/* Calendar content — only rendered when on "calendário" tab */}
       {activeTab === "calendario" && <>
