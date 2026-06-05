@@ -1,6 +1,13 @@
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { db } from "@workspace/db";
-import { inboxItemsTable, suggestedActionsTable, contactsTable, actionCascadesTable } from "@workspace/db";
+import {
+  inboxItemsTable,
+  suggestedActionsTable,
+  contactsTable,
+  actionCascadesTable,
+  crecheWaitlistsTable,
+  paymentObligationsTable,
+} from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "./whatsapp";
 import { notifyCascadeDeepLink } from "../routes/cascades";
@@ -76,8 +83,44 @@ const KEYWORD_RULES: Array<{
   confidence: number;
   workflow_tags?: string[];
 }> = [
+  // WF-24: backup care — must come before generic escola/diarista rules
   {
-    patterns: [/escola|colégio|creche|aula|reunião de pais|matrícula|boletim|professor|coordenador|educação/i],
+    patterns: [/creche\s*(fechou|fechada|vai fechar|não vai abrir|sem aula)|diarista\s*(cancelou|faltou|não vem|não vai vir)|filho\s*(doente|com febre|passando mal)|filha\s*(doente|com febre|passando mal)|criança\s*(doente|com febre)|emergência de cuidado/i],
+    category: "logistica",
+    type: "task",
+    approval_level: "explicit",
+    confidence: 0.87,
+    workflow_tags: ["backup_care"],
+  },
+  // WF-23: school fees — must come before generic payment rule
+  {
+    patterns: [/mensalidade\s*(escola|creche|berçário|maternal)|boleto\s*(escola|creche)|taxa\s*(escolar|matrícula|de matrícula)|anuidade\s*(escola|colégio)|contribuição\s*(escola|colégio)/i],
+    category: "escola",
+    type: "payment",
+    approval_level: "explicit",
+    confidence: 0.88,
+    workflow_tags: ["school_fee", "payment_admin"],
+  },
+  // WF-20: creche waitlist — must come before generic escola rule
+  {
+    patterns: [/lista\s*de\s*espera|fila\s*(da\s*creche|creche|de\s*creche)|vaga\s*(na\s*creche|em\s*creche|disponível\s*creche)|chamada\s*(da\s*creche|para\s*creche|de\s*vaga)|inscrição\s*(na\s*creche|creche)|berçário\s*(lista|vaga|fila|espera)/i],
+    category: "escola",
+    type: "task",
+    approval_level: "one_tap",
+    confidence: 0.88,
+    workflow_tags: ["creche_waitlist"],
+  },
+  // WF-21: matrícula checklist — must come before generic escola rule
+  {
+    patterns: [/matr[ií]cula\s*(escolar|na\s*escola|na\s*creche|para\s*escola)?|lista\s*de\s*documentos?\s*(para\s*(escola|matr[ií]cula|creche))|documentação\s*(escolar|para\s*escola|matr[ií]cula|creche)/i],
+    category: "escola",
+    type: "task",
+    approval_level: "explicit",
+    confidence: 0.86,
+    workflow_tags: ["matricula"],
+  },
+  {
+    patterns: [/escola|colégio|creche|aula|reunião de pais|boletim|professor|coordenador|educação/i],
     category: "escola",
     approval_level: "one_tap",
     confidence: 0.78,
@@ -206,9 +249,9 @@ Dado o texto de uma mensagem, retorne um JSON com exatamente estes campos:
   "suggested_owner": string|null, // Nome de pessoa mencionada para realizar a ação, ou null
   "approval_level": string, // Um de: soft | one_tap | explicit
   "confidence": number,    // 0.0 a 1.0
-  "workflow_tags": string[], // Array de tags relevantes. Inclua "payment_admin" se houver pagamento (R$, boleto, Pix, mensalidade, etc.)
+  "workflow_tags": string[], // Array de tags relevantes — ver lista abaixo
   "cascade_check_needed": boolean, // true se envolve pagamento, múltiplas pessoas ou evento recorrente
-  "payment_data": {         // Preencher quando workflow_tags inclui "payment_admin", senão null
+  "payment_data": {         // Preencher quando workflow_tags inclui "payment_admin" ou "school_fee", senão null
     "amount_cents": number|null,
     "recipient": string|null,
     "due_date": string|null,
@@ -227,17 +270,57 @@ Dado o texto de uma mensagem, retorne um JSON com exatamente estes campos:
   ]
 }
 
-Regras para cascade_intents:
-- Preencher cascade_intents apenas quando a mensagem dispara 2 ou mais ações INDEPENDENTES
-- Exemplos: "escola fechada — avise os pais E cancele o transporte", "diarista cancelou E Pedro tem consulta"
-- Para mensagens de intenção única, retornar cascade_intents: []
+Tags de workflow_tags disponíveis:
+- "payment_admin"     — qualquer pagamento (R$, boleto, Pix, mensalidade, condomínio, aluguel)
+- "school_fee"        — mensalidade escola/creche, taxa de matrícula, anuidade, boleto escolar
+- "creche_waitlist"   — lista de espera de creche, fila de vaga, chamada de vaga, inscrição em berçário/creche
+- "matricula"         — matrícula escolar/creche, lista de documentos para escola, documentação escolar
+- "parent_group_triage" — mensagem de grupo de pais com múltiplos tópicos misturados (avisos FYI + itens de ação + itens a ignorar)
+- "backup_care"       — creche/escola fechada inesperadamente, diarista cancelou, filho/filha doente, emergência de cuidado
+- "diarista"          — diarista, faxina, limpeza doméstica
+- "servicos"          — serviços de manutenção/reparo em casa
+
+Regras especiais por workflow_tag:
+
+WF-20 (creche_waitlist): Se detectar lista de espera de creche, vaga disponível ou chamada:
+  - Adicionar "creche_waitlist" em workflow_tags
+  - cascade_intents: []
+  - approval_level: "one_tap"
+
+WF-21 (matricula): Se detectar matrícula escolar ou lista de documentos:
+  - Adicionar "matricula" em workflow_tags
+  - cascade_intents: listar CADA documento como uma ação separada com type "task", approval_level "explicit"
+  - Documentos típicos BR: certidão de nascimento, comprovante de endereço, cartão de vacinas, fotos 3x4, RG+CPF dos pais, declaração médica
+  - Se houver taxa de matrícula, adicionar também "payment_admin" e preencher payment_data
+
+WF-22 (parent_group_triage): Se detectar mensagem de grupo de pais com múltiplos assuntos misturados:
+  - Adicionar "parent_group_triage" em workflow_tags de TODOS os cascade_intents
+  - cascade_intents deve separar: itens de ação obrigatória (approval_level "explicit"), avisos FYI (approval_level "soft"), itens sem relevância (type "fyi", approval_level "soft")
+  - Precisa de ≥2 cascade_intents
+
+WF-23 (school_fee): Se detectar mensalidade escola/creche, boleto escolar ou taxa:
+  - Adicionar "school_fee" E "payment_admin" em workflow_tags
+  - Preencher payment_data com amount_cents, recipient, due_date, payment_method
+  - approval_level: "explicit"
+
+WF-24 (backup_care): Se detectar creche/escola fechada, diarista cancelou, filho/filha doente, emergência de cuidado:
+  - Adicionar "backup_care" em workflow_tags de TODOS os cascade_intents
+  - cascade_intents DEVE ter exatamente 5 itens nesta ordem:
+    1. "Notificar escola/creche sobre ausência" (type "task", approval_level "one_tap")
+    2. "Cancelar logística de busca" (type "task", approval_level "one_tap")
+    3. "Acionar avó/cuidador backup" (type "task", approval_level "explicit")
+    4. "Reagendar reuniões afetadas" (type "task", approval_level "one_tap")
+    5. "Solicitar suporte Vesta" (type "fyi", approval_level "soft")
+
+Regras para cascade_intents (geral):
+- Preencher cascade_intents quando a mensagem dispara 2+ ações INDEPENDENTES (ou nas regras especiais acima)
+- Para mensagens de intenção única SEM regras especiais, retornar cascade_intents: []
 - Quando cascade_intents tem 2+ itens, o campo "title" no raiz descreve o gatilho geral
 
 Regras gerais:
 - approval_level "soft" = só aviso, não requer ação
 - approval_level "one_tap" = confirmação rápida necessária
 - approval_level "explicit" = revisão cuidadosa necessária (consulta médica, pagamento, serviço)
-- Para mensagens com R$, boleto, Pix, mensalidade, condomínio: sempre incluir "payment_admin" em workflow_tags
 - Responda APENAS com o JSON, sem markdown, sem explicações.`;
 
 async function classifyWithAI(text: string): Promise<ClassificationResult | null> {
@@ -314,10 +397,60 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
 
   const labelSuffix = senderDisplayName ? ` — de ${senderDisplayName}` : "";
 
+  // ── WF-21: matrícula → promote single-intent to document checklist cascade ─
+  const wfTags = result.workflow_tags ?? [];
+  if (wfTags.includes("matricula") && (result.cascade_intents ?? []).length === 0) {
+    const baseIntents: CascadeIntent[] = [
+      { title: "Reunir certidão de nascimento", type: "task", category: "escola", datetime: null, suggested_owner: null, approval_level: "explicit", workflow_tags: ["matricula"] },
+      { title: "Providenciar comprovante de endereço (últimos 3 meses)", type: "task", category: "escola", datetime: result.datetime, suggested_owner: null, approval_level: "explicit", workflow_tags: ["matricula"] },
+      { title: "Atualizar e copiar cartão de vacinas", type: "task", category: "escola", datetime: null, suggested_owner: null, approval_level: "explicit", workflow_tags: ["matricula"] },
+      { title: "Tirar fotos 3×4 recentes", type: "task", category: "escola", datetime: null, suggested_owner: null, approval_level: "one_tap", workflow_tags: ["matricula"] },
+      { title: "Copiar RG e CPF dos responsáveis", type: "task", category: "escola", datetime: null, suggested_owner: null, approval_level: "explicit", workflow_tags: ["matricula"] },
+      { title: "Obter declaração médica", type: "task", category: "escola", datetime: null, suggested_owner: null, approval_level: "explicit", workflow_tags: ["matricula"] },
+    ];
+    if (result.payment_data?.amount_cents) {
+      const feeLabel = `R$\u00A0${(result.payment_data.amount_cents / 100).toFixed(2).replace(".", ",")}`;
+      baseIntents.push({
+        title: `Pagar taxa de matrícula (${feeLabel})`,
+        type: "payment",
+        category: "escola",
+        datetime: result.payment_data.due_date,
+        suggested_owner: null,
+        approval_level: "explicit",
+        workflow_tags: ["matricula", "payment_admin"],
+        payment_data: result.payment_data,
+      });
+    }
+    result.cascade_intents = baseIntents;
+    if (!result.title.toLowerCase().includes("matrícula")) {
+      result.title = `Matrícula — ${result.title}`.substring(0, 120);
+    }
+  }
+
+  // ── WF-24: backup_care single-intent → promote to 5-item cascade ──────────
+  if (wfTags.includes("backup_care") && (result.cascade_intents ?? []).length === 0) {
+    result.cascade_intents = [
+      { title: "Notificar escola/creche sobre ausência", type: "task", category: "escola", datetime: null, suggested_owner: null, approval_level: "one_tap", workflow_tags: ["backup_care"] },
+      { title: "Cancelar logística de busca", type: "task", category: "logistica", datetime: null, suggested_owner: null, approval_level: "one_tap", workflow_tags: ["backup_care"] },
+      { title: "Acionar avó/cuidador backup", type: "task", category: "logistica", datetime: null, suggested_owner: null, approval_level: "explicit", workflow_tags: ["backup_care"] },
+      { title: "Reagendar reuniões afetadas", type: "task", category: "outros", datetime: null, suggested_owner: null, approval_level: "one_tap", workflow_tags: ["backup_care"] },
+      { title: "Solicitar suporte Vesta", type: "fyi", category: "outros", datetime: null, suggested_owner: null, approval_level: "soft", workflow_tags: ["backup_care"] },
+    ];
+  }
+
   // ── Cascade path: ≥2 distinct intents from the same message ──────────────
   const intents = result.cascade_intents ?? [];
   if (intents.length >= 2) {
     const triggerDescription = result.title.substring(0, 120);
+
+    // Determine cascade_type from the dominant workflow_tag across intents
+    const allTags = intents.flatMap((i) => Array.isArray(i.workflow_tags) ? i.workflow_tags : []);
+    const topLevelTags = Array.isArray(result.workflow_tags) ? result.workflow_tags : [];
+    const combinedTags = [...topLevelTags, ...allTags];
+    let cascade_type = "standard";
+    if (combinedTags.includes("backup_care")) cascade_type = "backup_care";
+    else if (combinedTags.includes("parent_group_triage")) cascade_type = "parent_group_triage";
+    else if (combinedTags.includes("matricula")) cascade_type = "matricula";
 
     const [cascade] = await db
       .insert(actionCascadesTable)
@@ -325,6 +458,7 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
         household_id:        item.household_id,
         source_inbox_id:     inboxItemId,
         trigger_description: triggerDescription,
+        cascade_type,
       })
       .returning();
 
@@ -429,6 +563,45 @@ export async function classifyAndSaveAction(inboxItemId: number): Promise<void> 
     .update(inboxItemsTable)
     .set({ status: "ready_for_review" })
     .where(eq(inboxItemsTable.id, inboxItemId));
+
+  // ── WF-20: creche waitlist → auto-create waitlist tracking row ─────────────
+  if (wfTags.includes("creche_waitlist")) {
+    try {
+      const rawName = item.raw_content.substring(0, 200);
+      const nameMatch = rawName.match(/creche\s+([A-Za-záéíóúâêîôûãõàèìòùçÁÉÍÓÚÂÊÎÔÛÃÕÀ\s]{2,30})/i);
+      const creche_name = (nameMatch?.[1]?.trim() ?? result.title.replace(/lista de espera|chamada|vaga|fila|creche/gi, "").trim()) || "Creche";
+      await db.insert(crecheWaitlistsTable).values({
+        household_id: item.household_id,
+        creche_name: creche_name.substring(0, 100),
+        source_inbox_id: inboxItemId,
+        status: "waiting",
+        document_checklist: [],
+      });
+    } catch {
+      // non-blocking — best effort
+    }
+  }
+
+  // ── WF-23: school fee → auto-create payment obligation ────────────────────
+  if (wfTags.includes("school_fee") && result.payment_data) {
+    try {
+      await db.insert(paymentObligationsTable).values({
+        household_id:       item.household_id,
+        source_inbox_id:    inboxItemId,
+        description:        result.title.substring(0, 120),
+        recipient:          result.payment_data.recipient ?? null,
+        amount_cents:       result.payment_data.amount_cents ?? null,
+        currency:           "BRL",
+        due_date:           result.payment_data.due_date ?? null,
+        is_recurring:       true,
+        recurrence_pattern: "monthly",
+        payment_method:     result.payment_data.payment_method ?? null,
+        status:             "pending",
+      });
+    } catch {
+      // non-blocking — best effort
+    }
+  }
 
   // Notify household admin for explicit-approval items
   if (result.approval_level === "explicit") {

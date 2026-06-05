@@ -9,6 +9,14 @@ export const actionCascadesTable = pgTable("action_cascades", {
   household_id: integer("household_id").notNull(),
   source_inbox_id: integer("source_inbox_id").notNull(),
   trigger_description: text("trigger_description").notNull(),
+  /**
+   * Differentiates cascade rendering in the inbox UI.
+   * standard           — regular multi-intent cascade (Task #115)
+   * parent_group_triage — WF-22: shows acao_necessaria / fyi / ignorar sections
+   * backup_care         — WF-24: shows 5-step backup care cascade
+   * matricula           — WF-21: shows document checklist cascade
+   */
+  cascade_type: text("cascade_type").notNull().default("standard"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

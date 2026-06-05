@@ -37,6 +37,9 @@ import type {
   Contact,
   ContactInput,
   ContactUpdate,
+  CrecheWaitlist,
+  CrecheWaitlistInput,
+  CrecheWaitlistUpdate,
   DashboardSummary,
   ErrorEnvelope,
   HandleBrowserLoginCallbackParams,
@@ -53,6 +56,7 @@ import type {
   ListActionsParams,
   ListAuditLogParams,
   ListContactsParams,
+  ListCrecheWaitlistsParams,
   ListEventsParams,
   ListInboxItemsParams,
   ListPatternsParams,
@@ -2282,6 +2286,279 @@ export const useDismissCascadeAll = <
   TContext
 > => {
   return useMutation(getDismissCascadeAllMutationOptions(options));
+};
+
+/**
+ * @summary List creche waitlist entries for the household
+ */
+export const getListCrecheWaitlistsUrl = (
+  params?: ListCrecheWaitlistsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/creche-waitlists?${stringifiedParams}`
+    : `/api/creche-waitlists`;
+};
+
+export const listCrecheWaitlists = async (
+  params?: ListCrecheWaitlistsParams,
+  options?: RequestInit,
+): Promise<CrecheWaitlist[]> => {
+  return customFetch<CrecheWaitlist[]>(getListCrecheWaitlistsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCrecheWaitlistsQueryKey = (
+  params?: ListCrecheWaitlistsParams,
+) => {
+  return [`/api/creche-waitlists`, ...(params ? [params] : [])] as const;
+};
+
+export const getListCrecheWaitlistsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCrecheWaitlists>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListCrecheWaitlistsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCrecheWaitlists>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListCrecheWaitlistsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCrecheWaitlists>>
+  > = ({ signal }) =>
+    listCrecheWaitlists(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCrecheWaitlists>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCrecheWaitlistsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCrecheWaitlists>>
+>;
+export type ListCrecheWaitlistsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List creche waitlist entries for the household
+ */
+
+export function useListCrecheWaitlists<
+  TData = Awaited<ReturnType<typeof listCrecheWaitlists>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListCrecheWaitlistsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCrecheWaitlists>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCrecheWaitlistsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a new creche waitlist entry
+ */
+export const getCreateCrecheWaitlistUrl = () => {
+  return `/api/creche-waitlists`;
+};
+
+export const createCrecheWaitlist = async (
+  crecheWaitlistInput: CrecheWaitlistInput,
+  options?: RequestInit,
+): Promise<CrecheWaitlist> => {
+  return customFetch<CrecheWaitlist>(getCreateCrecheWaitlistUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(crecheWaitlistInput),
+  });
+};
+
+export const getCreateCrecheWaitlistMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCrecheWaitlist>>,
+    TError,
+    { data: BodyType<CrecheWaitlistInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCrecheWaitlist>>,
+  TError,
+  { data: BodyType<CrecheWaitlistInput> },
+  TContext
+> => {
+  const mutationKey = ["createCrecheWaitlist"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCrecheWaitlist>>,
+    { data: BodyType<CrecheWaitlistInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createCrecheWaitlist(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCrecheWaitlistMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCrecheWaitlist>>
+>;
+export type CreateCrecheWaitlistMutationBody = BodyType<CrecheWaitlistInput>;
+export type CreateCrecheWaitlistMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a new creche waitlist entry
+ */
+export const useCreateCrecheWaitlist = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCrecheWaitlist>>,
+    TError,
+    { data: BodyType<CrecheWaitlistInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCrecheWaitlist>>,
+  TError,
+  { data: BodyType<CrecheWaitlistInput> },
+  TContext
+> => {
+  return useMutation(getCreateCrecheWaitlistMutationOptions(options));
+};
+
+/**
+ * @summary Update a creche waitlist entry
+ */
+export const getUpdateCrecheWaitlistUrl = (id: number) => {
+  return `/api/creche-waitlists/${id}`;
+};
+
+export const updateCrecheWaitlist = async (
+  id: number,
+  crecheWaitlistUpdate: CrecheWaitlistUpdate,
+  options?: RequestInit,
+): Promise<CrecheWaitlist> => {
+  return customFetch<CrecheWaitlist>(getUpdateCrecheWaitlistUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(crecheWaitlistUpdate),
+  });
+};
+
+export const getUpdateCrecheWaitlistMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCrecheWaitlist>>,
+    TError,
+    { id: number; data: BodyType<CrecheWaitlistUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateCrecheWaitlist>>,
+  TError,
+  { id: number; data: BodyType<CrecheWaitlistUpdate> },
+  TContext
+> => {
+  const mutationKey = ["updateCrecheWaitlist"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateCrecheWaitlist>>,
+    { id: number; data: BodyType<CrecheWaitlistUpdate> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateCrecheWaitlist(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateCrecheWaitlistMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateCrecheWaitlist>>
+>;
+export type UpdateCrecheWaitlistMutationBody = BodyType<CrecheWaitlistUpdate>;
+export type UpdateCrecheWaitlistMutationError = ErrorType<void>;
+
+/**
+ * @summary Update a creche waitlist entry
+ */
+export const useUpdateCrecheWaitlist = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCrecheWaitlist>>,
+    TError,
+    { id: number; data: BodyType<CrecheWaitlistUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateCrecheWaitlist>>,
+  TError,
+  { id: number; data: BodyType<CrecheWaitlistUpdate> },
+  TContext
+> => {
+  return useMutation(getUpdateCrecheWaitlistMutationOptions(options));
 };
 
 /**

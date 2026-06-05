@@ -886,11 +886,22 @@ export interface InboxItemInput {
   sender_name?: string;
 }
 
+export type ActionCascadeWithActionsCascadeType =
+  (typeof ActionCascadeWithActionsCascadeType)[keyof typeof ActionCascadeWithActionsCascadeType];
+
+export const ActionCascadeWithActionsCascadeType = {
+  standard: "standard",
+  parent_group_triage: "parent_group_triage",
+  backup_care: "backup_care",
+  matricula: "matricula",
+} as const;
+
 export interface ActionCascadeWithActions {
   id: number;
   household_id: number;
   source_inbox_id: number;
   trigger_description: string;
+  cascade_type: ActionCascadeWithActionsCascadeType;
   created_at: string;
   actions: SuggestedAction[];
 }
@@ -1260,6 +1271,99 @@ export interface ComprovanteAttachResult {
   ocr_note: string;
 }
 
+export interface CrecheWaitlistDocItem {
+  doc: string;
+  done: boolean;
+}
+
+export type CrecheWaitlistStatus =
+  (typeof CrecheWaitlistStatus)[keyof typeof CrecheWaitlistStatus];
+
+export const CrecheWaitlistStatus = {
+  waiting: "waiting",
+  called: "called",
+  enrolled: "enrolled",
+  cancelled: "cancelled",
+} as const;
+
+export interface CrecheWaitlist {
+  id: number;
+  household_id: number;
+  creche_name: string;
+  /** @nullable */
+  child_id?: number | null;
+  status: CrecheWaitlistStatus;
+  /**
+   * ISO date YYYY-MM-DD
+   * @nullable
+   */
+  registered_at?: string | null;
+  /**
+   * ISO date YYYY-MM-DD
+   * @nullable
+   */
+  estimated_call_date?: string | null;
+  /** @nullable */
+  next_followup_at?: string | null;
+  document_checklist?: CrecheWaitlistDocItem[];
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  source_inbox_id?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type CrecheWaitlistInputStatus =
+  (typeof CrecheWaitlistInputStatus)[keyof typeof CrecheWaitlistInputStatus];
+
+export const CrecheWaitlistInputStatus = {
+  waiting: "waiting",
+  called: "called",
+  enrolled: "enrolled",
+  cancelled: "cancelled",
+} as const;
+
+export interface CrecheWaitlistInput {
+  creche_name: string;
+  child_id?: number;
+  status?: CrecheWaitlistInputStatus;
+  /** ISO date YYYY-MM-DD */
+  registered_at?: string;
+  /** ISO date YYYY-MM-DD */
+  estimated_call_date?: string;
+  next_followup_at?: string;
+  document_checklist?: CrecheWaitlistDocItem[];
+  notes?: string;
+  source_inbox_id?: number;
+}
+
+export type CrecheWaitlistUpdateStatus =
+  (typeof CrecheWaitlistUpdateStatus)[keyof typeof CrecheWaitlistUpdateStatus];
+
+export const CrecheWaitlistUpdateStatus = {
+  waiting: "waiting",
+  called: "called",
+  enrolled: "enrolled",
+  cancelled: "cancelled",
+} as const;
+
+export interface CrecheWaitlistUpdate {
+  creche_name?: string;
+  /** @nullable */
+  child_id?: number | null;
+  status?: CrecheWaitlistUpdateStatus;
+  /** @nullable */
+  registered_at?: string | null;
+  /** @nullable */
+  estimated_call_date?: string | null;
+  /** @nullable */
+  next_followup_at?: string | null;
+  document_checklist?: CrecheWaitlistDocItem[];
+  /** @nullable */
+  notes?: string | null;
+}
+
 /**
  * Opaque session token — `Bearer <sid>`.
  */
@@ -1309,6 +1413,20 @@ export const ListActionsStatus = {
   approved: "approved",
   dismissed: "dismissed",
   auto_handled: "auto_handled",
+} as const;
+
+export type ListCrecheWaitlistsParams = {
+  status?: ListCrecheWaitlistsStatus;
+};
+
+export type ListCrecheWaitlistsStatus =
+  (typeof ListCrecheWaitlistsStatus)[keyof typeof ListCrecheWaitlistsStatus];
+
+export const ListCrecheWaitlistsStatus = {
+  waiting: "waiting",
+  called: "called",
+  enrolled: "enrolled",
+  cancelled: "cancelled",
 } as const;
 
 export type ListTasksParams = {

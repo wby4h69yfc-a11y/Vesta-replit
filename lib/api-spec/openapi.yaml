@@ -40,6 +40,8 @@ tags:
     description: Payment obligations, comprovantes, and reimbursement tracking
   - name: storage
     description: Object storage upload and serving endpoints
+  - name: creche
+    description: Creche waitlist and school workflow tracking
 
 paths:
   /storage/uploads/request-url:
@@ -527,6 +529,72 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CascadeBulkResult"
+
+  # ── Creche Waitlists (WF-20) ─────────────────────────────────────
+  /creche-waitlists:
+    get:
+      operationId: listCrecheWaitlists
+      tags: [creche]
+      summary: List creche waitlist entries for the household
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [waiting, called, enrolled, cancelled]
+      responses:
+        "200":
+          description: List of waitlist entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CrecheWaitlist"
+    post:
+      operationId: createCrecheWaitlist
+      tags: [creche]
+      summary: Create a new creche waitlist entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrecheWaitlistInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrecheWaitlist"
+
+  /creche-waitlists/{id}:
+    patch:
+      operationId: updateCrecheWaitlist
+      tags: [creche]
+      summary: Update a creche waitlist entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrecheWaitlistUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrecheWaitlist"
+        "404":
+          description: Not found
 
   # ── Tasks ────────────────────────────────────────────────────────
   /tasks:
@@ -2341,7 +2409,7 @@ components:
     # ── Suggested Actions ────────────────────────────────────────
     ActionCascadeWithActions:
       type: object
-      required: [id, household_id, source_inbox_id, trigger_description, created_at, actions]
+      required: [id, household_id, source_inbox_id, trigger_description, cascade_type, created_at, actions]
       properties:
         id:
           type: integer
@@ -2351,6 +2419,10 @@ components:
           type: integer
         trigger_description:
           type: string
+        cascade_type:
+          type: string
+          enum: [standard, parent_group_triage, backup_care, matricula]
+          default: standard
         created_at:
           type: string
           format: date-time
@@ -3094,3 +3166,105 @@ components:
           $ref: "#/components/schemas/PaymentObligation"
         ocr_note:
           type: string
+
+    # ── Creche Waitlists (WF-20) ─────────────────────────────────
+    CrecheWaitlistDocItem:
+      type: object
+      required: [doc, done]
+      properties:
+        doc:
+          type: string
+        done:
+          type: boolean
+
+    CrecheWaitlist:
+      type: object
+      required: [id, household_id, creche_name, status, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        household_id:
+          type: integer
+        creche_name:
+          type: string
+        child_id:
+          type: ["integer", "null"]
+        status:
+          type: string
+          enum: [waiting, called, enrolled, cancelled]
+        registered_at:
+          type: ["string", "null"]
+          description: ISO date YYYY-MM-DD
+        estimated_call_date:
+          type: ["string", "null"]
+          description: ISO date YYYY-MM-DD
+        next_followup_at:
+          type: ["string", "null"]
+          format: date-time
+        document_checklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/CrecheWaitlistDocItem"
+        notes:
+          type: ["string", "null"]
+        source_inbox_id:
+          type: ["integer", "null"]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CrecheWaitlistInput:
+      type: object
+      required: [creche_name]
+      properties:
+        creche_name:
+          type: string
+        child_id:
+          type: integer
+        status:
+          type: string
+          enum: [waiting, called, enrolled, cancelled]
+        registered_at:
+          type: string
+          description: ISO date YYYY-MM-DD
+        estimated_call_date:
+          type: string
+          description: ISO date YYYY-MM-DD
+        next_followup_at:
+          type: string
+          format: date-time
+        document_checklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/CrecheWaitlistDocItem"
+        notes:
+          type: string
+        source_inbox_id:
+          type: integer
+
+    CrecheWaitlistUpdate:
+      type: object
+      properties:
+        creche_name:
+          type: string
+        child_id:
+          type: ["integer", "null"]
+        status:
+          type: string
+          enum: [waiting, called, enrolled, cancelled]
+        registered_at:
+          type: ["string", "null"]
+        estimated_call_date:
+          type: ["string", "null"]
+        next_followup_at:
+          type: ["string", "null"]
+          format: date-time
+        document_checklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/CrecheWaitlistDocItem"
+        notes:
+          type: ["string", "null"]

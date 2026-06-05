@@ -1,4 +1,5 @@
 import { Clock, ListChecks, Inbox as InboxIcon, Zap, ChevronRight, ArrowRight, Banknote, CheckCircle2 } from "lucide-react";
+import WaitlistCard from "@/components/WaitlistCard";
 import { Link } from "wouter";
 import {
   useGetDashboardSummary,
@@ -199,6 +200,9 @@ export default function AppDashboard() {
 
       {/* Pattern nudge — surfaces when AI has detected new rule suggestions */}
       <PatternNudge />
+
+      {/* Creche waitlist — shows when there are active waitlists (WF-20) */}
+      <WaitlistCard />
 
       {/* Reimbursements tracker — only shows when there are pending reimbursements */}
       <ReimbursementsCard />

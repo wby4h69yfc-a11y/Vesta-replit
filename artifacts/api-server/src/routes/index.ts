@@ -26,6 +26,7 @@ import devPublicRouter from "./dev-public";
 import paymentObligationsRouter from "./payment-obligations";
 import cascadesRouter from "./cascades";
 import storageRouter, { storagePrivateRouter } from "./storage";
+import crecheWaitlistsRouter from "./creche-waitlists";
 
 const router: IRouter = Router();
 
@@ -84,6 +85,7 @@ protectedRouter.use(privacyRouter);            // GET /privacy/export, DELETE /a
 protectedRouter.use(adminRouter);              // GET /admin/stats
 protectedRouter.use(paymentObligationsRouter); // GET|POST /payment-obligations, PATCH|DELETE /payment-obligations/:id, POST /payment-obligations/:id/settle|comprovante
 protectedRouter.use(cascadesRouter);           // GET /actions/cascades, POST /actions/cascades/:id/approve-all|dismiss-all
+protectedRouter.use(crecheWaitlistsRouter);    // GET|POST /creche-waitlists, PATCH /creche-waitlists/:id
 protectedRouter.use(storagePrivateRouter);     // POST /storage/uploads/request-url, GET /storage/objects/*
 
 // Catch-all: any path that reaches here through the protectedRouter did not

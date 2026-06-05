@@ -16,6 +16,7 @@ import {
   type SuggestedAction,
 } from "@workspace/api-client-react";
 import CascadeCard from "@/components/CascadeCard";
+import ParentGroupTriageCard from "@/components/ParentGroupTriageCard";
 import { useQueryClient } from "@tanstack/react-query";
 import ApprovalCard from "@/components/ApprovalCard";
 import CategoryBadge from "@/components/CategoryBadge";
@@ -300,9 +301,13 @@ export default function InboxPage() {
             </h2>
           </div>
           <div className="space-y-2">
-            {activeCascades.map((cascade) => (
-              <CascadeCard key={cascade.id} cascade={cascade} />
-            ))}
+            {activeCascades.map((cascade) =>
+              cascade.cascade_type === "parent_group_triage" ? (
+                <ParentGroupTriageCard key={cascade.id} cascade={cascade} />
+              ) : (
+                <CascadeCard key={cascade.id} cascade={cascade} />
+              )
+            )}
           </div>
         </section>
       )}

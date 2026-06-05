@@ -550,11 +550,16 @@ export const EditActionResponse = zod.object({
 /**
  * @summary List active cascade groups with their nested actions
  */
+export const listActionCascadesResponseCascadeTypeDefault = `standard`;
+
 export const ListActionCascadesResponseItem = zod.object({
   id: zod.number(),
   household_id: zod.number(),
   source_inbox_id: zod.number(),
   trigger_description: zod.string(),
+  cascade_type: zod
+    .enum(["standard", "parent_group_triage", "backup_care", "matricula"])
+    .default(listActionCascadesResponseCascadeTypeDefault),
   created_at: zod.coerce.date(),
   actions: zod.array(
     zod.object({
@@ -619,6 +624,109 @@ export const DismissCascadeAllParams = zod.object({
 export const DismissCascadeAllResponse = zod.object({
   approved: zod.number().optional(),
   dismissed: zod.number().optional(),
+});
+
+/**
+ * @summary List creche waitlist entries for the household
+ */
+export const ListCrecheWaitlistsQueryParams = zod.object({
+  status: zod.enum(["waiting", "called", "enrolled", "cancelled"]).optional(),
+});
+
+export const ListCrecheWaitlistsResponseItem = zod.object({
+  id: zod.number(),
+  household_id: zod.number(),
+  creche_name: zod.string(),
+  child_id: zod.number().nullish(),
+  status: zod.enum(["waiting", "called", "enrolled", "cancelled"]),
+  registered_at: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+  estimated_call_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+  next_followup_at: zod.coerce.date().nullish(),
+  document_checklist: zod
+    .array(
+      zod.object({
+        doc: zod.string(),
+        done: zod.boolean(),
+      }),
+    )
+    .optional(),
+  notes: zod.string().nullish(),
+  source_inbox_id: zod.number().nullish(),
+  created_at: zod.coerce.date(),
+  updated_at: zod.coerce.date(),
+});
+export const ListCrecheWaitlistsResponse = zod.array(
+  ListCrecheWaitlistsResponseItem,
+);
+
+/**
+ * @summary Create a new creche waitlist entry
+ */
+export const CreateCrecheWaitlistBody = zod.object({
+  creche_name: zod.string(),
+  child_id: zod.number().optional(),
+  status: zod.enum(["waiting", "called", "enrolled", "cancelled"]).optional(),
+  registered_at: zod.string().optional().describe("ISO date YYYY-MM-DD"),
+  estimated_call_date: zod.string().optional().describe("ISO date YYYY-MM-DD"),
+  next_followup_at: zod.coerce.date().optional(),
+  document_checklist: zod
+    .array(
+      zod.object({
+        doc: zod.string(),
+        done: zod.boolean(),
+      }),
+    )
+    .optional(),
+  notes: zod.string().optional(),
+  source_inbox_id: zod.number().optional(),
+});
+
+/**
+ * @summary Update a creche waitlist entry
+ */
+export const UpdateCrecheWaitlistParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateCrecheWaitlistBody = zod.object({
+  creche_name: zod.string().optional(),
+  child_id: zod.number().nullish(),
+  status: zod.enum(["waiting", "called", "enrolled", "cancelled"]).optional(),
+  registered_at: zod.string().nullish(),
+  estimated_call_date: zod.string().nullish(),
+  next_followup_at: zod.coerce.date().nullish(),
+  document_checklist: zod
+    .array(
+      zod.object({
+        doc: zod.string(),
+        done: zod.boolean(),
+      }),
+    )
+    .optional(),
+  notes: zod.string().nullish(),
+});
+
+export const UpdateCrecheWaitlistResponse = zod.object({
+  id: zod.number(),
+  household_id: zod.number(),
+  creche_name: zod.string(),
+  child_id: zod.number().nullish(),
+  status: zod.enum(["waiting", "called", "enrolled", "cancelled"]),
+  registered_at: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+  estimated_call_date: zod.string().nullish().describe("ISO date YYYY-MM-DD"),
+  next_followup_at: zod.coerce.date().nullish(),
+  document_checklist: zod
+    .array(
+      zod.object({
+        doc: zod.string(),
+        done: zod.boolean(),
+      }),
+    )
+    .optional(),
+  notes: zod.string().nullish(),
+  source_inbox_id: zod.number().nullish(),
+  created_at: zod.coerce.date(),
+  updated_at: zod.coerce.date(),
 });
 
 /**
