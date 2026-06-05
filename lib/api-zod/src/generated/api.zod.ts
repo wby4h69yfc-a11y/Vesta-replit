@@ -1511,6 +1511,7 @@ export const ExportPrivacyDataResponse = zod.object({
           "escola",
           "saude",
           "casa",
+          "diarista",
           "social",
           "logistica",
           "refeicoes",
@@ -1528,6 +1529,7 @@ export const ExportPrivacyDataResponse = zod.object({
         times_triggered: zod.number().optional(),
         times_approved: zod.number().optional(),
         times_dismissed: zod.number().optional(),
+        source_template_id: zod.number().nullish(),
         created_at: zod.coerce.date().optional(),
       }),
     )
@@ -1605,6 +1607,7 @@ export const ListRulesResponseItem = zod.object({
     "escola",
     "saude",
     "casa",
+    "diarista",
     "social",
     "logistica",
     "refeicoes",
@@ -1622,6 +1625,7 @@ export const ListRulesResponseItem = zod.object({
   times_triggered: zod.number().optional(),
   times_approved: zod.number().optional(),
   times_dismissed: zod.number().optional(),
+  source_template_id: zod.number().nullish(),
   created_at: zod.coerce.date().optional(),
 });
 export const ListRulesResponse = zod.array(ListRulesResponseItem);
@@ -1665,6 +1669,7 @@ export const UpdateRuleResponse = zod.object({
     "escola",
     "saude",
     "casa",
+    "diarista",
     "social",
     "logistica",
     "refeicoes",
@@ -1682,6 +1687,7 @@ export const UpdateRuleResponse = zod.object({
   times_triggered: zod.number().optional(),
   times_approved: zod.number().optional(),
   times_dismissed: zod.number().optional(),
+  source_template_id: zod.number().nullish(),
   created_at: zod.coerce.date().optional(),
 });
 
@@ -1706,6 +1712,7 @@ export const ToggleRuleResponse = zod.object({
     "escola",
     "saude",
     "casa",
+    "diarista",
     "social",
     "logistica",
     "refeicoes",
@@ -1723,7 +1730,58 @@ export const ToggleRuleResponse = zod.object({
   times_triggered: zod.number().optional(),
   times_approved: zod.number().optional(),
   times_dismissed: zod.number().optional(),
+  source_template_id: zod.number().nullish(),
   created_at: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary List all active pre-built rule templates with activation state
+ */
+export const ListRuleTemplatesResponseItem = zod.object({
+  id: zod.number(),
+  slug: zod.string(),
+  category: zod.enum([
+    "escola",
+    "saude",
+    "casa",
+    "diarista",
+    "social",
+    "logistica",
+    "outros",
+  ]),
+  name: zod.string(),
+  description: zod.string(),
+  trigger_config: zod
+    .object({
+      trigger_desc: zod.string().optional(),
+    })
+    .optional(),
+  action_config: zod
+    .object({
+      action_desc: zod.string().optional(),
+      approval_level: zod.string().optional(),
+    })
+    .optional(),
+  is_active: zod.boolean(),
+  sort_order: zod.number(),
+  activated: zod
+    .boolean()
+    .describe("Whether this household has already activated this template"),
+  activated_rule_id: zod
+    .number()
+    .nullish()
+    .describe("ID of the rule created from this template if activated"),
+  created_at: zod.coerce.date().optional(),
+});
+export const ListRuleTemplatesResponse = zod.array(
+  ListRuleTemplatesResponseItem,
+);
+
+/**
+ * @summary Activate a rule template for this household (creates a rule; idempotent)
+ */
+export const ActivateRuleTemplateParams = zod.object({
+  id: zod.coerce.number(),
 });
 
 /**

@@ -674,6 +674,7 @@ export const RuleCategory = {
   escola: "escola",
   saude: "saude",
   casa: "casa",
+  diarista: "diarista",
   social: "social",
   logistica: "logistica",
   refeicoes: "refeicoes",
@@ -711,6 +712,7 @@ export interface Rule {
   times_triggered?: number;
   times_approved?: number;
   times_dismissed?: number;
+  source_template_id?: number | null;
   created_at?: string;
 }
 
@@ -988,6 +990,45 @@ export interface CalendarEventUpdate {
   all_day?: boolean;
   category?: string;
   notes?: string;
+}
+
+export type RuleTemplateCategory =
+  (typeof RuleTemplateCategory)[keyof typeof RuleTemplateCategory];
+
+export const RuleTemplateCategory = {
+  escola: "escola",
+  saude: "saude",
+  casa: "casa",
+  diarista: "diarista",
+  social: "social",
+  logistica: "logistica",
+  outros: "outros",
+} as const;
+
+export type RuleTemplateTriggerConfig = {
+  trigger_desc?: string;
+};
+
+export type RuleTemplateActionConfig = {
+  action_desc?: string;
+  approval_level?: string;
+};
+
+export interface RuleTemplate {
+  id: number;
+  slug: string;
+  category: RuleTemplateCategory;
+  name: string;
+  description: string;
+  trigger_config?: RuleTemplateTriggerConfig;
+  action_config?: RuleTemplateActionConfig;
+  is_active: boolean;
+  sort_order: number;
+  /** Whether this household has already activated this template */
+  activated: boolean;
+  /** ID of the rule created from this template if activated */
+  activated_rule_id?: number | null;
+  created_at?: string;
 }
 
 export type RuleInputApprovalLevel =

@@ -15,3 +15,4 @@ export * from "./invites";
 export * from "./proactive";
 export * from "./payments";
 export * from "./creche";
+export { ruleTemplatesTable } from "./rules";

@@ -42,6 +42,8 @@ tags:
     description: Object storage upload and serving endpoints
   - name: creche
     description: Creche waitlist and school workflow tracking
+  - name: templates
+    description: Pre-built rule templates library
 
 paths:
   /storage/uploads/request-url:
@@ -1095,6 +1097,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Rule"
+
+  # ── Rule Templates ──────────────────────────────────────────────
+  /rule-templates:
+    get:
+      operationId: listRuleTemplates
+      tags: [templates]
+      summary: List all active pre-built rule templates with activation state
+      responses:
+        "200":
+          description: List of rule templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RuleTemplate"
+
+  /rule-templates/{id}/activate:
+    post:
+      operationId: activateRuleTemplate
+      tags: [templates]
+      summary: Activate a rule template for this household (creates a rule; idempotent)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Rule created from template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "402":
+          description: Plan limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Template not found
 
   # ── Household ────────────────────────────────────────────────────
   /household:
@@ -2705,7 +2750,7 @@ components:
           type: string
         category:
           type: string
-          enum: [escola, saude, casa, social, logistica, refeicoes, servicos, outros]
+          enum: [escola, saude, casa, diarista, social, logistica, refeicoes, servicos, outros]
         trigger_desc:
           type: string
         action_desc:
@@ -2726,6 +2771,51 @@ components:
           type: integer
         times_dismissed:
           type: integer
+        source_template_id:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    RuleTemplate:
+      type: object
+      required: [id, slug, category, name, description, is_active, sort_order, activated]
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        category:
+          type: string
+          enum: [escola, saude, casa, diarista, social, logistica, outros]
+        name:
+          type: string
+        description:
+          type: string
+        trigger_config:
+          type: object
+          properties:
+            trigger_desc:
+              type: string
+        action_config:
+          type: object
+          properties:
+            action_desc:
+              type: string
+            approval_level:
+              type: string
+        is_active:
+          type: boolean
+        sort_order:
+          type: integer
+        activated:
+          type: boolean
+          description: Whether this household has already activated this template
+        activated_rule_id:
+          type: integer
+          nullable: true
+          description: ID of the rule created from this template if activated
         created_at:
           type: string
           format: date-time

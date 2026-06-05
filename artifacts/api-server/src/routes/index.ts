@@ -27,6 +27,7 @@ import paymentObligationsRouter from "./payment-obligations";
 import cascadesRouter from "./cascades";
 import storageRouter, { storagePrivateRouter } from "./storage";
 import crecheWaitlistsRouter from "./creche-waitlists";
+import ruleTemplatesRouter from "./rule-templates";
 
 const router: IRouter = Router();
 
@@ -86,6 +87,7 @@ protectedRouter.use(adminRouter);              // GET /admin/stats
 protectedRouter.use(paymentObligationsRouter); // GET|POST /payment-obligations, PATCH|DELETE /payment-obligations/:id, POST /payment-obligations/:id/settle|comprovante
 protectedRouter.use(cascadesRouter);           // GET /actions/cascades, POST /actions/cascades/:id/approve-all|dismiss-all
 protectedRouter.use(crecheWaitlistsRouter);    // GET|POST /creche-waitlists, PATCH /creche-waitlists/:id
+protectedRouter.use(ruleTemplatesRouter);      // GET /rule-templates, POST /rule-templates/:id/activate
 protectedRouter.use(storagePrivateRouter);     // POST /storage/uploads/request-url, GET /storage/objects/*
 
 // Catch-all: any path that reaches here through the protectedRouter did not

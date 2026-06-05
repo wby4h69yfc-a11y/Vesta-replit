@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@workspace/replit-auth-web";
 import {
   Home, ChevronRight, ChevronLeft, Check, Calendar,
-  MessageCircle, Sparkles, X, Loader2, ArrowRight,
+  MessageCircle, Sparkles, X, Loader2, ArrowRight, Zap,
 } from "lucide-react";
 
 import { V } from "@/lib/brand";
@@ -287,7 +287,202 @@ function Step2WhatsApp({ onNext, onBack, data }: StepProps) {
 }
 
 /* ────────────────────────────────────────────
-   STEP 3 — WhatsApp usage examples
+   STEP 3 — Recommended rule templates
+──────────────────────────────────────────── */
+
+// Slugs of templates to surface during onboarding (most universally useful)
+const ONBOARDING_TEMPLATE_SLUGS = [
+  "escola_boleto",
+  "escola_aviso",
+  "escola_reuniao",
+  "saude_consulta",
+  "saude_receita",
+];
+
+const TEMPLATE_EMOJI: Record<string, string> = {
+  escola:   "🏫",
+  saude:    "🏥",
+  diarista: "🧹",
+  casa:     "🏠",
+};
+
+const TEMPLATE_CATEGORY_LABELS: Record<string, string> = {
+  escola:   "Escola",
+  saude:    "Saúde",
+  diarista: "Diarista",
+  casa:     "Casa",
+};
+
+interface TemplateItem {
+  id: number;
+  slug: string;
+  name: string;
+  description: string;
+  category: string;
+  activated: boolean;
+}
+
+function Step3Rules({ onNext, onBack }: StepProps) {
+  const [templates, setTemplates] = useState<TemplateItem[]>([]);
+  const [selected, setSelected]   = useState<Set<number>>(new Set());
+  const [loading, setLoading]     = useState(true);
+  const [saving, setSaving]       = useState(false);
+
+  useEffect(() => {
+    fetch("/api/rule-templates", { credentials: "include" })
+      .then((r) => r.json())
+      .then((all: TemplateItem[]) => {
+        const filtered = all.filter((t: TemplateItem) =>
+          ONBOARDING_TEMPLATE_SLUGS.includes(t.slug),
+        );
+        // Sort by slug order to keep the curated ordering
+        filtered.sort(
+          (a, b) =>
+            ONBOARDING_TEMPLATE_SLUGS.indexOf(a.slug) -
+            ONBOARDING_TEMPLATE_SLUGS.indexOf(b.slug),
+        );
+        setTemplates(filtered);
+        // Pre-select those not already activated
+        setSelected(
+          new Set(filtered.filter((t) => !t.activated).map((t) => t.id)),
+        );
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  function toggle(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleContinue() {
+    const toActivate = [...selected];
+    if (toActivate.length === 0) { onNext({}); return; }
+    setSaving(true);
+    try {
+      await Promise.allSettled(
+        toActivate.map((id) =>
+          fetch(`/api/rule-templates/${id}/activate`, {
+            method: "POST",
+            credentials: "include",
+          }),
+        ),
+      );
+    } finally {
+      setSaving(false);
+      onNext({ activated_templates: toActivate.length });
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <Zap className="h-5 w-5" style={{ color: V.primary }} />
+          <h2 className="font-serif text-2xl font-semibold" style={{ color: V.ink }}>
+            Ative algumas regras.
+          </h2>
+        </div>
+        <p className="text-sm" style={{ color: V.muted }}>
+          A Vesta vai cuidar disso automaticamente. Mude quando quiser.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-20 rounded-2xl animate-pulse" style={{ background: V.ivory }} />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {templates.map((t) => {
+            const on = selected.has(t.id);
+            const emoji = TEMPLATE_EMOJI[t.category] ?? "⚡";
+            const catLabel = TEMPLATE_CATEGORY_LABELS[t.category] ?? t.category;
+            return (
+              <button
+                key={t.id}
+                onClick={() => !t.activated && toggle(t.id)}
+                disabled={t.activated}
+                className="w-full text-left rounded-2xl px-4 py-3.5 flex items-start gap-3 transition-all"
+                style={{
+                  background: on || t.activated ? "#EAF1E5" : V.cream,
+                  border: `1.5px solid ${on || t.activated ? "rgba(14,59,46,0.20)" : "rgba(14,59,46,0.08)"}`,
+                  opacity: t.activated ? 0.85 : 1,
+                }}
+                data-testid={`onboarding-template-${t.slug}`}
+              >
+                <span className="text-lg leading-none shrink-0 mt-0.5">{emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="text-sm font-semibold leading-tight" style={{ color: V.ink }}>
+                      {t.name}
+                    </p>
+                    <span
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                      style={{ background: "rgba(14,59,46,0.08)", color: V.muted }}
+                    >
+                      {catLabel}
+                    </span>
+                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: V.muted }}>
+                    {t.description}
+                  </p>
+                </div>
+                <div
+                  className="w-5 h-5 rounded-full border-2 shrink-0 mt-0.5 flex items-center justify-center"
+                  style={{
+                    borderColor: on || t.activated ? V.primary : "rgba(14,59,46,0.20)",
+                    background: on || t.activated ? V.primary : "transparent",
+                  }}
+                >
+                  {(on || t.activated) && <Check className="h-3 w-3 text-white" />}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="text-xs text-center" style={{ color: V.muted }}>
+        Você pode editar ou criar mais regras depois, na aba Regras.
+      </p>
+
+      <div className="flex gap-3 pt-1">
+        <button
+          onClick={onBack}
+          className="px-6 py-3.5 rounded-full text-sm font-medium"
+          style={{ background: V.beige, color: V.ink }}
+        >
+          <ChevronLeft className="h-4 w-4 inline" /> Voltar
+        </button>
+        <button
+          onClick={() => void handleContinue()}
+          disabled={saving}
+          className="flex-1 py-3.5 rounded-full text-sm font-semibold text-white disabled:opacity-60"
+          style={{ background: V.primary }}
+        >
+          {saving ? (
+            <><Loader2 className="h-4 w-4 inline animate-spin mr-1" />Ativando…</>
+          ) : selected.size > 0 ? (
+            <>Ativar {selected.size} regra{selected.size !== 1 ? "s" : ""} <ChevronRight className="h-4 w-4 inline" /></>
+          ) : (
+            <>Pular por agora <ChevronRight className="h-4 w-4 inline" /></>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────
+   STEP 4 — WhatsApp usage examples
    (instructional — no simulator)
 ──────────────────────────────────────────── */
 
@@ -614,6 +809,7 @@ const STEPS = [
   { component: Step0Welcome,   title: "" },
   { component: Step1Account,   title: "Conta" },
   { component: Step2WhatsApp,  title: "WhatsApp" },
+  { component: Step3Rules,     title: "Regras" },
   { component: Step3Examples,  title: "Como usar" },
   { component: Step4Enrich,    title: "Configurar" },
   { component: Step5Done,      title: "Pronto!" },

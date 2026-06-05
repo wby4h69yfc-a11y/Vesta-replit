@@ -84,6 +84,7 @@ import type {
   RequestUploadUrlResponse,
   Rule,
   RuleInput,
+  RuleTemplate,
   RuleUpdate,
   SendOtpBody,
   SendOtpResponse,
@@ -4655,6 +4656,165 @@ export const useToggleRule = <
   TContext
 > => {
   return useMutation(getToggleRuleMutationOptions(options));
+};
+
+/**
+ * @summary List all active pre-built rule templates with activation state
+ */
+export const getListRuleTemplatesUrl = () => {
+  return `/api/rule-templates`;
+};
+
+export const listRuleTemplates = async (
+  options?: RequestInit,
+): Promise<RuleTemplate[]> => {
+  return customFetch<RuleTemplate[]>(getListRuleTemplatesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListRuleTemplatesQueryKey = () => {
+  return [`/api/rule-templates`] as const;
+};
+
+export const getListRuleTemplatesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listRuleTemplates>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listRuleTemplates>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListRuleTemplatesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listRuleTemplates>>
+  > = ({ signal }) => listRuleTemplates({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listRuleTemplates>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListRuleTemplatesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listRuleTemplates>>
+>;
+export type ListRuleTemplatesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all active pre-built rule templates with activation state
+ */
+
+export function useListRuleTemplates<
+  TData = Awaited<ReturnType<typeof listRuleTemplates>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listRuleTemplates>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListRuleTemplatesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Activate a rule template for this household (creates a rule; idempotent)
+ */
+export const getActivateRuleTemplateUrl = (id: number) => {
+  return `/api/rule-templates/${id}/activate`;
+};
+
+export const activateRuleTemplate = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Rule> => {
+  return customFetch<Rule>(getActivateRuleTemplateUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getActivateRuleTemplateMutationOptions = <
+  TError = ErrorType<ErrorEnvelope | void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof activateRuleTemplate>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof activateRuleTemplate>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["activateRuleTemplate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof activateRuleTemplate>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return activateRuleTemplate(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ActivateRuleTemplateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof activateRuleTemplate>>
+>;
+
+export type ActivateRuleTemplateMutationError = ErrorType<ErrorEnvelope | void>;
+
+/**
+ * @summary Activate a rule template for this household (creates a rule; idempotent)
+ */
+export const useActivateRuleTemplate = <
+  TError = ErrorType<ErrorEnvelope | void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof activateRuleTemplate>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof activateRuleTemplate>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getActivateRuleTemplateMutationOptions(options));
 };
 
 /**

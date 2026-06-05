@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -16,10 +16,25 @@ export const rulesTable = pgTable("rules", {
   times_triggered: integer("times_triggered").notNull().default(0),
   times_approved: integer("times_approved").notNull().default(0),
   times_dismissed: integer("times_dismissed").notNull().default(0),
+  source_template_id: integer("source_template_id"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const ruleTemplatesTable = pgTable("rule_templates", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  category: text("category").notNull(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  trigger_config: jsonb("trigger_config").notNull().$type<{ trigger_desc: string }>(),
+  action_config: jsonb("action_config").notNull().$type<{ action_desc: string; approval_level: string }>(),
+  is_active: boolean("is_active").notNull().default(true),
+  sort_order: integer("sort_order").notNull().default(0),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const insertRuleSchema = createInsertSchema(rulesTable).omit({ id: true, created_at: true, updated_at: true });
 export type InsertRule = z.infer<typeof insertRuleSchema>;
 export type Rule = typeof rulesTable.$inferSelect;
+export type RuleTemplate = typeof ruleTemplatesTable.$inferSelect;
