@@ -149,8 +149,8 @@ async function proactiveSendTick(): Promise<void> {
 /**
  * Hourly: find payment obligations due within the next 24 hours that are still
  * pending (not paid / not cancelled) and send a WhatsApp reminder to the
- * household admin. Uses `reminded_at` on the obligation row to avoid duplicate
- * reminders within the same day.
+ * household admin. Runs only in the 8–9 am hour window to avoid sending more
+ * than one reminder per day without requiring a dedicated reminded_at column.
  */
 async function paymentReminderTick(): Promise<void> {
   try {

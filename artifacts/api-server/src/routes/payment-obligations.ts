@@ -230,8 +230,11 @@ router.post("/payment-obligations/:id/comprovante", upload.single("file"), async
     if (!existing) return res.status(404).json({ error: "Not found" });
     if (!req.file) return res.status(400).json({ error: "file is required" });
 
-    // Upload file to object storage (GCS) and get a URL for OCR
+    // Upload file to object storage (GCS).
+    // proof_url: stable API path stored in DB for long-term retrieval.
+    // ocrUrl:    short-lived signed URL used only for the vision OCR call.
     let proof_url: string;
+    let ocrUrl: string;
     try {
       const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
       if (!bucketId) throw new Error("DEFAULT_OBJECT_STORAGE_BUCKET_ID not set");
@@ -242,12 +245,16 @@ router.post("/payment-obligations/:id/comprovante", upload.single("file"), async
       });
       const [signedUrl] = await fileRef.getSignedUrl({
         action: "read",
-        expires: Date.now() + 60 * 60 * 1000, // 1h window — enough for OCR
+        expires: Date.now() + 60 * 60 * 1000, // 1h — enough for the OCR call below
       });
-      proof_url = signedUrl;
+      // Stable API path — clients retrieve via GET /api/storage/objects/<objectName>
+      proof_url = `/api/storage/objects/${objectName}`;
+      ocrUrl = signedUrl;
     } catch (uploadErr) {
       req.log.warn({ uploadErr }, "Object storage upload failed, falling back to base64 for OCR");
-      proof_url = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+      const b64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+      proof_url = b64;
+      ocrUrl = b64;
     }
 
     // OCR-based verification: use GPT-4o vision to extract payment details from the image
@@ -275,7 +282,7 @@ Retorne APENAS o JSON, sem texto adicional.`,
               },
               {
                 type: "image_url",
-                image_url: { url: proof_url, detail: "low" },
+                image_url: { url: ocrUrl, detail: "low" },
               },
             ],
           },

@@ -241,7 +241,7 @@ export default function ApprovalCard({ action, compact = false }: { action: Acti
                   >
                     <option value="">Não atribuído</option>
                     {members.map((m) => (
-                      <option key={m.id} value={m.name}>{m.display_name ?? m.name}</option>
+                      <option key={m.id} value={String(m.id)}>{m.display_name ?? m.name}</option>
                     ))}
                   </select>
                 </div>

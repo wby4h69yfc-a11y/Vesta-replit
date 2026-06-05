@@ -55,11 +55,13 @@ router.post("/actions/:id/approve", async (req, res) => {
       });
     }
 
-    // Write task if task type
+    // Write task if task type, capturing the inserted ID for safe backlink
+    let insertedTaskId: number | null = null;
     if (action.type === "task" || action.type === "reminder") {
       const pd = action.payment_data as { amount_cents?: number | null; payment_method?: string | null; due_date?: string | null } | null;
       const suggestedOwner = (req.body as { suggested_owner?: string | null }).suggested_owner ?? null;
-      await db.insert(tasksTable).values({
+      const ownerIdNum = suggestedOwner ? (parseInt(suggestedOwner, 10) || null) : null;
+      const [insertedTask] = await db.insert(tasksTable).values({
         household_id:         hid,
         title:                action.title,
         status:               "pending",
@@ -70,8 +72,9 @@ router.post("/actions/:id/approve", async (req, res) => {
         payment_amount_cents: pd?.amount_cents ?? null,
         payment_method:       pd?.payment_method ?? null,
         payment_due_date:     pd?.due_date ?? null,
-        owner_id:             suggestedOwner ? parseInt(suggestedOwner, 10) || null : null,
-      });
+        owner_id:             ownerIdNum,
+      }).returning({ id: tasksTable.id });
+      insertedTaskId = insertedTask?.id ?? null;
     }
 
     // Create payment_obligation for payment_admin actions
@@ -90,12 +93,12 @@ router.post("/actions/:id/approve", async (req, res) => {
       }).returning();
       createdObligationId = newOb?.id ?? null;
 
-      // Backlink the obligation onto the task so the frontend can upload comprovante directly
-      if (createdObligationId != null) {
+      // Backlink by exact task ID — safe even when multiple tasks share a title
+      if (createdObligationId != null && insertedTaskId != null) {
         await db
           .update(tasksTable)
           .set({ payment_obligation_id: createdObligationId })
-          .where(and(eq(tasksTable.household_id, hid), eq(tasksTable.title, action.title)));
+          .where(and(eq(tasksTable.household_id, hid), eq(tasksTable.id, insertedTaskId)));
       }
     }
 
