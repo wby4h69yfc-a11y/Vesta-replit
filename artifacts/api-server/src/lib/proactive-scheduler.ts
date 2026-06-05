@@ -127,32 +127,42 @@ function enforceQuietHours(
   return nextLocalHourAfter(scheduledAt, qEnd, tz);
 }
 
+// ── Local-day boundary helper ─────────────────────────────────────────────────
+
+/**
+ * Returns [startUTC, endUTC] (end is exclusive) for the local calendar day
+ * that `date` falls in when observed in the given IANA timezone.
+ *
+ * Uses the "noon offset" trick to avoid DST-transition ambiguity: DST changes
+ * almost always happen at 02:00–03:00 local, so noon local is always
+ * unambiguous.
+ */
+function localDayBounds(date: Date, tz: string): [Date, Date] {
+  const localDateStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(date);
+  const [year, month, day] = localDateStr.split("-").map(Number);
+
+  const noonUTC = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const noonParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+    hour12: false,
+  }).formatToParts(noonUTC);
+  const localH = Number(noonParts.find(p => p.type === "hour")?.value ?? 12) % 24;
+  const localM = Number(noonParts.find(p => p.type === "minute")?.value ?? 0);
+  const localS = Number(noonParts.find(p => p.type === "second")?.value ?? 0);
+  // offset: local = UTC + offsetSec → offsetSec = localNoon - 12:00:00
+  const offsetSec = (localH - 12) * 3600 + localM * 60 + localS;
+
+  const startMs = Date.UTC(year, month - 1, day, 0, 0, 0) - offsetSec * 1000;
+  return [new Date(startMs), new Date(startMs + 86_400_000)];
+}
+
 // ── Suppression checks ────────────────────────────────────────────────────────
 
 async function countSentToday(householdId: number, tz: string): Promise<number> {
-  const now = new Date();
-  // "Today" start in the household's local timezone
-  const todayLocalStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(now);
-  const todayStartUTC = new Date(`${todayLocalStr}T00:00:00Z`);
-  // Approximate UTC midnight by backing out the timezone offset
-  const sampleLocal = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(now);
-  const match = sampleLocal.match(/(\d+)\/(\d+)\/(\d+),\s(\d+):(\d+):(\d+)/);
-  let todayStart = todayStartUTC;
-  if (match) {
-    const [, mm, dd, yyyy, hh, min, ss] = match;
-    const localNow = new Date(`${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}Z`);
-    const offsetMs = now.getTime() - localNow.getTime();
-    todayStart = new Date(new Date(`${todayLocalStr}T00:00:00Z`).getTime() + offsetMs);
-  }
+  const [todayStart] = localDayBounds(new Date(), tz);
 
   const [row] = await db
     .select({ total: count() })
@@ -187,10 +197,7 @@ async function alreadyScheduledToday(
   triggerType: string,
   tz: string,
 ): Promise<boolean> {
-  const now = new Date();
-  const todayLocalStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(now);
-  const dayStart = new Date(`${todayLocalStr}T00:00:00Z`);
-  const dayEnd = new Date(`${todayLocalStr}T23:59:59.999Z`);
+  const [dayStart, dayEnd] = localDayBounds(new Date(), tz);
 
   const [row] = await db
     .select({ total: count() })
@@ -200,7 +207,7 @@ async function alreadyScheduledToday(
         eq(proactiveMessageQueueTable.household_id, householdId),
         eq(proactiveMessageQueueTable.trigger_type, triggerType),
         gte(proactiveMessageQueueTable.scheduled_at, dayStart),
-        lte(proactiveMessageQueueTable.scheduled_at, dayEnd),
+        lt(proactiveMessageQueueTable.scheduled_at, dayEnd),
         or(
           eq(proactiveMessageQueueTable.status, "queued"),
           eq(proactiveMessageQueueTable.status, "sending"),
@@ -220,9 +227,7 @@ async function buildDailyDigestMessage(householdId: number, tz: string): Promise
   task_titles: string[];
 }> {
   const now = new Date();
-  const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(now);
-  const todayStart = new Date(`${todayStr}T00:00:00Z`);
-  const todayEnd = new Date(`${todayStr}T23:59:59.999Z`);
+  const [todayStart, todayEnd] = localDayBounds(now, tz);
 
   const events = await db
     .select({ title: calendarEventsTable.title, start_at: calendarEventsTable.start_at, all_day: calendarEventsTable.all_day })
@@ -231,7 +236,7 @@ async function buildDailyDigestMessage(householdId: number, tz: string): Promise
       and(
         eq(calendarEventsTable.household_id, householdId),
         gte(calendarEventsTable.start_at, todayStart),
-        lte(calendarEventsTable.start_at, todayEnd),
+        lt(calendarEventsTable.start_at, todayEnd),
       ),
     );
 
