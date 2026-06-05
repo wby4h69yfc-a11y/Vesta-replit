@@ -55,9 +55,10 @@ router.post("/actions/:id/approve", async (req, res) => {
       });
     }
 
-    // Write task if task type, capturing the inserted ID for safe backlink
+    // Write task if task type, capturing the inserted ID for safe backlink.
+    // "payment" type also produces a task (obligation is created in the next block).
     let insertedTaskId: number | null = null;
-    if (action.type === "task" || action.type === "reminder") {
+    if (action.type === "task" || action.type === "reminder" || action.type === "payment") {
       const pd = action.payment_data as { amount_cents?: number | null; payment_method?: string | null; due_date?: string | null } | null;
       const suggestedOwner = (req.body as { suggested_owner?: string | null }).suggested_owner ?? null;
       const ownerIdNum = suggestedOwner ? (parseInt(suggestedOwner, 10) || null) : null;
