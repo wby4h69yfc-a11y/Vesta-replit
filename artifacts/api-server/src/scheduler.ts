@@ -2,12 +2,12 @@ import { db } from "@workspace/db";
 import { householdsTable, onboardingStateTable } from "@workspace/db";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { logger } from "./lib/logger";
-import { sendHouseholdBriefing } from "./lib/briefing-core";
 import { detectPatternsForAllHouseholds } from "./lib/pattern-detector";
 import { runConsentRenewalJob } from "./lib/consent-renewal-scheduler";
 import { expireOldConversations } from "./lib/wa-prompt-store";
 import {
   scheduleProactiveForAllHouseholds,
+  scheduleProactiveMessages,
   sendDueProactiveMessages,
 } from "./lib/proactive-scheduler";
 
@@ -40,6 +40,16 @@ function localHourInTimezone(date: Date, timezone: string): number {
   }
 }
 
+/**
+ * Runs every minute. For each WA-verified household that is due for a briefing
+ * today (has not yet been sent one), enqueues its proactive messages via the
+ * proactive queue. Actual sending is done by proactiveSendTick every 5 minutes.
+ *
+ * All digest delivery now goes through proactive_message_queue — this is the
+ * ONLY enqueue trigger for time-of-day-based briefings, ensuring the queue is
+ * the single source of truth and all rate limits / quiet hours / durability
+ * guarantees are enforced uniformly.
+ */
 async function tick(): Promise<void> {
   const now = new Date();
 
@@ -67,40 +77,20 @@ async function tick(): Promise<void> {
       );
 
     const currentUTCHour = now.getUTCHours();
-    const dueHouseholds = allVerified.filter((h) => {
-      return h.briefing_hour === currentUTCHour;
-    });
+    const dueHouseholds = allVerified.filter((h) => h.briefing_hour === currentUTCHour);
 
-    if (dueHouseholds.length === 0) {
-      return;
-    }
+    if (dueHouseholds.length === 0) return;
 
     logger.info(
-      { utcHour: now.getUTCHours(), count: dueHouseholds.length },
-      "Scheduler: dispatching briefings",
+      { utcHour: currentUTCHour, count: dueHouseholds.length },
+      "Scheduler: enqueuing proactive messages for due households",
     );
 
     for (const household of dueHouseholds) {
       try {
-        const result = await sendHouseholdBriefing(household.id);
-        if (result.ok) {
-          logger.info(
-            { householdId: household.id, sid: result.sid },
-            "Scheduler: briefing sent",
-          );
-        } else if (result.reason === "cooldown") {
-          logger.debug(
-            { householdId: household.id, retryAfterSec: result.retryAfterSec },
-            "Scheduler: briefing skipped (cooldown)",
-          );
-        } else {
-          logger.warn(
-            { householdId: household.id, reason: result.reason },
-            "Scheduler: briefing skipped",
-          );
-        }
+        await scheduleProactiveMessages(household.id);
       } catch (err) {
-        logger.error({ err, householdId: household.id }, "Scheduler: briefing error");
+        logger.error({ err, householdId: household.id }, "Scheduler: proactive enqueue error");
       }
     }
   } catch (err) {
