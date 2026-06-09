@@ -2,9 +2,10 @@ import { Router, type Request, type Response } from "express";
 import { isTwilioConfigured, sendWhatsApp } from "../lib/whatsapp";
 import { resolveHouseholdAdminPhone } from "../lib/whatsapp";
 import { processInboundWAMessage } from "../lib/wa-message-processor";
+import { isGroupMessage, extractVestaTrigger } from "../lib/wa-group-trigger";
 import { db } from "@workspace/db";
-import { householdsTable, onboardingStateTable, waConversationsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { householdsTable, membersTable, onboardingStateTable, waConversationsTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import {
   replyVerificationSuccess,
   replyTokenExpired,
@@ -149,24 +150,24 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     // is the Twilio number. The "@g.us" suffix is the canonical group signal.
     // We store the raw `To` value as group_id for logging and reply routing.
     const rawTo = To ?? "";
-    const isGroupMessage = rawTo.includes("@g.us");
+    const groupSourced = isGroupMessage(rawTo);
     // group_id is the raw To value — sendWhatsApp handles the whatsapp: prefix.
-    const groupId = isGroupMessage ? rawTo : null;
+    const groupId = groupSourced ? rawTo : null;
 
     let effectiveBody = Body?.trim() ?? "";
-    if (isGroupMessage) {
-      if (!/^\/vesta\b/i.test(effectiveBody)) {
+    if (groupSourced) {
+      const stripped = extractVestaTrigger(effectiveBody);
+      if (stripped === null) {
         req.log.info(
-          { groupId, from: From, source: "group" },
+          { group_id: groupId, from: From, source: "group" },
           "Group message without /vesta trigger — silently ignored",
         );
         return;
       }
-      // Strip /vesta prefix and leading whitespace so the remainder is passed
-      // to the processor exactly as if it were a direct message.
-      effectiveBody = effectiveBody.replace(/^\/vesta\s*/i, "").trim();
+      // Use the stripped body so downstream processing is identical to a DM.
+      effectiveBody = stripped;
       req.log.info(
-        { groupId, from: From, preview: effectiveBody.substring(0, 60), source: "group" },
+        { group_id: groupId, from: From, preview: effectiveBody.substring(0, 60), source: "group" },
         "Group /vesta command received",
       );
     }
@@ -185,6 +186,36 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
 
     if (isPausar || isParar || isRetomar) {
       const senderPhone = (From ?? "").replace(/^whatsapp:/i, "");
+
+      // ── Group admin gate for Tier-0 commands ─────────────────────────────
+      // PAUSAR/PARAR/RETOMAR are processed before processInboundWAMessage, so
+      // they would bypass the group_non_admin gate in the processor. Apply the
+      // same check here: for group /vesta commands only household admins may
+      // invoke Tier-0 controls.
+      if (groupSourced) {
+        const senderDigits = senderPhone.replace(/\D/g, "");
+        // Fetch all members and check role via JS-side normalised comparison
+        // (mirrors the processor's normalisePhone approach).
+        const allMembers = await db
+          .select({ phone: membersTable.phone, role: membersTable.role })
+          .from(membersTable);
+        const isAdmin = allMembers.some(
+          (m) => m.role === "admin" && (m.phone ?? "").replace(/\D/g, "") === senderDigits,
+        );
+        const isMember = allMembers.some(
+          (m) => (m.phone ?? "").replace(/\D/g, "") === senderDigits,
+        );
+        if (isMember && !isAdmin) {
+          void sendWhatsApp(groupId!, replyGroupNonAdmin());
+          req.log.info(
+            { senderPhone, group_id: groupId, command: normalizedBody, source: "group" },
+            "Group Tier-0 command rejected — non-admin member",
+          );
+          return;
+        }
+        // Unknown senders (isMember === false) → silent ignore, same as DM path.
+      }
+
       // Resolve household from verified phone
       const [onboarding] = await db
         .select({ household_id: onboardingStateTable.household_id })
@@ -214,7 +245,7 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
           void sendWhatsApp(replyDest(senderPhone), "▶️ Retomado! Você voltará a receber os resumos diários.");
         }
         req.log.info(
-          { senderPhone, command: normalizedBody, householdId: onboarding.household_id, source: isGroupMessage ? "group" : "dm" },
+          { senderPhone, command: normalizedBody, householdId: onboarding.household_id, source: groupSourced ? "group" : "dm" },
           "Proactive command processed",
         );
       }
@@ -241,7 +272,7 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     req.log.info(
       {
         outcomeKind: outcome.kind,
-        source: isGroupMessage ? "group" : "dm",
+        source: groupSourced ? "group" : "dm",
         ...(groupId ? { group_id: groupId } : {}),
       },
       "WhatsApp webhook outcome",
