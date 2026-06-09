@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, usersTable, householdsTable, onboardingStateTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { createSession, SESSION_COOKIE, SESSION_TTL, type SessionData } from "../lib/auth";
+import { runConsentRenewalJob } from "../lib/consent-renewal-scheduler";
 
 const router: IRouter = Router();
 
@@ -101,6 +102,27 @@ if (process.env.NODE_ENV !== "production") {
     });
 
     res.redirect(returnTo);
+  });
+
+  /**
+   * POST /api/dev/run-consent-renewal
+   *
+   * Dev/test only. Runs the consent renewal scheduler job synchronously and
+   * returns when complete.  No auth required so tests can call it without a
+   * session cookie (mirrors the public webhook pattern used by E2E tests).
+   *
+   * NEVER exposed in production (guarded by the NODE_ENV check above).
+   */
+  router.post("/dev/run-consent-renewal", async (_req: Request, res: Response) => {
+    try {
+      await runConsentRenewalJob();
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({
+        ok: false,
+        error: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
   });
 }
 
