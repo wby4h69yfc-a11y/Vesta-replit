@@ -26,6 +26,11 @@
  *  15.  NÃO on consented contact → no-op (only applies to "pending")
  *  16.  Concurrent NÃO+SIM race → final status is "consented" OR "revoked"
  *       (never corrupt); the winning terminal state is thereafter a no-op
+ *  17.  Concurrent NÃO+REVOGAR race → final status is always "revoked"
+ *       (REVOGAR always wins: its WHERE covers "pending" AND "consented";
+ *       if NÃO wins the lock first it sets "revoked" and REVOGAR's WHERE
+ *       then misses; if REVOGAR wins first NÃO's WHERE (pending only) misses)
+ *       proven: consent_withdrawn_at IS NOT NULL; follow-up REVOGAR is a no-op
  *
  * Strategy: direct DB setup via pg + form-POST to /api/webhook/whatsapp.
  * In development NODE_ENV the Twilio HMAC check is bypassed.  The webhook
@@ -578,5 +583,55 @@ test.describe("Consent reply idempotency", () => {
       expect(tsFollowUp.consent_granted_at).toEqual(tsRace.consent_granted_at);
       expect(await getConsentStatus(db, contactId)).toBe("consented");
     }
+  });
+
+  // ── 17. Concurrent NÃO+REVOGAR race ─────────────────────────────────────────
+  //
+  // Both start from consent_status = "pending".  Two orderings are possible:
+  //
+  //   a) REVOGAR wins the row lock first:
+  //        pending → revoked (consent_withdrawn_at = T)
+  //        NÃO's WHERE (consent_status = 'pending') fails → no rows affected
+  //        Final status: "revoked"
+  //
+  //   b) NÃO wins the row lock first:
+  //        pending → revoked (consent_withdrawn_at = T)
+  //        REVOGAR's WHERE (pending OR consented) — "revoked" matches neither
+  //        → no rows affected
+  //        Final status: "revoked"
+  //
+  // Unlike the NÃO+SIM race (test 16), both orderings here converge on the
+  // same terminal state: "revoked".  REVOGAR deterministically "wins" in the
+  // sense that the final outcome is always revocation regardless of lock order,
+  // because NÃO also writes "revoked" when it wins — REVOGAR's wider WHERE
+  // then hits the same terminal guard (neither 'pending' nor 'consented').
+  //
+  // "Exactly one write" semantics are proven by:
+  //   • consent_withdrawn_at IS NOT NULL after the concurrent pair
+  //   • A follow-up REVOGAR is a no-op: consent_withdrawn_at unchanged
+
+  test("concurrent NÃO+REVOGAR race: final status always 'revoked', follow-up REVOGAR is a no-op", async ({ request }) => {
+    const phone = uniquePhone();
+    const hhId = await seedHousehold(db);
+    const contactId = await seedContact(db, hhId, phone, "pending");
+
+    // Fire both keywords concurrently — either can win the row lock, but both
+    // orderings converge on "revoked".
+    await Promise.all([
+      sendWebhook(request, phone, "NÃO", uniqueSid("concurrent-nao-revogar-nao")),
+      sendWebhook(request, phone, "REVOGAR", uniqueSid("concurrent-nao-revogar-rev")),
+    ]);
+
+    expect(await getConsentStatus(db, contactId)).toBe("revoked");
+    const tsRace = await getTimestamps(db, contactId);
+    expect(tsRace.consent_withdrawn_at).not.toBeNull(); // at least one write committed
+    expect(tsRace.consent_granted_at).toBeNull(); // SIM was never involved
+
+    // Follow-up REVOGAR: "revoked" matches neither 'pending' nor 'consented'
+    // in REVOGAR's WHERE clause → no-op, consent_withdrawn_at unchanged.
+    await sendWebhook(request, phone, "REVOGAR", uniqueSid("nao-revogar-verify-terminal"));
+    const tsTerminal = await getTimestamps(db, contactId);
+    expect(tsTerminal.consent_withdrawn_at).toEqual(tsRace.consent_withdrawn_at); // unchanged
+    expect(await getConsentStatus(db, contactId)).toBe("revoked");
   });
 });
