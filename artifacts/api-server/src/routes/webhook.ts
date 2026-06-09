@@ -1,4 +1,4 @@
-import express, { Router, type Request, type Response } from "express";
+import { Router, type Request, type Response } from "express";
 import { getBspAdapter } from "../lib/wa-bsp";
 import type { ProcessOutcome } from "../lib/wa-message-processor";
 import { isTwilioConfigured, sendWhatsApp, resolveHouseholdAdminPhone } from "../lib/whatsapp";
@@ -477,10 +477,11 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
  */
 router.post(
   "/webhook/whatsapp/360dialog",
-  express.raw({ type: "*/*" }),
   async (req: Request, res: Response) => {
     const adapter = getBspAdapter();
-    const rawBody = req.body as Buffer;
+    // rawBody is captured by the express.json() verify callback in app.ts
+    // before the body is parsed, enabling HMAC-SHA256 validation.
+    const rawBody = req.rawBody;
 
     // ── 1. Authenticate (HMAC-SHA256 via X-Hub-Signature-256) ───────────────
     const isValid = await adapter.validateWebhookRequest(req, rawBody);
@@ -490,20 +491,14 @@ router.post(
       return;
     }
 
-    // ── 2. ACK immediately — 360Dialog expects 200 (no TwiML) ───────────────
-    res.status(200).send("OK");
+    // ── 2. ACK immediately — 360Dialog expects plain 200 with empty body ───
+    res.status(200).end();
 
     // ── 3–7. Process asynchronously (response already sent) ─────────────────
     try {
-      let parsedBody: unknown;
-      try {
-        parsedBody = JSON.parse(rawBody.toString("utf-8"));
-      } catch {
-        req.log.error("360Dialog webhook: invalid JSON body");
-        return;
-      }
-
-      const message = adapter.parseInboundPayload(parsedBody);
+      // req.body is already parsed by global express.json() middleware.
+      // rawBody was preserved by the verify callback solely for HMAC above.
+      const message = adapter.parseInboundPayload(req.body);
       if (!message) {
         req.log.info("360Dialog webhook: no processable message in payload — ignoring");
         return;

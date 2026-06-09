@@ -6,6 +6,17 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { authMiddleware } from "./middlewares/authMiddleware";
 
+// Augment Express Request with rawBody for webhook HMAC validation.
+// Set by the express.json() verify callback for the 360Dialog webhook path.
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      rawBody?: Buffer;
+    }
+  }
+}
+
 const app: Express = express();
 
 // Trust Replit's reverse proxy so req.ip resolves to the real client IP
@@ -89,7 +100,19 @@ app.use(
   }),
 );
 app.use(cookieParser());
-app.use(express.json());
+// Capture raw body for the 360Dialog webhook BEFORE express.json() parses it.
+// This is the only reliable place to get the raw Buffer for HMAC-SHA256 validation,
+// because express.json() consumes the stream and subsequent body parsers see nothing.
+const DIALOG360_WEBHOOK_PATH = "/api/webhook/whatsapp/360dialog";
+app.use(
+  express.json({
+    verify(req, _res, buf) {
+      if ((req.url ?? "").startsWith(DIALOG360_WEBHOOK_PATH)) {
+        (req as Request).rawBody = buf;
+      }
+    },
+  }),
+);
 app.use(express.urlencoded({ extended: true }));
 
 // ── Session hydration ────────────────────────────────────────────────────────
