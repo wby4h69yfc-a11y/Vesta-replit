@@ -33,7 +33,20 @@ type WaInfo = {
 };
 
 /* ── ConnectionStatusPill ──────────────────────────────────────────────────── */
-function ConnectionStatusPill({ info }: { info: WaInfo | null }) {
+function ConnectionStatusPill({ info, fetchFailed }: { info: WaInfo | null; fetchFailed: boolean }) {
+  if (fetchFailed) {
+    return (
+      <Link href="/casa">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full cursor-pointer"
+          style={{ background: "rgba(239,68,68,0.12)" }}>
+          <WifiOff className="h-3 w-3" style={{ color: "#DC2626" }} />
+          <span className="text-[11px] font-medium" style={{ color: "#DC2626" }}>
+            Desconectado · Verificar →
+          </span>
+        </div>
+      </Link>
+    );
+  }
   if (!info) return null;
   if (info.twilioConfigured && info.twilio_number) {
     return (
@@ -66,7 +79,7 @@ const QUICK_SENDS = [
   "Levar lanche quinta",
 ];
 
-function WhatsAppHero({ name, waInfo }: { name?: string; waInfo: WaInfo | null }) {
+function WhatsAppHero({ name, waInfo, waFetchFailed }: { name?: string; waInfo: WaInfo | null; waFetchFailed: boolean }) {
   function openWA(prefill?: string) {
     const num = waInfo?.twilio_number ?? "14155238886";
     const url = prefill
@@ -105,7 +118,7 @@ function WhatsAppHero({ name, waInfo }: { name?: string; waInfo: WaInfo | null }
             </button>
           ))}
         </div>
-        <ConnectionStatusPill info={waInfo} />
+        <ConnectionStatusPill info={waInfo} fetchFailed={waFetchFailed} />
       </div>
     </div>
   );
@@ -265,12 +278,16 @@ export default function Hoje() {
   const { data: todayEvents, isLoading: loadingEvents } = useGetTodayEvents();
   const { data: activityFeed } = useGetActivityFeed();
   const [waInfo, setWaInfo] = useState<WaInfo | null>(null);
+  const [waFetchFailed, setWaFetchFailed] = useState(false);
 
   useEffect(() => {
     fetch("/api/webhook/whatsapp/info", { credentials: "include" })
-      .then((r) => r.json())
-      .then((d: WaInfo) => setWaInfo(d))
-      .catch(() => {});
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((d: WaInfo) => { setWaInfo(d); setWaFetchFailed(false); })
+      .catch(() => { setWaFetchFailed(true); });
   }, []);
 
   const today = new Date();
@@ -289,7 +306,7 @@ export default function Hoje() {
       </div>
 
       {/* ② PRIMARY — WhatsApp is where Vesta works */}
-      <WhatsAppHero waInfo={waInfo} />
+      <WhatsAppHero waInfo={waInfo} waFetchFailed={waFetchFailed} />
 
       {/* ③ First-use prompt — only before Vesta has handled anything */}
       {isFirstUse && <FirstForwardPrompt waNumber={waInfo?.twilio_number ?? null} />}

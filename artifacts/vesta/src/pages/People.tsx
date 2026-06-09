@@ -199,7 +199,7 @@ function ProviderDrawer({ contact, onClose, onRefetch }: DrawerProps) {
           <div className="flex items-start gap-4 pt-1">
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-bold text-white shrink-0"
               style={{ background: V.primary }}>
-              {contact.name.charAt(0).toUpperCase()}
+              {(contact.name.charAt(0) || "?").toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
               <h2 className="text-xl font-semibold" style={{ color: V.ink }}>{contact.name}</h2>
@@ -415,7 +415,7 @@ export default function PeoplePage() {
                   data-testid={`member-${m.id}`}>
                   <div className="w-11 h-11 rounded-full flex items-center justify-center text-base font-bold text-white shrink-0"
                     style={{ background: V.primary }}>
-                    {m.name.charAt(0).toUpperCase()}
+                    {(m.name.charAt(0) || "?").toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold" style={{ color: V.ink }}>{m.name}</p>
@@ -451,7 +451,7 @@ export default function PeoplePage() {
                     data-testid={`provider-${c.id}`}>
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0"
                       style={{ background: "#EAF1E5", color: V.primary }}>
-                      {c.name.charAt(0).toUpperCase()}
+                      {(c.name.charAt(0) || "?").toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -518,7 +518,7 @@ export default function PeoplePage() {
                   data-testid={`contact-${c.id}`}>
                   <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
                     style={{ background: "#EAF1E5", color: V.primary }}>
-                    {c.name.charAt(0).toUpperCase()}
+                    {(c.name.charAt(0) || "?").toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium" style={{ color: V.ink }}>{c.name}</p>

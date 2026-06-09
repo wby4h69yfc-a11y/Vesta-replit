@@ -54,6 +54,12 @@ router.post("/tasks", async (req, res) => {
 
     if (!title) return res.status(400).json({ error: "title is required" });
 
+    if (due_at != null) {
+      if (isNaN(new Date(due_at).getTime())) {
+        return res.status(400).json({ error: "due_at is not a valid date" });
+      }
+    }
+
     if (owner_id != null) {
       const [member] = await db
         .select({ id: membersTable.id })
@@ -114,6 +120,12 @@ router.patch("/tasks/:id", async (req, res) => {
       .from(tasksTable)
       .where(and(eq(tasksTable.id, id), eq(tasksTable.household_id, hid)));
     if (!task) return res.status(404).json({ error: "Not found" });
+
+    if (due_at !== undefined && due_at !== null) {
+      if (isNaN(new Date(due_at).getTime())) {
+        return res.status(400).json({ error: "due_at is not a valid date" });
+      }
+    }
 
     if (owner_id != null) {
       const [member] = await db
