@@ -27,6 +27,7 @@ import { eq, and, or, sql, desc } from "drizzle-orm";
 import { classifyAndSaveAction } from "./classifier";
 import { processWhatsAppMedia } from "./media-analysis";
 import { looksLikeToken, markTokenVerified } from "./wa-token-store";
+import { handleWaOnboarding } from "./wa-onboarding-handler";
 import { handleApprovalResponse } from "./wa-approval-handler";
 import { recordPrompt } from "./wa-prompt-store";
 import { detectPatternsForHousehold } from "./pattern-detector";
@@ -65,6 +66,8 @@ export type ProcessOutcome =
   | { kind: "duplicate"; messageSid: string }
   | { kind: "unknown_sender"; phone: string }
   | { kind: "multi_household"; phone: string }
+  /** New-user WhatsApp-native onboarding — reply contains the next prompt. */
+  | { kind: "wa_onboarding"; phone: string; reply: string }
   | { kind: "media_rate_limited"; phone: string }
   | { kind: "approved_via_wa"; actionId: number; actionTitle: string; householdId: number; phone: string }
   | { kind: "dismissed_via_wa"; actionId: number; householdId: number; phone: string }
@@ -179,9 +182,14 @@ type MatchedContact = {
 };
 
 type ResolvedHousehold = {
+  kind: "found";
   householdId: number;
   matchedMembers: MatchedMember[];
   matchedContacts: MatchedContact[];
+} | {
+  kind: "unknown";
+} | {
+  kind: "multi_household";
 };
 
 /**
@@ -216,7 +224,7 @@ async function resolveHousehold(
   phoneNorm: string,
   log: Logger,
   phoneRaw: string,
-): Promise<ResolvedHousehold | null> {
+): Promise<ResolvedHousehold> {
   const allContacts = await db
     .select({
       id: contactsTable.id,
@@ -256,12 +264,12 @@ async function resolveHousehold(
   ]);
 
   if (allMatchingHouseholdIds.size === 0) {
-    return null; // truly unknown sender
+    return { kind: "unknown" }; // truly unknown sender — route to onboarding
   }
 
   if (allMatchingHouseholdIds.size === 1) {
-    const householdId = [...allMatchingHouseholdIds][0];
-    return { householdId, matchedMembers, matchedContacts };
+    const householdId = [...allMatchingHouseholdIds][0]!;
+    return { kind: "found", householdId, matchedMembers, matchedContacts };
   }
 
   // Multiple households claim this phone via any combination of member/contact
@@ -270,7 +278,7 @@ async function resolveHousehold(
     { phone: phoneRaw, households: [...allMatchingHouseholdIds] },
     "Phone matched multiple households (members and/or contacts) — discarding to prevent cross-tenant misdelivery",
   );
-  return null;
+  return { kind: "multi_household" };
 }
 
 /**
@@ -328,8 +336,19 @@ export async function processInboundWAMessage(
   // path is reached only for legacy data predating that constraint.
   const resolved = await resolveHousehold(phoneNorm, log, phoneRaw);
 
-  if (!resolved) {
-    log.warn({ phone: phoneRaw }, "Unable to resolve sender to a unique household — discarding");
+  if (resolved.kind === "unknown") {
+    // Phone not registered in any household — route to WhatsApp-native onboarding.
+    // Group messages are excluded: onboarding is a 1:1 DM flow only.
+    if (payload.groupId) {
+      log.info({ phone: phoneRaw }, "Unknown sender in group — silently ignoring");
+      return { kind: "unknown_sender", phone: phoneRaw };
+    }
+    log.info({ phone: phoneRaw }, "Unknown sender — routing to WA onboarding");
+    return await handleWaOnboarding(phoneRaw, bodyText, log);
+  }
+
+  if (resolved.kind === "multi_household") {
+    log.warn({ phone: phoneRaw }, "Multi-household collision — discarding");
     return { kind: "multi_household", phone: phoneRaw };
   }
 

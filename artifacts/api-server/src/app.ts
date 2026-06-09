@@ -127,6 +127,7 @@ const PUBLIC_API_EXACT: ReadonlySet<string> = new Set([
   "/webhook/whatsapp/info",
   "/mobile-auth/token-exchange",
   "/mobile-auth/logout",
+  "/auth/claim-magic",
   "/dev/test-login",
   // Dev-only: routes only registered when NODE_ENV !== "production".
   ...(process.env.NODE_ENV !== "production"

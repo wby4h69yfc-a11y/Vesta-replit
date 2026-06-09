@@ -535,6 +535,17 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         );
         break;
 
+      // ── WhatsApp-native onboarding ─────────────────────────────────────────
+      // New user — never registered in any household. Route through the
+      // conversational onboarding flow. The handler builds the reply text.
+      case "wa_onboarding":
+        void sendWhatsApp(outcome.phone, outcome.reply);
+        req.log.info(
+          { phone: outcome.phone, preview: outcome.reply.substring(0, 80) },
+          "WA onboarding reply sent",
+        );
+        break;
+
       case "unknown_sender":
       case "multi_household":
       case "duplicate":

@@ -6,6 +6,7 @@ import { detectPatternsForAllHouseholds } from "./lib/pattern-detector";
 import { runConsentRenewalJob } from "./lib/consent-renewal-scheduler";
 import { expireOldConversations } from "./lib/wa-prompt-store";
 import { pruneExpiredQaSessions } from "./lib/wa-qa-session-store";
+import { expireWaOnboardingSessions } from "./lib/wa-onboarding-handler";
 import {
   scheduleProactiveForAllHouseholds,
   scheduleProactiveMessages,
@@ -133,6 +134,17 @@ async function waConvExpiryTick(): Promise<void> {
   }
 }
 
+async function waOnboardingExpiryTick(): Promise<void> {
+  try {
+    const deleted = await expireWaOnboardingSessions();
+    if (deleted > 0) {
+      logger.info({ deleted }, "Scheduler: expired WA onboarding sessions purged");
+    }
+  } catch (err) {
+    logger.error({ err }, "Scheduler: WA onboarding session expiry error");
+  }
+}
+
 async function proactiveScheduleTick(): Promise<void> {
   try {
     await scheduleProactiveForAllHouseholds();
@@ -243,6 +255,12 @@ export function startScheduler(): void {
     void waConvExpiryTick();
   }, WA_CONV_EXPIRY_INTERVAL_MS);
   logger.info({ intervalMs: WA_CONV_EXPIRY_INTERVAL_MS }, "WA conversation expiry scheduler started");
+
+  // Purge expired WA onboarding sessions hourly (24h TTL)
+  void waOnboardingExpiryTick();
+  setInterval(() => {
+    void waOnboardingExpiryTick();
+  }, 60 * 60 * 1000);
 
   void proactiveScheduleTick();
   proactiveScheduleIntervalHandle = setInterval(() => {

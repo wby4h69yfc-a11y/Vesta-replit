@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@workspace/replit-auth-web";
 import Layout from "@/components/Layout";
+import { useEffect, useState } from "react";
 import Landing from "@/pages/Landing";
 import LoginPage from "@/pages/Login";
 import AppDashboard from "@/pages/AppDashboard";
@@ -129,8 +130,64 @@ function AuthenticatedApp() {
   );
 }
 
+/**
+ * Handles the ?magic=<token> query param emitted at the end of the
+ * WhatsApp-native onboarding flow.
+ *
+ * On mount it calls POST /api/auth/claim-magic, which is a public endpoint
+ * that exchanges the one-time token for a session cookie and returns the
+ * newly-created user. On success the page reloads so that useAuth picks up
+ * the new session. The magic param is stripped from the URL before the reload
+ * to prevent accidental double-claims.
+ */
+function useMagicLinkClaim() {
+  const [claiming, setClaiming] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("magic");
+    if (!token) return;
+
+    setClaiming(true);
+
+    // Strip the token from the URL immediately so a back-button or F5 never
+    // re-submits it.
+    params.delete("magic");
+    const clean =
+      window.location.pathname +
+      (params.size > 0 ? "?" + params.toString() : "") +
+      window.location.hash;
+    window.history.replaceState(null, "", clean);
+
+    fetch("/api/auth/claim-magic", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(() => {
+        // Session cookie is now set; reload so useAuth picks it up.
+        window.location.replace(clean || "/app");
+      })
+      .catch(() => {
+        // Token invalid or expired — fall through to normal login page.
+        setClaiming(false);
+      });
+  }, []);
+
+  return claiming;
+}
+
 function Router() {
   const { user, isLoading } = useAuth();
+  const claiming = useMagicLinkClaim();
+
+  // While exchanging the magic token show the loading screen.
+  if (claiming) return <LoadingScreen />;
 
   return (
     <Switch>

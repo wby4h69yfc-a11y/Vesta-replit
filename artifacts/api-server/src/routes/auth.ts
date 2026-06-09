@@ -6,7 +6,7 @@ import {
   ExchangeMobileAuthorizationCodeResponse,
   LogoutMobileSessionResponse,
 } from "@workspace/api-zod";
-import { db, usersTable, householdsTable } from "@workspace/db";
+import { db, usersTable, householdsTable, waOnboardingSessionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   clearSession,
@@ -296,6 +296,92 @@ router.post("/mobile-auth/logout", async (req: Request, res: Response) => {
     await deleteSession(sid);
   }
   res.json(LogoutMobileSessionResponse.parse({ success: true }));
+});
+
+/**
+ * POST /api/auth/claim-magic
+ *
+ * Public endpoint — no session required.
+ * Exchanges a one-time magic token (sent via WhatsApp at the end of the
+ * WA-native onboarding flow) for a full web session cookie.
+ *
+ * Security guarantees:
+ *   - Token is single-use: cleared on first successful claim.
+ *   - Token expires 30 minutes after creation (set by wa-onboarding-handler).
+ *   - Returns 404 for unknown tokens (same as expired — no timing oracle).
+ */
+router.post("/auth/claim-magic", async (req: Request, res: Response) => {
+  const { token } = req.body as { token?: string };
+  if (!token || typeof token !== "string") {
+    res.status(400).json({ error: "Token required" });
+    return;
+  }
+
+  try {
+    const [session] = await db
+      .select()
+      .from(waOnboardingSessionsTable)
+      .where(eq(waOnboardingSessionsTable.magic_token, token.trim()))
+      .limit(1);
+
+    if (
+      !session ||
+      !session.created_user_id ||
+      !session.magic_token_expires_at ||
+      session.magic_token_expires_at < new Date()
+    ) {
+      res.status(404).json({ error: "Token not found or expired" });
+      return;
+    }
+
+    // Invalidate token immediately (single-use)
+    await db
+      .update(waOnboardingSessionsTable)
+      .set({ magic_token: null, magic_token_expires_at: null })
+      .where(eq(waOnboardingSessionsTable.id, session.id));
+
+    // Load the user that was created during WA onboarding
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, session.created_user_id))
+      .limit(1);
+
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const sessionData: SessionData = {
+      user: {
+        id: user.id,
+        email: user.email ?? null,
+        phone: user.phone ?? null,
+        firstName: user.firstName ?? null,
+        lastName: user.lastName ?? null,
+        profileImageUrl: user.profileImageUrl ?? null,
+        household_id: user.household_id ?? null,
+      },
+      access_token: "",
+    };
+
+    const sid = await createSession(sessionData);
+
+    res.cookie(SESSION_COOKIE, sid, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: SESSION_TTL,
+      path: "/",
+    });
+
+    req.log.info({ userId: user.id, phone: session.phone }, "WA magic-link claimed — web session created");
+
+    res.json({ success: true, user: sessionData.user });
+  } catch (err) {
+    req.log.error({ err }, "Failed to claim magic link");
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 export default router;
