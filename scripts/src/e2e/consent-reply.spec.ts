@@ -18,6 +18,12 @@
  *       (proven: consent_withdrawn_at unchanged by a third REVOGAR attempt)
  *   9.  Concurrent SIM+REVOGAR race → always ends "revoked" (REVOGAR wins)
  *       (proven: consent_withdrawn_at IS NOT NULL; terminal after third call)
+ *  10.  NÃO on pending → revoked (basic transition)
+ *  11.  NAO (without accent) on pending → revoked (normalisation)
+ *  12.  NÃO+NÃO same MessageSid → second is a no-op (timestamp unchanged)
+ *  13.  NÃO+NÃO different SIDs → second NÃO is a no-op (timestamp unchanged)
+ *  14.  NÃO on already-revoked contact → no-op (timestamp unchanged)
+ *  15.  NÃO on consented contact → no-op (only applies to "pending")
  *
  * Strategy: direct DB setup via pg + form-POST to /api/webhook/whatsapp.
  * In development NODE_ENV the Twilio HMAC check is bypassed.  The webhook
@@ -380,5 +386,136 @@ test.describe("Consent reply idempotency", () => {
     const tsTerminal = await getTimestamps(db, contactId);
     expect(tsTerminal.consent_withdrawn_at).toEqual(tsRace.consent_withdrawn_at); // unchanged
     expect(await getConsentStatus(db, contactId)).toBe("revoked");
+  });
+
+  // ── 10. NÃO on pending → revoked ────────────────────────────────────────────
+  //
+  // NÃO is the explicit rejection keyword.  It transitions pending → revoked,
+  // setting consent_withdrawn_at like REVOGAR.  Unlike REVOGAR it only applies
+  // when consent_status = "pending" (§4.6 WHERE clause uses currentStatus).
+
+  test("NÃO on pending contact: transitions to 'revoked' (consent_withdrawn_at set)", async ({ request }) => {
+    const phone = uniquePhone();
+    const hhId = await seedHousehold(db);
+    const contactId = await seedContact(db, hhId, phone, "pending");
+
+    await sendWebhook(request, phone, "NÃO", uniqueSid("nao-pending-basic"));
+
+    expect(await getConsentStatus(db, contactId)).toBe("revoked");
+    const ts = await getTimestamps(db, contactId);
+    expect(ts.consent_withdrawn_at).not.toBeNull();
+    expect(ts.consent_granted_at).toBeNull(); // SIM was never sent
+  });
+
+  // ── 11. NAO (without accent) on pending → revoked ────────────────────────────
+  //
+  // The processor normalises both "NÃO" and "NAO" to the same branch.
+
+  test("NAO (without accent) on pending contact: transitions to 'revoked'", async ({ request }) => {
+    const phone = uniquePhone();
+    const hhId = await seedHousehold(db);
+    const contactId = await seedContact(db, hhId, phone, "pending");
+
+    await sendWebhook(request, phone, "NAO", uniqueSid("nao-no-accent-pending"));
+
+    expect(await getConsentStatus(db, contactId)).toBe("revoked");
+    const ts = await getTimestamps(db, contactId);
+    expect(ts.consent_withdrawn_at).not.toBeNull();
+  });
+
+  // ── 12. NÃO+NÃO same MessageSid ─────────────────────────────────────────────
+  //
+  // Twilio retry simulation with the same SID.  After the first NÃO the
+  // status is "revoked"; the §4.6 WHERE clause (currentStatus = "pending") no
+  // longer matches → second call is a no-op.
+
+  test("NÃO+NÃO same MessageSid: second call is a no-op (timestamp unchanged)", async ({ request }) => {
+    const phone = uniquePhone();
+    const hhId = await seedHousehold(db);
+    const contactId = await seedContact(db, hhId, phone, "pending");
+    const sid = uniqueSid("nao-nao-same-sid");
+
+    // First NÃO: pending → revoked
+    await sendWebhook(request, phone, "NÃO", sid);
+    expect(await getConsentStatus(db, contactId)).toBe("revoked");
+    const tsAfterFirst = await getTimestamps(db, contactId);
+    expect(tsAfterFirst.consent_withdrawn_at).not.toBeNull();
+
+    // Second NÃO (same SID, Twilio retry): status is now "revoked", WHERE
+    // clause expects "pending" → no rows affected.
+    await sendWebhook(request, phone, "NÃO", sid);
+    const tsAfterSecond = await getTimestamps(db, contactId);
+    expect(tsAfterSecond.consent_withdrawn_at).toEqual(tsAfterFirst.consent_withdrawn_at); // unchanged
+    expect(await getConsentStatus(db, contactId)).toBe("revoked");
+  });
+
+  // ── 13. NÃO+NÃO different SIDs ──────────────────────────────────────────────
+  //
+  // Two distinct NÃO messages (not a retry).  The second arrives after status
+  // is already "revoked" — should still be a no-op.
+
+  test("NÃO+NÃO different SIDs: second NÃO leaves status as 'revoked' (timestamp unchanged)", async ({ request }) => {
+    const phone = uniquePhone();
+    const hhId = await seedHousehold(db);
+    const contactId = await seedContact(db, hhId, phone, "pending");
+
+    // First NÃO: pending → revoked
+    await sendWebhook(request, phone, "NÃO", uniqueSid("nao-nao-first"));
+    expect(await getConsentStatus(db, contactId)).toBe("revoked");
+    const tsAfterFirst = await getTimestamps(db, contactId);
+    expect(tsAfterFirst.consent_withdrawn_at).not.toBeNull();
+
+    // Second NÃO (different SID): WHERE (consent_status = 'pending') fails → no-op
+    await sendWebhook(request, phone, "NÃO", uniqueSid("nao-nao-second"));
+    const tsAfterSecond = await getTimestamps(db, contactId);
+    expect(tsAfterSecond.consent_withdrawn_at).toEqual(tsAfterFirst.consent_withdrawn_at); // unchanged
+    expect(await getConsentStatus(db, contactId)).toBe("revoked");
+  });
+
+  // ── 14. NÃO on already-revoked contact: no-op ────────────────────────────────
+  //
+  // Contact was previously seeded directly as "revoked" (e.g. via a prior
+  // REVOGAR).  NÃO must not re-write consent_withdrawn_at.
+
+  test("NÃO on already-revoked contact: no-op (timestamp unchanged)", async ({ request }) => {
+    const phone = uniquePhone();
+    const hhId = await seedHousehold(db);
+    const contactId = await seedContact(db, hhId, phone, "revoked");
+    await db.query(
+      `UPDATE contacts SET consent_withdrawn_at = NOW() - INTERVAL '1 day' WHERE id = $1`,
+      [contactId],
+    );
+
+    const tsBefore = await getTimestamps(db, contactId);
+
+    await sendWebhook(request, phone, "NÃO", uniqueSid("nao-already-revoked"));
+
+    const tsAfter = await getTimestamps(db, contactId);
+    expect(tsAfter.consent_withdrawn_at).toEqual(tsBefore.consent_withdrawn_at); // no write
+    expect(await getConsentStatus(db, contactId)).toBe("revoked");
+  });
+
+  // ── 15. NÃO on consented contact: no-op ─────────────────────────────────────
+  //
+  // NÃO only applies to "pending" contacts (§4.6).  A diarista who already
+  // consented cannot use NÃO to revoke — they must use REVOGAR.
+
+  test("NÃO on consented contact: no-op (only REVOGAR can revoke consented status)", async ({ request }) => {
+    const phone = uniquePhone();
+    const hhId = await seedHousehold(db);
+    const contactId = await seedContact(db, hhId, phone, "consented");
+    await db.query(
+      `UPDATE contacts SET consent_granted_at = NOW() - INTERVAL '1 day' WHERE id = $1`,
+      [contactId],
+    );
+
+    const tsBefore = await getTimestamps(db, contactId);
+
+    await sendWebhook(request, phone, "NÃO", uniqueSid("nao-on-consented"));
+
+    const tsAfter = await getTimestamps(db, contactId);
+    expect(tsAfter.consent_granted_at).toEqual(tsBefore.consent_granted_at); // unchanged
+    expect(tsAfter.consent_withdrawn_at).toBeNull(); // no withdrawal written
+    expect(await getConsentStatus(db, contactId)).toBe("consented");
   });
 });
