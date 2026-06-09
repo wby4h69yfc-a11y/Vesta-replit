@@ -356,6 +356,16 @@ export function replyRatingSuggestPreferred(providerName: string): string {
   );
 }
 
+// ── Group /vesta command replies ──────────────────────────────────────────────
+
+/**
+ * Sent into a WhatsApp group when a non-admin member issues a /vesta command.
+ * Only household admins may invoke Vesta from a group chat.
+ */
+export function replyGroupNonAdmin(): string {
+  return "🔒 Só admins da Vesta podem usar esse comando.";
+}
+
 /**
  * Sent when a preferred provider is relevant to a new task or cascade.
  */

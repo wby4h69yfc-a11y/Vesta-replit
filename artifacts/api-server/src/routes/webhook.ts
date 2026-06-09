@@ -30,6 +30,7 @@ import {
   replyAvoidCancelled,
   replyPreferredPromoted,
   replyPreferredDeclined,
+  replyGroupNonAdmin,
 } from "../lib/wa-reply-composer";
 
 const router = Router();
@@ -139,12 +140,43 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       MediaContentType0,
       NumMedia,
       MessageSid,
+      WaGroupId,
     } = req.body as Record<string, string | undefined>;
+
+    // ── Group detection & /vesta trigger filter ────────────────────────────
+    // Twilio sets WaGroupId on webhook payloads originating from a WhatsApp
+    // group chat. We only act on group messages that start with /vesta —
+    // everything else is silently ACK'd to prevent group noise filling the
+    // household inbox.
+    const groupId = WaGroupId?.trim() || null;
+    const isGroupMessage = !!groupId;
+
+    let effectiveBody = Body?.trim() ?? "";
+    if (isGroupMessage) {
+      if (!/^\/vesta\b/i.test(effectiveBody)) {
+        req.log.info(
+          { groupId, from: From, source: "group" },
+          "Group message without /vesta trigger — silently ignored",
+        );
+        return;
+      }
+      // Strip /vesta prefix and leading whitespace so the remainder is passed
+      // to the processor exactly as if it were a direct message.
+      effectiveBody = effectiveBody.replace(/^\/vesta\s*/i, "").trim();
+      req.log.info(
+        { groupId, from: From, preview: effectiveBody.substring(0, 60), source: "group" },
+        "Group /vesta command received",
+      );
+    }
+
+    // Replies go to the group JID for group messages so all members see the
+    // response, or to the sender's phone for direct messages.
+    const replyDest = (phone: string): string => groupId ?? phone;
 
     // ── Tier-0: PAUSAR / PARAR / RETOMAR keywords ──────────────────────────
     // These are handled before the normal message processor to give users
     // immediate control over proactive messages without any AI involvement.
-    const normalizedBody = (Body?.trim() ?? "").toUpperCase();
+    const normalizedBody = effectiveBody.toUpperCase();
     const isPausar = normalizedBody === "PAUSAR";
     const isParar = normalizedBody === "PARAR";
     const isRetomar = normalizedBody === "RETOMAR";
@@ -165,21 +197,24 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
             .update(householdsTable)
             .set({ digest_paused_until: pausedUntil, digest_stopped: false })
             .where(eq(householdsTable.id, onboarding.household_id));
-          void sendWhatsApp(senderPhone, "⏸ Pausei por 24h. Manda *RETOMAR* pra voltar.");
+          void sendWhatsApp(replyDest(senderPhone), "⏸ Pausei por 24h. Manda *RETOMAR* pra voltar.");
         } else if (isParar) {
           await db
             .update(householdsTable)
             .set({ digest_stopped: true, digest_paused_until: null })
             .where(eq(householdsTable.id, onboarding.household_id));
-          void sendWhatsApp(senderPhone, "🔕 Parei. Manda *RETOMAR* pra voltar.");
+          void sendWhatsApp(replyDest(senderPhone), "🔕 Parei. Manda *RETOMAR* pra voltar.");
         } else {
           await db
             .update(householdsTable)
             .set({ digest_stopped: false, digest_paused_until: null, digest_enabled: true })
             .where(eq(householdsTable.id, onboarding.household_id));
-          void sendWhatsApp(senderPhone, "▶️ Retomado! Você voltará a receber os resumos diários.");
+          void sendWhatsApp(replyDest(senderPhone), "▶️ Retomado! Você voltará a receber os resumos diários.");
         }
-        req.log.info({ senderPhone, command: normalizedBody, householdId: onboarding.household_id }, "Proactive command processed");
+        req.log.info(
+          { senderPhone, command: normalizedBody, householdId: onboarding.household_id, source: isGroupMessage ? "group" : "dm" },
+          "Proactive command processed",
+        );
       }
       return; // do not continue to normal message processing
     }
@@ -187,12 +222,13 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     const outcome = await processInboundWAMessage(
       {
         from: From ?? "",
-        body: Body?.trim() ?? "",
+        body: effectiveBody,
         profileName: ProfileName ?? null,
         mediaUrl: MediaUrl0 ?? null,
         mediaContentType: MediaContentType0 ?? null,
         numMedia: NumMedia ?? null,
         messageSid: MessageSid ?? null,
+        groupId: groupId ?? null,
       },
       req.log,
     );
@@ -200,40 +236,51 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     // ── 4. Send reply based on outcome ──────────────────────────────────────
     switch (outcome.kind) {
       case "token_verified":
-        void sendWhatsApp(outcome.phone, replyVerificationSuccess());
+        void sendWhatsApp(replyDest(outcome.phone), replyVerificationSuccess());
         break;
 
       case "token_expired":
-        void sendWhatsApp(outcome.phone, replyTokenExpired());
+        void sendWhatsApp(replyDest(outcome.phone), replyTokenExpired());
+        break;
+
+      // ── WhatsApp group: non-admin tried /vesta ─────────────────────────────
+      case "group_non_admin":
+        void sendWhatsApp(outcome.groupId, replyGroupNonAdmin());
+        req.log.info(
+          { groupId: outcome.groupId, phone: outcome.phone, source: "group" },
+          "Group /vesta command rejected — non-admin sender",
+        );
         break;
 
       // ── WhatsApp-native approval responses ─────────────────────────────────
       case "approved_via_wa":
-        void sendWhatsApp(outcome.phone, replyApproved(outcome.actionTitle));
+        void sendWhatsApp(replyDest(outcome.phone), replyApproved(outcome.actionTitle));
         req.log.info({ actionId: outcome.actionId }, "Sent approved reply via WhatsApp");
         break;
 
       case "dismissed_via_wa":
-        void sendWhatsApp(outcome.phone, replyDismissed());
+        void sendWhatsApp(replyDest(outcome.phone), replyDismissed());
         break;
 
       // Standalone "editar" — ask the user what they want to change
       case "edit_prompt_via_wa":
-        void sendWhatsApp(outcome.phone, replyEditPrompt());
+        void sendWhatsApp(replyDest(outcome.phone), replyEditPrompt());
         req.log.info({ actionId: outcome.actionId }, "Edit prompt sent — awaiting_edit state");
         break;
 
       // NL / structured edit applied — re-propose updated item for final confirmation
       case "nl_edit_proposed_via_wa":
-        void sendWhatsApp(outcome.phone, replyNlEditProposal(outcome.newTitle));
+        void sendWhatsApp(replyDest(outcome.phone), replyNlEditProposal(outcome.newTitle));
         req.log.info({ actionId: outcome.actionId, newTitle: outcome.newTitle }, "Edit re-proposed via WhatsApp");
         break;
 
       case "undone_via_wa":
-        void sendWhatsApp(outcome.phone, replyUndone(outcome.actionTitle));
+        void sendWhatsApp(replyDest(outcome.phone), replyUndone(outcome.actionTitle));
         break;
 
       case "consent_updated": {
+        // Consent replies go to the sender directly, not to a group (consent
+        // flows are always 1:1 DMs between the contact and Vesta).
         void sendWhatsApp(
           outcome.phone,
           outcome.newStatus === "consented" ? replyConsentGranted() : replyConsentRevoked(),
@@ -265,7 +312,7 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
 
         if (!outcome.actionTitle) {
           // Classification produced no action (e.g. pure chitchat) — simple ack
-          void sendWhatsApp(outcome.phone, replyIngestAck());
+          void sendWhatsApp(replyDest(outcome.phone), replyIngestAck());
           break;
         }
 
@@ -278,7 +325,7 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
             "WA-native flow: sending inline action proposal",
           );
           void sendWhatsApp(
-            outcome.phone,
+            replyDest(outcome.phone),
             replyActionProposal(
               outcome.actionTitle,
               outcome.actionType,
@@ -297,10 +344,11 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
             },
             "App-required path: sending deep link",
           );
-          void sendWhatsApp(outcome.phone, replyAppDeepLink(outcome.actionTitle, domain));
+          void sendWhatsApp(replyDest(outcome.phone), replyAppDeepLink(outcome.actionTitle, domain));
         }
 
-        // Notify household admin for explicit-approval items regardless of routing
+        // Notify household admin for explicit-approval items regardless of routing.
+        // Admin notifications are always DMs, not group replies.
         if (outcome.approvalLevel === "explicit" && outcome.senderName) {
           const adminPhone = await resolveHouseholdAdminPhone(outcome.householdId);
           if (adminPhone && adminPhone !== outcome.phone) {
@@ -325,10 +373,10 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         } else {
           ackMsg = replyRatingNoShow(contactName, noShowCount);
         }
-        void sendWhatsApp(ratedPhone, ackMsg);
+        void sendWhatsApp(replyDest(ratedPhone), ackMsg);
 
         if (suggestUpgrade) {
-          void sendWhatsApp(ratedPhone, replyRatingSuggestPreferred(contactName));
+          void sendWhatsApp(replyDest(ratedPhone), replyRatingSuggestPreferred(contactName));
           const upgradeExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
           void db.insert(waConversationsTable).values({
             household_id: ratedHhId,
@@ -363,34 +411,34 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
 
       case "avoid_confirmed": {
         const { contactName, phone: avoidPhone } = outcome;
-        void sendWhatsApp(avoidPhone, replyAvoidConfirmed(contactName));
+        void sendWhatsApp(replyDest(avoidPhone), replyAvoidConfirmed(contactName));
         req.log.info({ contactName }, "Provider marked as avoid — WA confirmed");
         break;
       }
 
       case "avoid_cancelled": {
         const { contactName, phone: avoidPhone } = outcome;
-        void sendWhatsApp(avoidPhone, replyAvoidCancelled(contactName));
+        void sendWhatsApp(replyDest(avoidPhone), replyAvoidCancelled(contactName));
         req.log.info({ contactName }, "Avoid marking cancelled by admin");
         break;
       }
 
       case "promoted_to_preferred": {
         const { contactName, phone: prefPhone } = outcome;
-        void sendWhatsApp(prefPhone, replyPreferredPromoted(contactName));
+        void sendWhatsApp(replyDest(prefPhone), replyPreferredPromoted(contactName));
         req.log.info({ contactName }, "Provider promoted to preferred — WA ack sent");
         break;
       }
 
       case "suggest_preferred_declined": {
         const { contactName, phone: prefPhone } = outcome;
-        void sendWhatsApp(prefPhone, replyPreferredDeclined(contactName));
+        void sendWhatsApp(replyDest(prefPhone), replyPreferredDeclined(contactName));
         req.log.info({ contactName }, "Preferred upgrade declined by admin");
         break;
       }
 
       case "question_answered":
-        void sendWhatsApp(outcome.phone, outcome.reply);
+        void sendWhatsApp(replyDest(outcome.phone), outcome.reply);
         req.log.info(
           { householdId: outcome.householdId, preview: outcome.reply.substring(0, 80) },
           "Q&A reply sent to admin via WhatsApp",

@@ -47,6 +47,12 @@ export interface InboundWAMessage {
   numMedia?: string | null;
   /** Twilio message SID for deduplication */
   messageSid?: string | null;
+  /**
+   * Group JID when the message originated from a WhatsApp group chat (Twilio
+   * sets WaGroupId for group messages). Null/undefined for direct messages.
+   * When present, the webhook has already stripped the /vesta prefix from body.
+   */
+  groupId?: string | null;
 }
 
 export type ProcessOutcome =
@@ -80,6 +86,8 @@ export type ProcessOutcome =
   | { kind: "promoted_to_preferred"; contactId: number; contactName: string; householdId: number; phone: string }
   | { kind: "suggest_preferred_declined"; contactId: number; contactName: string; householdId: number; phone: string }
   | { kind: "question_answered"; reply: string; householdId: number; phone: string }
+  /** A /vesta group command arrived from a non-admin household member. */
+  | { kind: "group_non_admin"; phone: string; groupId: string }
   | {
       kind: "ingested";
       inboxItemId: number;
@@ -333,6 +341,27 @@ export async function processInboundWAMessage(
   const senderIsAdmin = matchedMembers.some(
     (m) => m.household_id === householdId && m.role === "admin",
   );
+
+  // ── Group non-admin gate ───────────────────────────────────────────────────
+  // For /vesta group commands, only household admins may invoke Vesta.
+  // Return a specific outcome so the webhook sends the rejection reply
+  // back into the group thread rather than silently ignoring the command.
+  // Unknown senders never reach here (resolveHousehold already returned null).
+  if (payload.groupId && !senderIsAdmin) {
+    log.info(
+      { phone: phoneRaw, groupId: payload.groupId, householdId, source: "group" },
+      "Group /vesta command from non-admin sender — rejecting with group reply",
+    );
+    return { kind: "group_non_admin", phone: phoneRaw, groupId: payload.groupId };
+  }
+
+  // Tag remaining log lines with group context when applicable.
+  if (payload.groupId) {
+    log.info(
+      { groupId: payload.groupId, householdId, source: "group" },
+      "Group /vesta command from admin — processing",
+    );
+  }
 
   // When the household admin sends ANY inbound message, mark pending proactive
   // rows as user_replied so the unread-backlog suppression (≥2 unread) clears.
