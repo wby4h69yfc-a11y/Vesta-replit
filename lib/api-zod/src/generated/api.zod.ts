@@ -196,6 +196,10 @@ export const GetUpcomingTasksResponseItem = zod.object({
   payment_obligation_id: zod.number().nullish(),
   reimbursement_note: zod.string().nullish(),
   reimbursement_owed_by: zod.number().nullish(),
+  provider_contact_id: zod
+    .number()
+    .nullish()
+    .describe("Contact id of the service provider linked to this task"),
 });
 export const GetUpcomingTasksResponse = zod.array(GetUpcomingTasksResponseItem);
 
@@ -771,6 +775,10 @@ export const ListTasksResponseItem = zod.object({
   payment_obligation_id: zod.number().nullish(),
   reimbursement_note: zod.string().nullish(),
   reimbursement_owed_by: zod.number().nullish(),
+  provider_contact_id: zod
+    .number()
+    .nullish()
+    .describe("Contact id of the service provider linked to this task"),
 });
 export const ListTasksResponse = zod.array(ListTasksResponseItem);
 
@@ -786,6 +794,10 @@ export const CreateTaskBody = zod.object({
   payment_amount_cents: zod.number().optional(),
   payment_due_date: zod.string().optional(),
   payment_method: zod.string().optional(),
+  provider_contact_id: zod
+    .number()
+    .optional()
+    .describe("Contact id of the service provider linked to this task"),
 });
 
 /**
@@ -820,6 +832,10 @@ export const GetTaskResponse = zod.object({
   payment_obligation_id: zod.number().nullish(),
   reimbursement_note: zod.string().nullish(),
   reimbursement_owed_by: zod.number().nullish(),
+  provider_contact_id: zod
+    .number()
+    .nullish()
+    .describe("Contact id of the service provider linked to this task"),
 });
 
 /**
@@ -862,6 +878,10 @@ export const UpdateTaskResponse = zod.object({
   payment_obligation_id: zod.number().nullish(),
   reimbursement_note: zod.string().nullish(),
   reimbursement_owed_by: zod.number().nullish(),
+  provider_contact_id: zod
+    .number()
+    .nullish()
+    .describe("Contact id of the service provider linked to this task"),
 });
 
 /**
@@ -903,6 +923,10 @@ export const CompleteTaskResponse = zod.object({
   payment_obligation_id: zod.number().nullish(),
   reimbursement_note: zod.string().nullish(),
   reimbursement_owed_by: zod.number().nullish(),
+  provider_contact_id: zod
+    .number()
+    .nullish()
+    .describe("Contact id of the service provider linked to this task"),
 });
 
 /**
@@ -1044,6 +1068,16 @@ export const DeleteEventParams = zod.object({
  */
 export const ListContactsQueryParams = zod.object({
   category: zod.coerce.string().optional(),
+  service_category: zod.coerce
+    .string()
+    .optional()
+    .describe("Filter by service category (diarista, eletricista, etc.)"),
+  reliability_status: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Comma-separated list of reliability statuses to filter by (e.g. preferred,backup)",
+    ),
 });
 
 export const listContactsResponseReliabilityStatusDefault = `untested`;
@@ -1143,6 +1177,10 @@ export const UpdateContactParams = zod.object({
   id: zod.coerce.number(),
 });
 
+export const updateContactBodyNoShowCountMin = 0;
+
+export const updateContactBodyHouseholdRatingMax = 5;
+
 export const UpdateContactBody = zod.object({
   name: zod.string().optional(),
   phone: zod.string().optional(),
@@ -1174,6 +1212,13 @@ export const UpdateContactBody = zod.object({
   last_price_range: zod.string().nullish(),
   payment_notes: zod.string().nullish(),
   reliability_notes: zod.string().nullish(),
+  last_used_at: zod.coerce.date().nullish(),
+  no_show_count: zod.number().min(updateContactBodyNoShowCountMin).optional(),
+  household_rating: zod
+    .number()
+    .min(1)
+    .max(updateContactBodyHouseholdRatingMax)
+    .nullish(),
 });
 
 export const updateContactResponseReliabilityStatusDefault = `untested`;
@@ -1824,6 +1869,10 @@ export const ExportPrivacyDataResponse = zod.object({
         payment_obligation_id: zod.number().nullish(),
         reimbursement_note: zod.string().nullish(),
         reimbursement_owed_by: zod.number().nullish(),
+        provider_contact_id: zod
+          .number()
+          .nullish()
+          .describe("Contact id of the service provider linked to this task"),
       }),
     )
     .optional(),

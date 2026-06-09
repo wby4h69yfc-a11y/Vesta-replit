@@ -14,108 +14,17 @@ import {
   replyConsentRequest,
   replyRatingRequest,
 } from "../lib/wa-reply-composer";
+import {
+  applyContactRating,
+  VALID_RATINGS,
+  VALID_RELIABILITY,
+  type RatingKeyword,
+  type ReliabilityStatus,
+} from "../lib/provider-rating";
+
+export { applyContactRating } from "../lib/provider-rating";
 
 const router = Router();
-
-// ── Type aliases ─────────────────────────────────────────────────────────────
-
-type ReliabilityStatus = "preferred" | "backup" | "avoid" | "untested";
-type RatingKeyword = "bom" | "ok" | "ruim" | "no_show";
-
-const VALID_RATINGS: RatingKeyword[] = ["bom", "ok", "ruim", "no_show"];
-const VALID_RELIABILITY: ReliabilityStatus[] = ["preferred", "backup", "avoid", "untested"];
-
-// ── Core rating application (called from route + WA processor) ────────────────
-
-export interface ApplyRatingResult {
-  contact: typeof contactsTable.$inferSelect;
-  suggest_upgrade: boolean;
-}
-
-/**
- * Apply a provider rating to a contact row.
- * Business rules:
- *   bom       → household_rating = min(5, prev+1), last_used_at=now; two consecutive bom → suggest upgrade
- *   ok        → last_used_at=now, neutral
- *   ruim      → reliability_status=avoid
- *   no_show   → no_show_count++; ≥2 no-shows → reliability_status=avoid
- *
- * Writes to audit_log in all cases.
- */
-export async function applyContactRating(
-  contactId: number,
-  householdId: number,
-  rating: RatingKeyword,
-  actorLabel: string,
-): Promise<ApplyRatingResult | null> {
-  const [current] = await db
-    .select()
-    .from(contactsTable)
-    .where(and(eq(contactsTable.id, contactId), eq(contactsTable.household_id, householdId)));
-
-  if (!current) return null;
-
-  const now = new Date();
-  const prevRating = current.last_rating as RatingKeyword | null;
-  const prevNoShows = current.no_show_count ?? 0;
-
-  let reliabilityStatus: ReliabilityStatus = (current.reliability_status ?? "untested") as ReliabilityStatus;
-  let householdRating = current.household_rating ?? null;
-  let noShowCount = prevNoShows;
-  let lastUsedAt = current.last_used_at;
-  let suggestUpgrade = false;
-
-  if (rating === "bom") {
-    householdRating = Math.min(5, (householdRating ?? 3) + 1);
-    lastUsedAt = now;
-    // Two consecutive bom → suggest upgrading to preferred (if not already preferred)
-    if (prevRating === "bom" && reliabilityStatus !== "preferred") {
-      suggestUpgrade = true;
-    }
-  } else if (rating === "ok") {
-    lastUsedAt = now;
-  } else if (rating === "ruim") {
-    reliabilityStatus = "avoid";
-    lastUsedAt = now;
-  } else if (rating === "no_show") {
-    noShowCount = prevNoShows + 1;
-    if (noShowCount >= 2) {
-      reliabilityStatus = "avoid";
-    }
-  }
-
-  const [updated] = await db
-    .update(contactsTable)
-    .set({
-      reliability_status: reliabilityStatus,
-      household_rating: householdRating,
-      no_show_count: noShowCount,
-      last_used_at: lastUsedAt,
-      last_rating: rating,
-    })
-    .where(and(eq(contactsTable.id, contactId), eq(contactsTable.household_id, householdId)))
-    .returning();
-
-  // Audit log entry
-  await db.insert(auditLogTable).values({
-    household_id: householdId,
-    action: "contact_rated",
-    actor: actorLabel,
-    action_type: "updated",
-    category: "contacts",
-    description: `Provider "${current.name}" rated "${rating}". Status: ${reliabilityStatus}. No-shows: ${noShowCount}.`,
-    metadata: {
-      contact_id: contactId,
-      contact_name: current.name,
-      rating,
-      reliability_status: reliabilityStatus,
-      no_show_count: noShowCount,
-      household_rating: householdRating,
-    },
-  });
-
-  return { contact: updated, suggest_upgrade: suggestUpgrade };
-}
 
 // ── GET /contacts ─────────────────────────────────────────────────────────────
 
@@ -123,10 +32,23 @@ router.get("/contacts", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const hid = getHouseholdId(req);
-    const { category } = req.query as { category?: string };
+    const { category, service_category, reliability_status: reliabilityFilter } = req.query as {
+      category?: string;
+      service_category?: string;
+      reliability_status?: string;
+    };
 
     const conditions = [eq(contactsTable.household_id, hid)];
     if (category) conditions.push(eq(contactsTable.category, category));
+    if (service_category) conditions.push(eq(contactsTable.service_category, service_category));
+    if (reliabilityFilter) {
+      const statuses = reliabilityFilter.split(",").map((s) => s.trim()).filter(Boolean);
+      if (statuses.length === 1) {
+        conditions.push(eq(contactsTable.reliability_status, statuses[0]));
+      } else if (statuses.length > 1) {
+        conditions.push(sql`${contactsTable.reliability_status} = ANY(ARRAY[${sql.raw(statuses.map((s) => `'${s}'`).join(","))}])`);
+      }
+    }
 
     const contacts = await db
       .select()
@@ -191,6 +113,9 @@ router.patch("/contacts/:id", async (req, res) => {
       last_price_range,
       payment_notes,
       reliability_notes,
+      last_used_at,
+      no_show_count,
+      household_rating,
     } = req.body as {
       name?: string;
       phone?: string;
@@ -203,6 +128,9 @@ router.patch("/contacts/:id", async (req, res) => {
       last_price_range?: string | null;
       payment_notes?: string | null;
       reliability_notes?: string | null;
+      last_used_at?: string | null;
+      no_show_count?: number;
+      household_rating?: number | null;
     };
 
     // Validate reliability_status if provided
@@ -250,6 +178,9 @@ router.patch("/contacts/:id", async (req, res) => {
         ...(last_price_range !== undefined && { last_price_range }),
         ...(payment_notes !== undefined && { payment_notes }),
         ...(reliability_notes !== undefined && { reliability_notes }),
+        ...(last_used_at !== undefined && { last_used_at: last_used_at ? new Date(last_used_at) : null }),
+        ...(no_show_count !== undefined && { no_show_count }),
+        ...(household_rating !== undefined && { household_rating }),
       })
       .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)))
       .returning();

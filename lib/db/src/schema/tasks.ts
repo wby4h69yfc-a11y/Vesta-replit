@@ -22,6 +22,8 @@ export const tasksTable = pgTable("tasks", {
   reimbursement_note: text("reimbursement_note"),
   reimbursement_owed_by: integer("reimbursement_owed_by"),
   payment_obligation_id: integer("payment_obligation_id"),
+  /** Contact id of the provider associated with this task (for post-completion rating prompts) */
+  provider_contact_id: integer("provider_contact_id"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

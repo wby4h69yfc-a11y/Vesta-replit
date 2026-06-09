@@ -20,6 +20,8 @@ import {
   waConversationsTable,
   auditLogTable,
 } from "@workspace/db";
+import { applyContactRating } from "./provider-rating";
+import type { RatingKeyword } from "./provider-rating";
 import { eq, and, or, sql } from "drizzle-orm";
 import { classifyAndSaveAction } from "./classifier";
 import { processWhatsAppMedia } from "./media-analysis";
@@ -43,8 +45,6 @@ export interface InboundWAMessage {
   /** Twilio message SID for deduplication */
   messageSid?: string | null;
 }
-
-type RatingKeyword = "bom" | "ok" | "ruim" | "no_show";
 
 export type ProcessOutcome =
   | { kind: "token_verified"; userId: string; phone: string }
@@ -394,65 +394,14 @@ export async function processInboundWAMessage(
         const contactName = ratingPayload?.contact_name ?? "prestador";
 
         if (contactId) {
-          const [currentContact] = await db
-            .select()
-            .from(contactsTable)
-            .where(and(eq(contactsTable.id, contactId), eq(contactsTable.household_id, householdId)));
+          const result = await applyContactRating(
+            contactId,
+            householdId,
+            ratingKw,
+            `wa:${phoneRaw}`,
+          );
 
-          if (currentContact) {
-            const now = new Date();
-            const prevRating = currentContact.last_rating as RatingKeyword | null;
-            const prevNoShows = currentContact.no_show_count ?? 0;
-
-            let reliabilityStatus = currentContact.reliability_status ?? "untested";
-            let householdRating = currentContact.household_rating ?? null;
-            let noShowCount = prevNoShows;
-            let lastUsedAt = currentContact.last_used_at;
-            let suggestUpgrade = false;
-
-            if (ratingKw === "bom") {
-              householdRating = Math.min(5, (householdRating ?? 3) + 1);
-              lastUsedAt = now;
-              if (prevRating === "bom" && reliabilityStatus !== "preferred") {
-                suggestUpgrade = true;
-              }
-            } else if (ratingKw === "ok") {
-              lastUsedAt = now;
-            } else if (ratingKw === "ruim") {
-              reliabilityStatus = "avoid";
-              lastUsedAt = now;
-            } else if (ratingKw === "no_show") {
-              noShowCount = prevNoShows + 1;
-              if (noShowCount >= 2) reliabilityStatus = "avoid";
-            }
-
-            await db
-              .update(contactsTable)
-              .set({
-                reliability_status: reliabilityStatus,
-                household_rating: householdRating,
-                no_show_count: noShowCount,
-                last_used_at: lastUsedAt,
-                last_rating: ratingKw,
-              })
-              .where(and(eq(contactsTable.id, contactId), eq(contactsTable.household_id, householdId)));
-
-            await db.insert(auditLogTable).values({
-              household_id: householdId,
-              action: "contact_rated",
-              actor: `wa:${phoneRaw}`,
-              action_type: "updated",
-              category: "contacts",
-              description: `Prestador "${contactName}" avaliado como "${ratingKw}" via WhatsApp. Status: ${reliabilityStatus}.`,
-              metadata: {
-                contact_id: contactId,
-                rating: ratingKw,
-                reliability_status: reliabilityStatus,
-                no_show_count: noShowCount,
-                suggest_upgrade: suggestUpgrade,
-              },
-            });
-
+          if (result) {
             // Close the rating conversation so it cannot be re-used.
             await db
               .update(waConversationsTable)
@@ -460,7 +409,14 @@ export async function processInboundWAMessage(
               .where(eq(waConversationsTable.id, ratingConv.id));
 
             log.info(
-              { contactId, contactName, rating: ratingKw, reliabilityStatus, suggestUpgrade, householdId },
+              {
+                contactId,
+                contactName,
+                rating: ratingKw,
+                reliabilityStatus: result.contact.reliability_status,
+                suggestUpgrade: result.suggest_upgrade,
+                householdId,
+              },
               "Provider rated via WhatsApp",
             );
 
@@ -469,9 +425,9 @@ export async function processInboundWAMessage(
               contactId,
               contactName,
               rating: ratingKw,
-              reliabilityStatus,
-              noShowCount,
-              suggestUpgrade,
+              reliabilityStatus: result.contact.reliability_status ?? "untested",
+              noShowCount: result.contact.no_show_count ?? 0,
+              suggestUpgrade: result.suggest_upgrade,
               householdId,
               phone: phoneRaw,
             };

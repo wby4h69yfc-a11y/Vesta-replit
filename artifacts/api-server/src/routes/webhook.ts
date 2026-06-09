@@ -21,6 +21,11 @@ import {
   replyConsentRevoked,
   notifyAdminConsentGranted,
   notifyAdminConsentRevoked,
+  replyRatingBom,
+  replyRatingOk,
+  replyRatingRuim,
+  replyRatingNoShow,
+  replyRatingSuggestPreferred,
 } from "../lib/wa-reply-composer";
 
 const router = Router();
@@ -301,6 +306,31 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
             );
           }
         }
+        break;
+      }
+
+      case "provider_rated": {
+        const { contactName, rating, noShowCount, suggestUpgrade, phone: ratedPhone } = outcome;
+        let ackMsg: string;
+        if (rating === "bom") {
+          ackMsg = replyRatingBom(contactName);
+        } else if (rating === "ok") {
+          ackMsg = replyRatingOk(contactName);
+        } else if (rating === "ruim") {
+          ackMsg = replyRatingRuim(contactName);
+        } else {
+          ackMsg = replyRatingNoShow(contactName, noShowCount);
+        }
+        void sendWhatsApp(ratedPhone, ackMsg);
+
+        if (suggestUpgrade) {
+          void sendWhatsApp(ratedPhone, replyRatingSuggestPreferred(contactName));
+        }
+
+        req.log.info(
+          { contactName, rating, noShowCount, suggestUpgrade },
+          "Provider rated — WA ack sent",
+        );
         break;
       }
 

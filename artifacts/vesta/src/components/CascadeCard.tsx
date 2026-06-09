@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { Check, X, ChevronDown, ChevronUp, Layers, AlertTriangle } from "lucide-react";
+import { Check, X, ChevronDown, ChevronUp, Layers, AlertTriangle, Star } from "lucide-react";
 import {
   useApproveAction,
   useDismissAction,
   useApproveCascadeAll,
   useDismissCascadeAll,
+  useListContacts,
+  getListContactsQueryKey,
   getListActionsQueryKey,
   getListActionCascadesQueryKey,
   getListInboxItemsQueryKey,
@@ -126,6 +128,18 @@ export default function CascadeCard({ cascade }: { cascade: ActionCascadeWithAct
   const allResolved     = pendingActions.length === 0;
   const hasServicos     = cascade.actions.some((a) => a.category === "servicos");
 
+  const providerQueryParams = { reliability_status: "preferred,backup" };
+  const { data: preferredProviders } = useListContacts(
+    providerQueryParams,
+    {
+      query: {
+        queryKey: getListContactsQueryKey(providerQueryParams),
+        enabled: hasServicos,
+        staleTime: 60_000,
+      },
+    },
+  );
+
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: getListActionsQueryKey() });
     void qc.invalidateQueries({ queryKey: getListActionCascadesQueryKey() });
@@ -211,6 +225,38 @@ export default function CascadeCard({ cascade }: { cascade: ActionCascadeWithAct
           : <ChevronUp   className="w-4 h-4 shrink-0" style={{ color: V.muted }} />
         }
       </button>
+
+      {/* Preferred / backup provider reminder — servicos cascade */}
+      {!collapsed && hasServicos && preferredProviders && preferredProviders.length > 0 && (
+        <div className="mx-3 mb-2 space-y-1.5">
+          {preferredProviders.slice(0, 2).map((p) => (
+            <div
+              key={p.id}
+              className="px-3 py-2 rounded-xl flex items-center gap-2"
+              style={{ background: "#F0FDF4", border: "1px solid #BBF7D0" }}
+            >
+              <Star className="w-3.5 h-3.5 shrink-0 text-green-600 fill-green-600" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold truncate" style={{ color: "#166534" }}>
+                  {p.name}
+                  {p.household_rating ? ` ${"⭐".repeat(Math.min(5, p.household_rating))}` : ""}
+                </p>
+                <p className="text-[10px] leading-tight" style={{ color: "#166534", opacity: 0.75 }}>
+                  {p.reliability_status === "preferred" ? "Preferido" : "Backup"}
+                  {p.service_category ? ` · ${p.service_category}` : ""}
+                  {p.last_price_range ? ` · ${p.last_price_range}` : ""}
+                </p>
+              </div>
+              <span
+                className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
+                style={{ background: "#DCFCE7", color: "#166534" }}
+              >
+                Chamar de novo?
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Concierge offer — servicos/backup-care cascade */}
       {!collapsed && hasServicos && (

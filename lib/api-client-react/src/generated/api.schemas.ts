@@ -763,6 +763,11 @@ export interface Task {
   reimbursement_note?: string | null;
   /** @nullable */
   reimbursement_owed_by?: number | null;
+  /**
+   * Contact id of the service provider linked to this task
+   * @nullable
+   */
+  provider_contact_id?: number | null;
 }
 
 export type RuleCategory = (typeof RuleCategory)[keyof typeof RuleCategory];
@@ -995,6 +1000,16 @@ export interface ContactUpdate {
   payment_notes?: string | null;
   /** @nullable */
   reliability_notes?: string | null;
+  /** @nullable */
+  last_used_at?: string | null;
+  /** @minimum 0 */
+  no_show_count?: number;
+  /**
+   * @minimum 1
+   * @maximum 5
+   * @nullable
+   */
+  household_rating?: number | null;
 }
 
 export interface InboxItemDetail {
@@ -1075,6 +1090,8 @@ export interface TaskInput {
   payment_amount_cents?: number;
   payment_due_date?: string;
   payment_method?: string;
+  /** Contact id of the service provider linked to this task */
+  provider_contact_id?: number;
 }
 
 export type TaskUpdateStatus =
@@ -1640,6 +1657,14 @@ export type ListEventsParams = {
 
 export type ListContactsParams = {
   category?: string;
+  /**
+   * Filter by service category (diarista, eletricista, etc.)
+   */
+  service_category?: string;
+  /**
+   * Comma-separated list of reliability statuses to filter by (e.g. preferred,backup)
+   */
+  reliability_status?: string;
 };
 
 export type RequestContactRating200 = {
