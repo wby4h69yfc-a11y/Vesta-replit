@@ -1,15 +1,16 @@
 /**
  * Unit tests for wa-qa-handler.ts
  *
- * Tests the keyword-based question detector which has no external dependencies,
- * covering all five question types and common false-positive patterns.
+ * Covers:
+ *   - detectQuestionKeyword: all five question types and false-positive patterns
+ *   - isMutationCommand: scope-boundary enforcement (read-only, single-turn)
  *
  * Run with:  pnpm --filter @workspace/api-server run test:unit
  */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { detectQuestionKeyword } from "./wa-qa-handler.js";
+import { detectQuestionKeyword, isMutationCommand } from "./wa-qa-handler.js";
 
 // ── agenda_tomorrow ───────────────────────────────────────────────────────────
 
@@ -150,4 +151,61 @@ test("returns null for 'Mensagem da escola sobre pendências da matrícula' (con
 
 test("returns null for blank string", () => {
   assert.equal(detectQuestionKeyword(""), null);
+});
+
+// ── isMutationCommand — scope boundary: read-only ─────────────────────────────
+// These tests document that mutation commands are intercepted so they never
+// fall through to ingestion and never accidentally trigger a read resolver.
+
+test("isMutationCommand: 'Cancela aquela reunião' (imperative)", () => {
+  assert.equal(isMutationCommand("Cancela aquela reunião"), true);
+});
+
+test("isMutationCommand: 'Apaga essa tarefa' (imperative)", () => {
+  assert.equal(isMutationCommand("Apaga essa tarefa"), true);
+});
+
+test("isMutationCommand: 'Cria uma tarefa para amanhã' (imperative)", () => {
+  assert.equal(isMutationCommand("Cria uma tarefa para amanhã"), true);
+});
+
+test("isMutationCommand: 'Reagenda a consulta' (imperative)", () => {
+  assert.equal(isMutationCommand("Reagenda a consulta"), true);
+});
+
+test("isMutationCommand: 'Vesta, cancela o evento de sexta' (prefixed imperative)", () => {
+  assert.equal(isMutationCommand("Vesta, cancela o evento de sexta"), true);
+});
+
+test("isMutationCommand: 'Pode cancelar a consulta de amanhã?' (modal form)", () => {
+  assert.equal(isMutationCommand("Pode cancelar a consulta de amanhã?"), true);
+});
+
+test("isMutationCommand: 'Você pode criar uma tarefa pra mim?' (modal form)", () => {
+  assert.equal(isMutationCommand("Você pode criar uma tarefa pra mim?"), true);
+});
+
+test("isMutationCommand: 'Dá pra mudar o horário?' (modal form)", () => {
+  assert.equal(isMutationCommand("Dá pra mudar o horário?"), true);
+});
+
+// Non-mutation — must return false so these reach normal read/ingest flow
+test("isMutationCommand: false for read question 'o que tenho amanhã?'", () => {
+  assert.equal(isMutationCommand("o que tenho amanhã?"), false);
+});
+
+test("isMutationCommand: false for forwarded statement 'Reunião cancelada — avisa o grupo'", () => {
+  assert.equal(isMutationCommand("Reunião cancelada — avisa o grupo"), false);
+});
+
+test("isMutationCommand: false for 'o que foi cancelado essa semana?' (past-tense read query)", () => {
+  assert.equal(isMutationCommand("o que foi cancelado essa semana?"), false);
+});
+
+test("isMutationCommand: false for approval 'sim'", () => {
+  assert.equal(isMutationCommand("sim"), false);
+});
+
+test("isMutationCommand: false for blank string", () => {
+  assert.equal(isMutationCommand(""), false);
 });

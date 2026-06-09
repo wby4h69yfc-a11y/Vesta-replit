@@ -14,6 +14,20 @@
  *   tasks_open      — all open (status="pending") tasks
  *   inbox_pending   — all inbox items awaiting review
  *
+ * ── Scope boundaries (intentional, not gaps) ────────────────────────────────
+ *
+ * READ-ONLY: This handler only reads household data. Mutation commands
+ * ("cancela aquela reunião", "cria uma tarefa") are intercepted and returned
+ * with a clear "not supported here" reply rather than falling to ingestion,
+ * which would create a confusing inbox item. Mutation support is a separate
+ * future feature.
+ *
+ * SINGLE-TURN: Each invocation is fully independent — no conversation history
+ * is stored or consulted. Follow-up questions ("e amanhã?", "e as tarefas?")
+ * are treated as fresh independent queries. Multi-turn context is tracked as
+ * a separate future feature; do not add session state to this handler without
+ * a corresponding schema migration and security review.
+ *
  * All DB queries are scoped to the caller's `householdId` — no cross-household
  * reads are possible.
  */
@@ -192,6 +206,32 @@ export function detectQuestionKeyword(text: string): QuestionType | null {
   }
 
   return null;
+}
+
+// ── Mutation-intent guard (read-only scope) ───────────────────────────────────
+//
+// Matches messages that look like direct mutation commands addressed to Vesta:
+//
+//   Form A — imperative verb at message start (optionally prefixed by "Vesta,"):
+//     "Cancela aquela reunião"  /  "Vesta, apaga essa tarefa"
+//
+//   Form B — polite modal + infinitive + ?:
+//     "Pode cancelar a consulta de amanhã?"  /  "Você consegue criar uma tarefa?"
+//
+// Deliberately narrow so forwarded statements ("Reunião cancelada — confirmar?")
+// and questions with incidental mutation words ("o que foi cancelado?") do NOT
+// match.  Only unambiguous, Vesta-addressed imperatives are intercepted.
+
+const MUTATION_IMPERATIVE_RE =
+  /^(?:vesta[,:\s]+)?(?:cancela|apaga|apague|cria|crie|adiciona|adicione|muda|mude|reagenda|reagende|edita|edite|altera|altere|remove|remova|deleta|delete|move|mova|transfere|transfira)\b/i;
+
+const MUTATION_MODAL_RE =
+  /^(?:vesta[,:\s]+)?(?:pode[s]?|consegue|voc[eê]\s+pode|vc\s+pode|d[aá]\s+pra|daria\s+pra)\s+(?:cancelar|apagar|criar|adicionar|mudar|reagendar|editar|alterar|remover|deletar|mover|transferir)\b/i;
+
+/** Returns true when the message looks like a direct mutation command. */
+export function isMutationCommand(text: string): boolean {
+  const t = text.trim();
+  return MUTATION_IMPERATIVE_RE.test(t) || MUTATION_MODAL_RE.test(t);
 }
 
 // ── LLM-based fallback detection ─────────────────────────────────────────────
@@ -493,6 +533,21 @@ export async function handleQuestionIntent(
   householdId: number,
   log: Logger,
 ): Promise<QAResult | undefined> {
+  // 0. Mutation guard — intercept before keyword/LLM detection.
+  //    Scope boundary: this handler is READ-ONLY. Commands that would mutate
+  //    household data are not supported here and must not fall through to
+  //    ingestion, which would create a confusing inbox item.
+  if (isMutationCommand(text)) {
+    log.info(
+      { householdId, preview: text.substring(0, 60) },
+      "wa-qa: mutation command intercepted — read-only scope",
+    );
+    return {
+      reply:
+        "Ainda não consigo fazer alterações por aqui — só consigo responder perguntas sobre sua agenda, tarefas e caixa de entrada. Para fazer mudanças, use o app 📱",
+    };
+  }
+
   // 1. Keyword fast-path — no network call
   let qType = detectQuestionKeyword(text);
 
