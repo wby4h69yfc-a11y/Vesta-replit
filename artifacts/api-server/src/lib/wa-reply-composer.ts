@@ -367,6 +367,21 @@ export function replyGroupNonAdmin(): string {
 }
 
 /**
+ * Sent into a WhatsApp group when an admin issues a mutation command
+ * (/vesta cancela…, /vesta cria…, etc.) in a group thread.
+ * Mutation commands require the full multi-turn approval loop which is only
+ * safe in a private DM — bystanders in a group could read proposals or
+ * accidentally trigger approvals.
+ */
+export function replyGroupMutationBlocked(): string {
+  return (
+    "⚠️ Comandos de alteração precisam ser enviados em mensagem direta para mim.\n\n" +
+    "No chat privado você pode criar, cancelar ou editar itens com segurança. " +
+    "Aqui no grupo só respondo perguntas sobre agenda, tarefas e caixa de entrada. 📱"
+  );
+}
+
+/**
  * Sent when a preferred provider is relevant to a new task or cascade.
  */
 export function replyPreferredProviderSuggestion(

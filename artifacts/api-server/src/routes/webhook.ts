@@ -32,6 +32,7 @@ import {
   replyPreferredPromoted,
   replyPreferredDeclined,
   replyGroupNonAdmin,
+  replyGroupMutationBlocked,
 } from "../lib/wa-reply-composer";
 
 const router = Router();
@@ -293,6 +294,18 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         req.log.info(
           { groupId: outcome.groupId, phone: outcome.phone, source: "group" },
           "Group /vesta command rejected — non-admin sender",
+        );
+        break;
+
+      // ── WhatsApp group: admin issued a mutation command ────────────────────
+      // Mutation commands (cancela, cria, apaga, …) require the multi-turn
+      // approval loop, which is not safe in a shared group thread. We reply
+      // with a friendly redirect so the admin knows to use a DM instead.
+      case "group_mutation_blocked":
+        void sendWhatsApp(outcome.groupId, replyGroupMutationBlocked());
+        req.log.info(
+          { groupId: outcome.groupId, phone: outcome.phone, source: "group" },
+          "Group /vesta mutation command blocked — redirect to DM sent",
         );
         break;
 

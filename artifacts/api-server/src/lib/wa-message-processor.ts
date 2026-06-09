@@ -31,7 +31,7 @@ import { handleApprovalResponse } from "./wa-approval-handler";
 import { recordPrompt } from "./wa-prompt-store";
 import { detectPatternsForHousehold } from "./pattern-detector";
 import { isConsentActive } from "./whatsapp";
-import { handleQuestionIntent } from "./wa-qa-handler";
+import { handleQuestionIntent, isMutationCommand } from "./wa-qa-handler";
 
 /** Payload shape normalised by the webhook handler before calling us. */
 export interface InboundWAMessage {
@@ -88,6 +88,8 @@ export type ProcessOutcome =
   | { kind: "question_answered"; reply: string; householdId: number; phone: string }
   /** A /vesta group command arrived from a non-admin household member. */
   | { kind: "group_non_admin"; phone: string; groupId: string }
+  /** A mutation command (cancela, cria, apaga…) arrived from a group chat. */
+  | { kind: "group_mutation_blocked"; phone: string; groupId: string }
   | {
       kind: "ingested";
       inboxItemId: number;
@@ -353,6 +355,22 @@ export async function processInboundWAMessage(
       "Group /vesta command from non-admin sender — rejecting with group reply",
     );
     return { kind: "group_non_admin", phone: phoneRaw, groupId: payload.groupId };
+  }
+
+  // ── Group mutation gate ────────────────────────────────────────────────────
+  // Write commands (cancela, cria, apaga, …) must be issued in a private DM
+  // where Vesta can run the full approval loop. In a shared group thread the
+  // multi-turn flow is unsafe: bystanders could read the proposal, and a
+  // confused "sim" from any member could accidentally confirm the action.
+  // We block mutation commands at this layer — before the approval handler or
+  // Q&A handler — and send a clear "use DM for that" reply into the group so
+  // the admin knows exactly what to do next.
+  if (payload.groupId && bodyText && isMutationCommand(bodyText)) {
+    log.info(
+      { phone: phoneRaw, groupId: payload.groupId, householdId, preview: bodyText.substring(0, 60) },
+      "Group /vesta mutation command blocked — must be sent in a direct message",
+    );
+    return { kind: "group_mutation_blocked", phone: phoneRaw, groupId: payload.groupId };
   }
 
   // Tag remaining log lines with group context when applicable.
