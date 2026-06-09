@@ -315,6 +315,20 @@ export function replyRatingNoShow(providerName: string, noShowCount: number): st
 }
 
 /**
+ * Sent when the admin confirms promoting a provider to "preferred".
+ */
+export function replyPreferredPromoted(providerName: string): string {
+  return `⭐ *${providerName}* foi marcado como *Preferido*. Ótima escolha!`;
+}
+
+/**
+ * Sent when the admin declines the preferred-upgrade suggestion.
+ */
+export function replyPreferredDeclined(providerName: string): string {
+  return `👍 Ok! *${providerName}* mantido como está.`;
+}
+
+/**
  * Sent when the admin confirms the "avoid" marking.
  */
 export function replyAvoidConfirmed(providerName: string): string {

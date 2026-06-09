@@ -6,6 +6,8 @@ import {
   useRateContact,
   useRequestContactRating,
   useUpdateContact,
+  useListAuditLog,
+  getListAuditLogQueryKey,
 } from "@workspace/api-client-react";
 import CategoryBadge from "@/components/CategoryBadge";
 import { V } from "@/lib/brand";
@@ -76,6 +78,59 @@ function StarRating({ rating, max = 5 }: { rating: number | null | undefined; ma
 function formatDate(d: string | null | undefined): string | null {
   if (!d) return null;
   return new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+// ── Provider rating history ───────────────────────────────────────────────────
+
+const RATING_LABELS: Record<string, { icon: string; label: string; color: string }> = {
+  contact_rated_bom:          { icon: "✅", label: "Bom", color: "#065F46" },
+  contact_rated_ok:           { icon: "👍", label: "Ok", color: "#78350F" },
+  contact_rated_ruim:         { icon: "⚠️", label: "Ruim", color: "#991B1B" },
+  contact_rated_no_show:      { icon: "🚫", label: "Não apareceu", color: "#374151" },
+  contact_marked_avoid:       { icon: "🚫", label: "Marcado como Evitar", color: "#991B1B" },
+  contact_promoted_preferred: { icon: "⭐", label: "Promovido a Preferido", color: "#78350F" },
+};
+
+function ProviderHistory({ contactId }: { contactId: number }) {
+  const params = { contact_id: contactId, limit: 10 };
+  const { data: entries, isLoading } = useListAuditLog(params, {
+    query: {
+      queryKey: getListAuditLogQueryKey(params),
+      staleTime: 30_000,
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: V.muted }}>Histórico</p>
+        <p className="text-xs italic" style={{ color: V.muted }}>Carregando…</p>
+      </div>
+    );
+  }
+  if (!entries || entries.length === 0) return null;
+
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: V.muted }}>Histórico</p>
+      <div className="space-y-1.5">
+        {entries.map((entry) => {
+          const meta = RATING_LABELS[entry.action] ?? { icon: "📋", label: entry.action, color: V.muted };
+          const dateStr = new Date(entry.timestamp).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+          return (
+            <div key={entry.id} className="flex items-start gap-2.5 px-3 py-2 rounded-xl" style={{ background: V.cream }}>
+              <span className="text-sm leading-5 shrink-0">{meta.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium" style={{ color: meta.color }}>{meta.label}</p>
+                <p className="text-[11px] mt-0.5 truncate" style={{ color: V.muted }}>{entry.description}</p>
+              </div>
+              <span className="text-[11px] shrink-0" style={{ color: V.muted }}>{dateStr}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 // ── Provider detail drawer ────────────────────────────────────────────────────
@@ -288,6 +343,9 @@ function ProviderDrawer({ contact, onClose, onRefetch }: DrawerProps) {
               <p className="text-sm" style={{ color: V.ink }}>{contact.payment_notes}</p>
             </div>
           )}
+
+          {/* Rating history */}
+          <ProviderHistory contactId={contact.id} />
 
           {/* Send WA rating request */}
           {contact.phone && (

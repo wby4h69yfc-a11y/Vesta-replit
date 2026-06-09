@@ -22,7 +22,7 @@ import {
 } from "@workspace/db";
 import { applyContactRating } from "./provider-rating";
 import type { RatingKeyword } from "./provider-rating";
-import { eq, and, or, sql } from "drizzle-orm";
+import { eq, and, or, sql, desc } from "drizzle-orm";
 import { classifyAndSaveAction } from "./classifier";
 import { processWhatsAppMedia } from "./media-analysis";
 import { looksLikeToken, markTokenVerified } from "./wa-token-store";
@@ -74,6 +74,8 @@ export type ProcessOutcome =
     }
   | { kind: "avoid_confirmed"; contactId: number; contactName: string; householdId: number; phone: string }
   | { kind: "avoid_cancelled"; contactId: number; contactName: string; householdId: number; phone: string }
+  | { kind: "promoted_to_preferred"; contactId: number; contactName: string; householdId: number; phone: string }
+  | { kind: "suggest_preferred_declined"; contactId: number; contactName: string; householdId: number; phone: string }
   | {
       kind: "ingested";
       inboxItemId: number;
@@ -386,6 +388,7 @@ export async function processInboundWAMessage(
             sql`${waConversationsTable.expires_at} > NOW()`,
           ),
         )
+        .orderBy(desc(waConversationsTable.created_at))
         .limit(1);
 
       if (ratingConv) {
@@ -441,6 +444,80 @@ export async function processInboundWAMessage(
     }
   }
 
+  // ── 4.57. Preferred-upgrade confirmation reply (SIM / NÃO) ──────────────
+  // After two consecutive "bom" ratings, the admin is asked to promote the
+  // provider to "preferred". This step handles the SIM / NÃO reply.
+  if (bodyText && senderIsAdmin) {
+    const upper = bodyText.trim().toUpperCase();
+    if (upper === "SIM" || upper === "NÃO" || upper === "NAO") {
+      const [prefConv] = await db
+        .select()
+        .from(waConversationsTable)
+        .where(
+          and(
+            eq(waConversationsTable.household_id, householdId),
+            eq(waConversationsTable.sender_phone, phoneRaw),
+            eq(waConversationsTable.thread_context, "suggest_preferred"),
+            eq(waConversationsTable.state, "awaiting_confirmation"),
+            sql`${waConversationsTable.expires_at} > NOW()`,
+          ),
+        )
+        .orderBy(desc(waConversationsTable.created_at))
+        .limit(1);
+
+      if (prefConv) {
+        const prefPayload = prefConv.proposed_payload as unknown as { contact_id?: number; contact_name?: string } | null;
+        const prefContactId = prefPayload?.contact_id;
+        const prefContactName = prefPayload?.contact_name ?? "prestador";
+
+        if (prefContactId) {
+          await db
+            .update(waConversationsTable)
+            .set({ state: "completed" })
+            .where(eq(waConversationsTable.id, prefConv.id));
+
+          if (upper === "SIM") {
+            await db
+              .update(contactsTable)
+              .set({ reliability_status: "preferred" })
+              .where(
+                and(
+                  eq(contactsTable.id, prefContactId),
+                  eq(contactsTable.household_id, householdId),
+                ),
+              );
+
+            await db.insert(auditLogTable).values({
+              household_id: householdId,
+              action: "contact_promoted_preferred",
+              actor: `wa:${phoneRaw}`,
+              action_type: "updated",
+              category: "contacts",
+              description: `Prestador "${prefContactName}" promovido para "preferido" via WhatsApp.`,
+              metadata: { contact_id: prefContactId, contact_name: prefContactName },
+            });
+
+            return {
+              kind: "promoted_to_preferred",
+              contactId: prefContactId,
+              contactName: prefContactName,
+              householdId,
+              phone: phoneRaw,
+            };
+          } else {
+            return {
+              kind: "suggest_preferred_declined",
+              contactId: prefContactId,
+              contactName: prefContactName,
+              householdId,
+              phone: phoneRaw,
+            };
+          }
+        }
+      }
+    }
+  }
+
   // ── 4.56. Avoid-marking confirmation reply (SIM / NÃO) ───────────────────
   // Handles admin confirming or declining to mark a provider as "avoid" after
   // receiving a "ruim" rating or ≥ 2 no-shows.
@@ -459,6 +536,7 @@ export async function processInboundWAMessage(
             sql`${waConversationsTable.expires_at} > NOW()`,
           ),
         )
+        .orderBy(desc(waConversationsTable.created_at))
         .limit(1);
 
       if (avoidConv) {

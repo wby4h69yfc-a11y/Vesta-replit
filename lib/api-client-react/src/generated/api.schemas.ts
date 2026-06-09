@@ -1689,6 +1689,10 @@ export const ListPatternsStatus = {
 
 export type ListAuditLogParams = {
   limit?: number;
+  /**
+   * Filter entries related to a specific contact (matched via metadata.contact_id)
+   */
+  contact_id?: number;
 };
 
 export type ListPaymentObligationsParams = {

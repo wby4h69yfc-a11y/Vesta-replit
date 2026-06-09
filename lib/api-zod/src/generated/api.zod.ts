@@ -2823,6 +2823,12 @@ export const listAuditLogQueryLimitDefault = 50;
 
 export const ListAuditLogQueryParams = zod.object({
   limit: zod.coerce.number().default(listAuditLogQueryLimitDefault),
+  contact_id: zod.coerce
+    .number()
+    .optional()
+    .describe(
+      "Filter entries related to a specific contact (matched via metadata.contact_id)",
+    ),
 });
 
 export const ListAuditLogResponseItem = zod.object({

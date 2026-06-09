@@ -1684,6 +1684,11 @@ paths:
           schema:
             type: integer
             default: 50
+        - name: contact_id
+          in: query
+          schema:
+            type: integer
+          description: Filter entries related to a specific contact (matched via metadata.contact_id)
       responses:
         "200":
           description: Audit log entries

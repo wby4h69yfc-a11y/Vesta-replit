@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { memoryStagingTable, auditLogTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
@@ -78,10 +78,19 @@ router.get("/audit", async (req, res) => {
     const hid = getHouseholdId(req);
     const limitParam = req.query.limit;
     const n = limitParam ? Math.min(parseInt(String(limitParam), 10), 100) : 50;
+    const contactIdParam = req.query.contact_id ? parseInt(String(req.query.contact_id), 10) : null;
+
+    const whereClause = (contactIdParam && !isNaN(contactIdParam))
+      ? and(
+          eq(auditLogTable.household_id, hid),
+          sql`(${auditLogTable.metadata}->>'contact_id')::int = ${contactIdParam}`,
+        )
+      : eq(auditLogTable.household_id, hid);
+
     const entries = await db
       .select()
       .from(auditLogTable)
-      .where(eq(auditLogTable.household_id, hid))
+      .where(whereClause)
       .orderBy(desc(auditLogTable.timestamp))
       .limit(n);
     res.json(entries);

@@ -28,6 +28,8 @@ import {
   replyRatingSuggestPreferred,
   replyAvoidConfirmed,
   replyAvoidCancelled,
+  replyPreferredPromoted,
+  replyPreferredDeclined,
 } from "../lib/wa-reply-composer";
 
 const router = Router();
@@ -327,6 +329,16 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
 
         if (suggestUpgrade) {
           void sendWhatsApp(ratedPhone, replyRatingSuggestPreferred(contactName));
+          const upgradeExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          void db.insert(waConversationsTable).values({
+            household_id: ratedHhId,
+            sender_phone: ratedPhone,
+            state: "awaiting_confirmation",
+            thread_context: "suggest_preferred",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            proposed_payload: { contact_id: contactId, contact_name: contactName } as any,
+            expires_at: upgradeExpiresAt,
+          });
         }
 
         if (suggestAvoid) {
@@ -360,6 +372,20 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         const { contactName, phone: avoidPhone } = outcome;
         void sendWhatsApp(avoidPhone, replyAvoidCancelled(contactName));
         req.log.info({ contactName }, "Avoid marking cancelled by admin");
+        break;
+      }
+
+      case "promoted_to_preferred": {
+        const { contactName, phone: prefPhone } = outcome;
+        void sendWhatsApp(prefPhone, replyPreferredPromoted(contactName));
+        req.log.info({ contactName }, "Provider promoted to preferred — WA ack sent");
+        break;
+      }
+
+      case "suggest_preferred_declined": {
+        const { contactName, phone: prefPhone } = outcome;
+        void sendWhatsApp(prefPhone, replyPreferredDeclined(contactName));
+        req.log.info({ contactName }, "Preferred upgrade declined by admin");
         break;
       }
 
