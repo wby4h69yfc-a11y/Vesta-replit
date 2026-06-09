@@ -20,7 +20,18 @@ export type { QATurnRecord };
 export const MAX_QA_TURNS = 5;
 
 /** Session TTL in milliseconds. */
-const QA_SESSION_TTL_MS = 15 * 60 * 1000;
+export const QA_SESSION_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * Pure helper: merges `newTurn` into `existing` and enforces the MAX_QA_TURNS cap.
+ * Exported for unit-testing without a database connection.
+ */
+export function computeUpdatedTurns(
+  existing: QATurnRecord[],
+  newTurn: QATurnRecord,
+): QATurnRecord[] {
+  return [...existing, newTurn].slice(-MAX_QA_TURNS);
+}
 
 function ttlExpiry(): Date {
   return new Date(Date.now() + QA_SESSION_TTL_MS);

@@ -3,6 +3,8 @@
  *
  * Covers:
  *   - detectQuestionKeyword: all five question types and false-positive patterns
+ *   - looksLikeFollowUp: conjunctive openers, bare time refs, pronoun refs
+ *   - buildContextAwareSystemPrompt: prior-turn history included in LLM prompt
  *   - isMutationCommand: scope-boundary enforcement (read-only, single-turn)
  *
  * Run with:  pnpm --filter @workspace/api-server run test:unit
@@ -10,7 +12,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { detectQuestionKeyword, isMutationCommand } from "./wa-qa-handler.js";
+import {
+  detectQuestionKeyword,
+  isMutationCommand,
+  looksLikeFollowUp,
+  buildContextAwareSystemPrompt,
+} from "./wa-qa-handler.js";
 
 // ── agenda_tomorrow ───────────────────────────────────────────────────────────
 
@@ -208,4 +215,151 @@ test("isMutationCommand: false for approval 'sim'", () => {
 
 test("isMutationCommand: false for blank string", () => {
   assert.equal(isMutationCommand(""), false);
+});
+
+// ── looksLikeFollowUp ─────────────────────────────────────────────────────────
+
+// Conjunctive openers ("e …")
+test("looksLikeFollowUp: 'e amanhã?' (bare conjunctive + time ref)", () => {
+  assert.equal(looksLikeFollowUp("e amanhã?"), true);
+});
+
+test("looksLikeFollowUp: 'e as tarefas?' (conjunctive + noun)", () => {
+  assert.equal(looksLikeFollowUp("e as tarefas?"), true);
+});
+
+test("looksLikeFollowUp: 'e para ela?' (conjunctive + preposition + pronoun)", () => {
+  assert.equal(looksLikeFollowUp("e para ela?"), true);
+});
+
+test("looksLikeFollowUp: 'e o inbox?' (conjunctive + article + noun)", () => {
+  assert.equal(looksLikeFollowUp("e o inbox?"), true);
+});
+
+test("looksLikeFollowUp: 'e da semana?' (conjunctive + de + noun)", () => {
+  assert.equal(looksLikeFollowUp("e da semana?"), true);
+});
+
+test("looksLikeFollowUp: 'e a agenda?' (conjunctive + article + noun)", () => {
+  assert.equal(looksLikeFollowUp("e a agenda?"), true);
+});
+
+// Bare time references
+test("looksLikeFollowUp: 'amanhã?' (bare time ref with question mark)", () => {
+  assert.equal(looksLikeFollowUp("amanhã?"), true);
+});
+
+test("looksLikeFollowUp: 'hoje?' (bare time ref)", () => {
+  assert.equal(looksLikeFollowUp("hoje?"), true);
+});
+
+test("looksLikeFollowUp: 'essa semana?' (bare time ref)", () => {
+  assert.equal(looksLikeFollowUp("essa semana?"), true);
+});
+
+test("looksLikeFollowUp: 'semana que vem?' (bare time ref)", () => {
+  assert.equal(looksLikeFollowUp("semana que vem?"), true);
+});
+
+// Pronoun references (short messages only)
+test("looksLikeFollowUp: 'e ela tem algo agendado?' (pronoun in short message)", () => {
+  assert.equal(looksLikeFollowUp("e ela tem algo agendado?"), true);
+});
+
+test("looksLikeFollowUp: 'isso é urgente?' (pronoun reference)", () => {
+  assert.equal(looksLikeFollowUp("isso é urgente?"), true);
+});
+
+// Not a follow-up — genuine new questions
+test("looksLikeFollowUp: false for 'o que tenho amanhã?' (explicit question opener)", () => {
+  assert.equal(looksLikeFollowUp("o que tenho amanhã?"), false);
+});
+
+test("looksLikeFollowUp: false for 'minha agenda hoje' (Tier-1 unambiguous pattern)", () => {
+  assert.equal(looksLikeFollowUp("minha agenda hoje"), false);
+});
+
+test("looksLikeFollowUp: false for 'quais tarefas estão abertas?' (explicit question)", () => {
+  assert.equal(looksLikeFollowUp("quais tarefas estão abertas?"), false);
+});
+
+test("looksLikeFollowUp: false for 'Consulta da Bia marcada para quinta 14h' (forwarded statement)", () => {
+  assert.equal(
+    looksLikeFollowUp("Consulta da Bia marcada para quinta 14h na UBS Central"),
+    false,
+  );
+});
+
+test("looksLikeFollowUp: false for 'Reunião de pais amanhã 19h' (forwarded notice, no question)", () => {
+  assert.equal(looksLikeFollowUp("Reunião de pais amanhã 19h"), false);
+});
+
+test("looksLikeFollowUp: false for blank string", () => {
+  assert.equal(looksLikeFollowUp(""), false);
+});
+
+// ── buildContextAwareSystemPrompt ─────────────────────────────────────────────
+//
+// Integration-level check: the context-aware system prompt must embed the prior
+// conversation turns so the LLM can resolve relative references like "e amanhã?".
+
+test("buildContextAwareSystemPrompt: embeds question text from prior turns", () => {
+  const turns = [{ q: "o que tenho hoje?", type: "agenda_today" }];
+  const prompt = buildContextAwareSystemPrompt(turns);
+  assert.ok(
+    prompt.includes("o que tenho hoje?"),
+    "prompt must include the prior question text",
+  );
+});
+
+test("buildContextAwareSystemPrompt: embeds resolved type from prior turns", () => {
+  const turns = [{ q: "o que tenho hoje?", type: "agenda_today" }];
+  const prompt = buildContextAwareSystemPrompt(turns);
+  assert.ok(
+    prompt.includes("agenda_today"),
+    "prompt must include the resolved question type",
+  );
+});
+
+test("buildContextAwareSystemPrompt: embeds multiple turns in order", () => {
+  const turns = [
+    { q: "o que tenho hoje?", type: "agenda_today" },
+    { q: "e amanhã?", type: "agenda_tomorrow" },
+  ];
+  const prompt = buildContextAwareSystemPrompt(turns);
+  assert.ok(prompt.includes("agenda_today"), "prompt must include first turn type");
+  assert.ok(prompt.includes("agenda_tomorrow"), "prompt must include second turn type");
+  assert.ok(
+    prompt.indexOf("agenda_today") < prompt.indexOf("agenda_tomorrow"),
+    "turns must appear oldest-first",
+  );
+});
+
+test("buildContextAwareSystemPrompt: turn numbering starts at 1", () => {
+  const turns = [{ q: "meu dia", type: "agenda_today" }];
+  const prompt = buildContextAwareSystemPrompt(turns);
+  assert.ok(prompt.includes("Turno 1"), "prompt must label the first turn as 'Turno 1'");
+});
+
+test("buildContextAwareSystemPrompt: includes classification instruction for new message", () => {
+  const turns = [{ q: "meu dia", type: "agenda_today" }];
+  const prompt = buildContextAwareSystemPrompt(turns);
+  assert.ok(
+    prompt.includes("NOVA mensagem") || prompt.includes("nova mensagem"),
+    "prompt must instruct the LLM to classify the new message",
+  );
+});
+
+test("buildContextAwareSystemPrompt: truncates very long question text to 150 chars", () => {
+  const longQuestion = "x".repeat(300);
+  const turns = [{ q: longQuestion, type: "agenda_today" }];
+  const prompt = buildContextAwareSystemPrompt(turns);
+  assert.ok(
+    !prompt.includes(longQuestion),
+    "prompt must not include the full 300-char question verbatim",
+  );
+  assert.ok(
+    prompt.includes("x".repeat(150)),
+    "prompt must include the first 150 chars of the question",
+  );
 });

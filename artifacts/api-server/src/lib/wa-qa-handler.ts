@@ -265,12 +265,12 @@ export function isTier0Command(text: string): boolean {
  * Deliberately conservative: only returns true when there is a strong signal
  * so that genuine new questions are never misrouted to the context LLM call.
  */
-function looksLikeFollowUp(text: string): boolean {
+export function looksLikeFollowUp(text: string): boolean {
   const t = text.trim().toLowerCase();
 
   // Conjunctive opener — "e amanhã?", "e as tarefas?", "e para ela?"
   if (/^e\s+(a[s]?\s|o[s]?\s|para\s|de\s|do\s|da\s)/.test(t)) return true;
-  if (/^e\s+(amanhã|amanha|hoje|semana|inbox|tarefas?|agenda)\b/.test(t)) return true;
+  if (/^e\s+(amanhã|amanha|hoje|semana|inbox|tarefas?|agenda)(?!\w)/.test(t)) return true;
 
   // Short (≤60 chars) message that is just a bare time reference + "?"
   if (t.length <= 60 && /^(amanhã|amanha|hoje|essa semana|esta semana|semana que vem|próxima semana)\??$/.test(t)) return true;
@@ -301,7 +301,7 @@ Responda APENAS com o JSON, sem markdown.`;
  * The LLM uses the conversation history to resolve relative references
  * ("e amanhã?" → agenda_tomorrow after an agenda_today turn).
  */
-function buildContextAwareSystemPrompt(priorTurns: QATurnRecord[]): string {
+export function buildContextAwareSystemPrompt(priorTurns: QATurnRecord[]): string {
   const turnLines = priorTurns
     .map((t, i) => `  Turno ${i + 1}: pergunta="${t.q.substring(0, 150)}" → tipo_resolvido="${t.type}"`)
     .join("\n");
