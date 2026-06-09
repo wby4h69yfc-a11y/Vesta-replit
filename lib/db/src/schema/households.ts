@@ -25,6 +25,8 @@ export const householdsTable = pgTable("households", {
   whatsapp_consecutive_failures: integer("whatsapp_consecutive_failures").notNull().default(0),
   /** Timestamp of the most recent failed WhatsApp delivery attempt. */
   whatsapp_last_failure_at: timestamp("whatsapp_last_failure_at", { withTimezone: true }),
+  /** Short reason code for the most recent WhatsApp delivery failure (e.g. "invalid_number", "account_blocked", "service_outage"). */
+  whatsapp_last_failure_reason: text("whatsapp_last_failure_reason"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

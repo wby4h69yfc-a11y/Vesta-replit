@@ -32,7 +32,7 @@ import {
   inboxItemsTable,
 } from "@workspace/db";
 import { and, eq, gte, lte, lt, sql, count, or, min, desc } from "drizzle-orm";
-import { sendWhatsApp, resolveHouseholdAdminPhone } from "./whatsapp";
+import { sendWhatsApp, resolveHouseholdAdminPhone, classifyWhatsAppError } from "./whatsapp";
 import { logger } from "./logger";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1157,6 +1157,7 @@ async function processSingleMessage(
       .set({
         whatsapp_consecutive_failures: sql`${householdsTable.whatsapp_consecutive_failures} + 1`,
         whatsapp_last_failure_at: now,
+        whatsapp_last_failure_reason: classifyWhatsAppError(result.error),
       })
       .where(eq(householdsTable.id, householdId));
 

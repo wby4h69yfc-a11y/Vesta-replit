@@ -133,6 +133,12 @@ export interface Household {
    * @nullable
    */
   whatsapp_last_failure_at?: string | null;
+  /**
+   * Short reason code for the most recent WhatsApp delivery failure. One of: "invalid_number", "account_blocked", "rate_limited", "not_configured", "service_outage".
+
+   * @nullable
+   */
+  whatsapp_last_failure_reason?: string | null;
   /** True when WhatsApp delivery has failed 2 or more consecutive times and the authenticated caller is a household admin. Use this field to decide whether to show the delivery-failure warning banner.
    */
   whatsapp_alert?: boolean;

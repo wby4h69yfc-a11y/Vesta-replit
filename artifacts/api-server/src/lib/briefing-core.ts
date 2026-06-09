@@ -1,7 +1,7 @@
 import { db } from "@workspace/db";
 import { calendarEventsTable, contactsTable, householdsTable, onboardingStateTable, tasksTable } from "@workspace/db";
 import { eq, and, gte, lte, lt, sql } from "drizzle-orm";
-import { sendWhatsApp, resolveHouseholdAdminPhone } from "./whatsapp";
+import { sendWhatsApp, resolveHouseholdAdminPhone, classifyWhatsAppError } from "./whatsapp";
 import { logger } from "./logger";
 
 const BRIEFING_COOLDOWN_INTERVAL = "1 hour";
@@ -199,6 +199,7 @@ export async function sendHouseholdBriefing(
         last_briefing_sent_at: claimed[0].prev ?? null,
         whatsapp_consecutive_failures: sql`${householdsTable.whatsapp_consecutive_failures} + 1`,
         whatsapp_last_failure_at: new Date(),
+        whatsapp_last_failure_reason: classifyWhatsAppError(result.error),
       })
       .where(eq(householdsTable.id, householdId));
     logger.warn({ householdId, error: result.error }, "Briefing send failed");

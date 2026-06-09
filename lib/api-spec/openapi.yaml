@@ -2062,6 +2062,12 @@ components:
           type: ["string", "null"]
           format: date-time
           description: Timestamp of the most recent failed WhatsApp delivery attempt.
+        whatsapp_last_failure_reason:
+          type: ["string", "null"]
+          description: >
+            Short reason code for the most recent WhatsApp delivery failure.
+            One of: "invalid_number", "account_blocked", "rate_limited",
+            "not_configured", "service_outage".
         whatsapp_alert:
           type: boolean
           description: >

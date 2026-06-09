@@ -43,6 +43,16 @@ import { V } from "@/lib/brand";
 
 type Tab = "inicio" | "familia" | "regras" | "privacidade";
 
+function waFailureHint(reason: string | null | undefined): string {
+  switch (reason) {
+    case "invalid_number":    return "Número inválido — verifique o número cadastrado abaixo";
+    case "account_blocked":   return "Conta Twilio bloqueada — verifique suas credenciais no console Twilio";
+    case "rate_limited":      return "Limite de mensagens atingido — tente novamente mais tarde";
+    case "not_configured":    return "Twilio não configurado — configure abaixo para enviar mensagens";
+    default:                  return "Falha temporária do serviço — aguarde e tente novamente";
+  }
+}
+
 /* ── TabBar ──────────────────────────────────────────────────────────────── */
 function TabBar({ active, onChange, patternCount = 0 }: { active: Tab; onChange: (t: Tab) => void; patternCount?: number }) {
   const tabs: { id: Tab; label: string }[] = [
@@ -671,23 +681,21 @@ function InicioTab() {
   return (
     <div className="space-y-6 py-6">
       {(household?.whatsapp_alert) && (
-        <Link href="/casa">
-          <div
-            data-testid="wa-delivery-banner"
-            className="flex items-start gap-3 rounded-2xl px-4 py-3.5"
-            style={{ background: "#FEF2F2", border: "1px solid rgba(220,38,38,0.25)" }}
-          >
-            <WifiOff className="w-5 h-5 shrink-0 mt-0.5" style={{ color: "#DC2626" }} />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold" style={{ color: "#991B1B" }}>
-                Não conseguimos enviar mensagens para o seu WhatsApp
-              </p>
-              <p className="text-xs mt-0.5" style={{ color: "#B91C1C" }}>
-                Verifique o número cadastrado em Casa → WhatsApp
-              </p>
-            </div>
+        <div
+          data-testid="wa-delivery-banner"
+          className="flex items-start gap-3 rounded-2xl px-4 py-3.5"
+          style={{ background: "#FEF2F2", border: "1px solid rgba(220,38,38,0.25)" }}
+        >
+          <WifiOff className="w-5 h-5 shrink-0 mt-0.5" style={{ color: "#DC2626" }} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold" style={{ color: "#991B1B" }}>
+              Não conseguimos enviar mensagens para o seu WhatsApp
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: "#B91C1C" }}>
+              {waFailureHint(household.whatsapp_last_failure_reason)}
+            </p>
           </div>
-        </Link>
+        </div>
       )}
       <WhatsAppConnectionScreen />
 

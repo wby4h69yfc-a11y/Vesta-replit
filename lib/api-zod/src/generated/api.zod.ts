@@ -1689,6 +1689,12 @@ export const ExportPrivacyDataResponse = zod.object({
         .describe(
           "Timestamp of the most recent failed WhatsApp delivery attempt.",
         ),
+      whatsapp_last_failure_reason: zod
+        .string()
+        .nullish()
+        .describe(
+          'Short reason code for the most recent WhatsApp delivery failure. One of: \"invalid_number\", \"account_blocked\", \"rate_limited\", \"not_configured\", \"service_outage\".\n',
+        ),
       whatsapp_alert: zod
         .boolean()
         .optional()
@@ -2295,6 +2301,12 @@ export const GetHouseholdResponse = zod.object({
     .date()
     .nullish()
     .describe("Timestamp of the most recent failed WhatsApp delivery attempt."),
+  whatsapp_last_failure_reason: zod
+    .string()
+    .nullish()
+    .describe(
+      'Short reason code for the most recent WhatsApp delivery failure. One of: \"invalid_number\", \"account_blocked\", \"rate_limited\", \"not_configured\", \"service_outage\".\n',
+    ),
   whatsapp_alert: zod
     .boolean()
     .optional()
@@ -2438,6 +2450,12 @@ export const UpdateHouseholdResponse = zod.object({
     .date()
     .nullish()
     .describe("Timestamp of the most recent failed WhatsApp delivery attempt."),
+  whatsapp_last_failure_reason: zod
+    .string()
+    .nullish()
+    .describe(
+      'Short reason code for the most recent WhatsApp delivery failure. One of: \"invalid_number\", \"account_blocked\", \"rate_limited\", \"not_configured\", \"service_outage\".\n',
+    ),
   whatsapp_alert: zod
     .boolean()
     .optional()

@@ -25,6 +25,16 @@ import { V } from "@/lib/brand";
 
 const NUDGE_STATUSES = new Set(["suggested", "threshold_met"]);
 
+function waFailureHint(reason: string | null | undefined): string {
+  switch (reason) {
+    case "invalid_number":    return "Número inválido — verifique o número cadastrado em Casa → WhatsApp";
+    case "account_blocked":   return "Conta Twilio bloqueada — verifique suas credenciais em Casa → WhatsApp";
+    case "rate_limited":      return "Limite de mensagens atingido — tente novamente mais tarde";
+    case "not_configured":    return "Twilio não configurado — configure em Casa → WhatsApp";
+    default:                  return "Falha temporária do serviço — verifique a conexão em Casa → WhatsApp";
+  }
+}
+
 const METHOD_LABELS: Record<string, string> = {
   pix: "Pix", boleto: "Boleto", cartao: "Cartão", dinheiro: "Dinheiro", ted: "TED",
 };
@@ -257,7 +267,7 @@ export default function AppDashboard() {
                 Não conseguimos enviar mensagens para o seu WhatsApp
               </p>
               <p className="text-xs mt-0.5" style={{ color: "#B91C1C" }}>
-                Verifique o número cadastrado → Casa
+                {waFailureHint(household.whatsapp_last_failure_reason)}
               </p>
             </div>
             <ChevronRight className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#DC2626" }} />

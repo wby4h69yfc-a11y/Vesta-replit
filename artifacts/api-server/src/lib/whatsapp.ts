@@ -124,3 +124,59 @@ export async function sendWhatsApp(to: string, message: string): Promise<SendRes
 
   return adapter.send(to, message);
 }
+
+/**
+ * Classifies a Twilio error message into a short reason code suitable for
+ * storing in `households.whatsapp_last_failure_reason` and displaying in the UI.
+ *
+ * Twilio error codes of interest:
+ *   21211, 21614, 21217 — invalid To number
+ *   20003, 20005, 21608  — account/credentials issue
+ *   30001–30008          — message delivery failure (carrier/network)
+ *   20429, 14107         — rate limit / too many requests
+ *   everything else      — transient outage / unknown
+ */
+export function classifyWhatsAppError(errorMsg: string): string {
+  const msg = errorMsg.toLowerCase();
+
+  if (
+    msg.includes("21211") ||
+    msg.includes("21614") ||
+    msg.includes("21217") ||
+    msg.includes("invalid 'to'") ||
+    msg.includes("invalid to") ||
+    msg.includes("not a valid phone") ||
+    msg.includes("unverified number") ||
+    msg.includes("is not a whatsapp")
+  ) {
+    return "invalid_number";
+  }
+
+  if (
+    msg.includes("20003") ||
+    msg.includes("20005") ||
+    msg.includes("21608") ||
+    msg.includes("account") ||
+    msg.includes("authenticate") ||
+    msg.includes("authorization") ||
+    msg.includes("forbidden") ||
+    msg.includes("suspended")
+  ) {
+    return "account_blocked";
+  }
+
+  if (
+    msg.includes("20429") ||
+    msg.includes("14107") ||
+    msg.includes("rate limit") ||
+    msg.includes("too many requests")
+  ) {
+    return "rate_limited";
+  }
+
+  if (msg.includes("twilio not configured")) {
+    return "not_configured";
+  }
+
+  return "service_outage";
+}
