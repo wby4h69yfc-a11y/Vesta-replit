@@ -24,6 +24,8 @@
  *  13.  NÃO+NÃO different SIDs → second NÃO is a no-op (timestamp unchanged)
  *  14.  NÃO on already-revoked contact → no-op (timestamp unchanged)
  *  15.  NÃO on consented contact → no-op (only applies to "pending")
+ *  16.  Concurrent NÃO+SIM race → final status is "consented" OR "revoked"
+ *       (never corrupt); the winning terminal state is thereafter a no-op
  *
  * Strategy: direct DB setup via pg + form-POST to /api/webhook/whatsapp.
  * In development NODE_ENV the Twilio HMAC check is bypassed.  The webhook
@@ -517,5 +519,64 @@ test.describe("Consent reply idempotency", () => {
     expect(tsAfter.consent_granted_at).toEqual(tsBefore.consent_granted_at); // unchanged
     expect(tsAfter.consent_withdrawn_at).toBeNull(); // no withdrawal written
     expect(await getConsentStatus(db, contactId)).toBe("consented");
+  });
+
+  // ── 16. Concurrent NÃO+SIM race ─────────────────────────────────────────────
+  //
+  // Both NÃO and SIM guard on `consent_status = 'pending'` (neither covers
+  // the other's terminal state).  This is a true non-deterministic race:
+  //
+  //   a) NÃO wins the row lock first: pending → revoked;
+  //      SIM's WHERE clause (consent_status = 'pending') then fails → no-op.
+  //      Final status: "revoked".
+  //
+  //   b) SIM wins the row lock first: pending → consented;
+  //      NÃO's WHERE clause (consent_status = 'pending') then fails → no-op.
+  //      Final status: "consented".
+  //
+  // Either ordering produces a valid terminal state — never a corrupt value.
+  //
+  // "No second write" is proven by:
+  //   • After the race, capturing the winning timestamp
+  //   • Sending the winning keyword again and asserting the timestamp unchanged
+  //
+  // This differs from the SIM+REVOGAR race (test 9) where REVOGAR always wins
+  // because REVOGAR's WHERE covers both "pending" AND "consented".
+
+  test("concurrent NÃO+SIM race: final status is 'consented' or 'revoked' (never corrupt), terminal state is a no-op", async ({ request }) => {
+    const phone = uniquePhone();
+    const hhId = await seedHousehold(db);
+    const contactId = await seedContact(db, hhId, phone, "pending");
+
+    // Fire both keywords concurrently — either can win the row lock
+    await Promise.all([
+      sendWebhook(request, phone, "NÃO", uniqueSid("concurrent-nao-race")),
+      sendWebhook(request, phone, "SIM", uniqueSid("concurrent-sim-nao-race")),
+    ]);
+
+    const finalStatus = await getConsentStatus(db, contactId);
+    expect(["consented", "revoked"]).toContain(finalStatus); // integrity: never a third value
+
+    const tsRace = await getTimestamps(db, contactId);
+
+    if (finalStatus === "revoked") {
+      // NÃO won — consent_withdrawn_at must be set; SIM never fired a write
+      expect(tsRace.consent_withdrawn_at).not.toBeNull();
+
+      // Follow-up NÃO: WHERE (pending) fails → no-op, timestamp unchanged
+      await sendWebhook(request, phone, "NÃO", uniqueSid("nao-followup-after-nao-win"));
+      const tsFollowUp = await getTimestamps(db, contactId);
+      expect(tsFollowUp.consent_withdrawn_at).toEqual(tsRace.consent_withdrawn_at);
+      expect(await getConsentStatus(db, contactId)).toBe("revoked");
+    } else {
+      // SIM won — consent_granted_at must be set; NÃO never fired a write
+      expect(tsRace.consent_granted_at).not.toBeNull();
+
+      // Follow-up SIM: WHERE (pending) fails → no-op, timestamp unchanged
+      await sendWebhook(request, phone, "SIM", uniqueSid("sim-followup-after-sim-win"));
+      const tsFollowUp = await getTimestamps(db, contactId);
+      expect(tsFollowUp.consent_granted_at).toEqual(tsRace.consent_granted_at);
+      expect(await getConsentStatus(db, contactId)).toBe("consented");
+    }
   });
 });
