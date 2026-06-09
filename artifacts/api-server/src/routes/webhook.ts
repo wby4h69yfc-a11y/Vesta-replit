@@ -134,22 +134,24 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
   try {
     const {
       From,
+      To,
       Body,
       ProfileName,
       MediaUrl0,
       MediaContentType0,
       NumMedia,
       MessageSid,
-      WaGroupId,
     } = req.body as Record<string, string | undefined>;
 
     // ── Group detection & /vesta trigger filter ────────────────────────────
-    // Twilio sets WaGroupId on webhook payloads originating from a WhatsApp
-    // group chat. We only act on group messages that start with /vesta —
-    // everything else is silently ACK'd to prevent group noise filling the
-    // household inbox.
-    const groupId = WaGroupId?.trim() || null;
-    const isGroupMessage = !!groupId;
+    // For a WhatsApp group message Twilio sets `To` to the group JID
+    // (e.g. "whatsapp:+12036XXXXXXXX@g.us"), whereas for a direct message it
+    // is the Twilio number. The "@g.us" suffix is the canonical group signal.
+    // We store the raw `To` value as group_id for logging and reply routing.
+    const rawTo = To ?? "";
+    const isGroupMessage = rawTo.includes("@g.us");
+    // group_id is the raw To value — sendWhatsApp handles the whatsapp: prefix.
+    const groupId = isGroupMessage ? rawTo : null;
 
     let effectiveBody = Body?.trim() ?? "";
     if (isGroupMessage) {
@@ -234,6 +236,17 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     );
 
     // ── 4. Send reply based on outcome ──────────────────────────────────────
+    // Tag every outcome log with source + group_id so group-origin events are
+    // distinguishable from direct messages throughout the API logs.
+    req.log.info(
+      {
+        outcomeKind: outcome.kind,
+        source: isGroupMessage ? "group" : "dm",
+        ...(groupId ? { group_id: groupId } : {}),
+      },
+      "WhatsApp webhook outcome",
+    );
+
     switch (outcome.kind) {
       case "token_verified":
         void sendWhatsApp(replyDest(outcome.phone), replyVerificationSuccess());
