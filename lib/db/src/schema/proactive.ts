@@ -5,7 +5,8 @@ export type ProactiveTriggerType =
   | "daily_digest"
   | "conflict_detected"
   | "payment_due"
-  | "weekly_lookahead";
+  | "weekly_lookahead"
+  | "inbox_nudge";
 
 export type ProactiveStatus =
   | "queued"

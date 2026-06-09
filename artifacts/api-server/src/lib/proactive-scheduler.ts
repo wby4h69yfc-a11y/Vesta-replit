@@ -29,8 +29,9 @@ import {
   tasksTable,
   onboardingStateTable,
   waConversationsTable,
+  inboxItemsTable,
 } from "@workspace/db";
-import { and, eq, gte, lte, lt, sql, count, or } from "drizzle-orm";
+import { and, eq, gte, lte, lt, sql, count, or, min, desc } from "drizzle-orm";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "./whatsapp";
 import { logger } from "./logger";
 
@@ -43,6 +44,11 @@ const QUIET_HOUR_START = 21; // 21h local
 const QUIET_HOUR_END = 7;   // 07h local
 /** Rows stuck in 'sending' longer than this are auto-recovered (crash recovery). */
 const SENDING_TIMEOUT_MINUTES = 10;
+
+/** How long an inbox item must sit in ready_for_review before triggering a nudge. */
+export const INBOX_NUDGE_THRESHOLD_HOURS = 4;
+/** Minimum gap between successive inbox nudges for the same household. */
+export const INBOX_NUDGE_COOLDOWN_HOURS = 24;
 
 // ── Local-time helpers ────────────────────────────────────────────────────────
 
@@ -483,6 +489,263 @@ async function getPaymentDueTasks(householdId: number): Promise<Array<{ id: numb
   return results;
 }
 
+// ── Inbox nudge ───────────────────────────────────────────────────────────────
+
+/**
+ * Builds the Portuguese nudge message body for unreviewed inbox items.
+ * Exported for unit testing — pure function, no side effects.
+ */
+export function buildInboxNudgeMessage(count: number): string {
+  const noun =
+    count === 1 ? "mensagem aguardando revisão" : "mensagens aguardando revisão";
+  return (
+    `📬 *${count} ${noun} na Caixa de entrada.*\n\n` +
+    `Abra o Vesta para revisar.`
+  );
+}
+
+/**
+ * Parameters for the pure shouldSendInboxNudge predicate.
+ * Exported for unit testing.
+ */
+export interface InboxNudgeContext {
+  /** Number of inbox items in ready_for_review state whose updated_at is older than the threshold. */
+  staleCount: number;
+  /**
+   * The earliest updated_at among the currently stale inbox items.
+   * Used to detect a "fresh batch": if the oldest stale item entered ready_for_review
+   * AFTER the last nudge was sent, the previous items were reviewed and the
+   * cooldown should be reset for this new batch.
+   */
+  earliestStaleItemUpdatedAt: Date | null;
+  /** Timestamp of the last sent inbox nudge within the cooldown window, or null. */
+  lastNudgeSentAt: Date | null;
+  /** True when digest_stopped is set or digest_enabled is false. */
+  isDigestStopped: boolean;
+  /** True when digest_paused_until is set and still in the future. */
+  isDigestPaused: boolean;
+  /** The current timestamp (injected for deterministic tests). */
+  now: Date;
+}
+
+/**
+ * Pure decision function for whether a nudge should be enqueued.
+ *
+ * Cooldown reset: if all currently stale items entered ready_for_review AFTER
+ * the last nudge was sent, the previous items were reviewed (inbox cleared) and
+ * we treat this as a fresh batch — the 24h cooldown does not apply.
+ *
+ * Does NOT check quiet hours — those are enforced at enqueue time via
+ * enforceQuietHours and again at send time, consistent with other proactive types.
+ * Exported for unit testing.
+ */
+export function shouldSendInboxNudge(ctx: InboxNudgeContext): boolean {
+  if (ctx.staleCount === 0) return false;
+  if (ctx.isDigestStopped || ctx.isDigestPaused) return false;
+  if (ctx.lastNudgeSentAt !== null) {
+    const cooldownMs = INBOX_NUDGE_COOLDOWN_HOURS * 60 * 60 * 1000;
+    const cooldownActive =
+      ctx.now.getTime() - ctx.lastNudgeSentAt.getTime() < cooldownMs;
+    if (cooldownActive) {
+      // Fresh-batch detection: if every stale item entered ready_for_review
+      // AFTER the last nudge was sent, the inbox was fully reviewed between then
+      // and now — reset the cooldown for this new batch.
+      const isFreshBatch =
+        ctx.earliestStaleItemUpdatedAt !== null &&
+        ctx.earliestStaleItemUpdatedAt > ctx.lastNudgeSentAt;
+      if (!isFreshBatch) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Input to buildInboxNudgeQueueEntry.
+ * Exported for unit testing.
+ */
+export interface InboxNudgeEnqueueParams {
+  ctx: InboxNudgeContext;
+  /** True when a nudge row is already queued or sending (dedup guard). */
+  hasExistingQueued: boolean;
+  /** IANA timezone for quiet-hours computation and template-key date. */
+  tz: string;
+  /** Local hour at which quiet window starts (default 21). */
+  qStart: number;
+  /** Local hour at which quiet window ends (default 7). */
+  qEnd: number;
+  /** Current timestamp (injected for deterministic tests). */
+  now: Date;
+}
+
+/**
+ * The data needed to insert a proactive_message_queue row for an inbox nudge.
+ * Exported so tests can verify the queue entry without a DB.
+ */
+export interface InboxNudgeQueueEntry {
+  scheduledAt: Date;
+  message: string;
+  templateName: string;
+}
+
+/**
+ * Pure function: decides whether and how to enqueue an inbox nudge.
+ *
+ * Returns null if the nudge should not be sent (suppressed, dedup, etc.).
+ * Returns an InboxNudgeQueueEntry ready to be inserted into the queue.
+ *
+ * Applies quiet-hours rescheduling and dedup in addition to the shouldSendInboxNudge check.
+ * Exported for unit testing.
+ */
+export function buildInboxNudgeQueueEntry(
+  params: InboxNudgeEnqueueParams,
+): InboxNudgeQueueEntry | null {
+  if (!shouldSendInboxNudge(params.ctx)) return null;
+  if (params.hasExistingQueued) return null;
+
+  const message = buildInboxNudgeMessage(params.ctx.staleCount);
+  const scheduledAt = enforceQuietHours(params.now, params.tz, params.qStart, params.qEnd);
+  const localDateStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: params.tz,
+  }).format(params.now);
+
+  return {
+    scheduledAt,
+    message,
+    templateName: `inbox_nudge_${localDateStr}`,
+  };
+}
+
+/**
+ * Checks whether the household has inbox items that have been in
+ * `ready_for_review` state for more than INBOX_NUDGE_THRESHOLD_HOURS (4h),
+ * and enqueues a single WhatsApp nudge if:
+ *   - The household has a verified WhatsApp number.
+ *   - Digest is not stopped or paused.
+ *   - No nudge has been sent in the past INBOX_NUDGE_COOLDOWN_HOURS (24h),
+ *     unless the items are a "fresh batch" (all entered review state after the
+ *     last nudge, meaning the admin cleared the previous batch).
+ *   - No nudge is already queued or sending (dedup guard).
+ *
+ * Quiet-hours scheduling and the 3/day rate limit are enforced automatically
+ * by the existing ProactiveScheduler send path.
+ *
+ * Staleness is measured by `updated_at` (the time an item's status was set to
+ * `ready_for_review`), not `created_at`, so items that arrived and were
+ * classified much later are not nudged prematurely.
+ */
+export async function checkPendingInboxNudge(householdId: number): Promise<void> {
+  const [household] = await db
+    .select({
+      timezone: householdsTable.timezone,
+      digest_enabled: householdsTable.digest_enabled,
+      digest_stopped: householdsTable.digest_stopped,
+      digest_paused_until: householdsTable.digest_paused_until,
+      quiet_hour_start: householdsTable.quiet_hour_start,
+      quiet_hour_end: householdsTable.quiet_hour_end,
+    })
+    .from(householdsTable)
+    .where(eq(householdsTable.id, householdId))
+    .limit(1);
+
+  if (!household) return;
+
+  const tz = household.timezone ?? "America/Sao_Paulo";
+  const now = new Date();
+  const qStart = household.quiet_hour_start ?? QUIET_HOUR_START;
+  const qEnd = household.quiet_hour_end ?? QUIET_HOUR_END;
+
+  // Count inbox items whose status has been ready_for_review for > threshold.
+  // updated_at is used as the state-entry timestamp: it records the last time
+  // the row changed, which for inbox items is when classification set the status
+  // to ready_for_review (items do not receive further updates while pending review).
+  const thresholdAt = new Date(now.getTime() - INBOX_NUDGE_THRESHOLD_HOURS * 60 * 60 * 1000);
+  const [staleRow] = await db
+    .select({
+      total: count(),
+      // MIN updated_at among stale items; used to detect the "fresh batch" case.
+      earliest_updated_at: min(inboxItemsTable.updated_at),
+    })
+    .from(inboxItemsTable)
+    .where(
+      and(
+        eq(inboxItemsTable.household_id, householdId),
+        eq(inboxItemsTable.status, "ready_for_review"),
+        // Strictly "older than threshold" — lt not lte — per task requirement.
+        lt(inboxItemsTable.updated_at, thresholdAt),
+      ),
+    );
+  const staleCount = staleRow?.total ?? 0;
+  const earliestStaleItemUpdatedAt = staleRow?.earliest_updated_at ?? null;
+
+  // Find the most recent sent inbox nudge within the cooldown window.
+  // The fresh-batch logic allows more than one sent nudge within 24h (if the
+  // inbox was fully reviewed in between), so we must ORDER BY sent_at DESC to
+  // deterministically select the LATEST nudge for the cooldown check.
+  const cooldownWindowStart = new Date(now.getTime() - INBOX_NUDGE_COOLDOWN_HOURS * 60 * 60 * 1000);
+  const [lastSentRow] = await db
+    .select({ sent_at: proactiveMessageQueueTable.sent_at })
+    .from(proactiveMessageQueueTable)
+    .where(
+      and(
+        eq(proactiveMessageQueueTable.household_id, householdId),
+        eq(proactiveMessageQueueTable.trigger_type, "inbox_nudge"),
+        eq(proactiveMessageQueueTable.status, "sent"),
+        gte(proactiveMessageQueueTable.sent_at, cooldownWindowStart),
+      ),
+    )
+    .orderBy(desc(proactiveMessageQueueTable.sent_at))
+    .limit(1);
+
+  const ctx: InboxNudgeContext = {
+    staleCount,
+    earliestStaleItemUpdatedAt,
+    lastNudgeSentAt: lastSentRow?.sent_at ?? null,
+    isDigestStopped: !household.digest_enabled || household.digest_stopped,
+    isDigestPaused:
+      household.digest_paused_until != null && household.digest_paused_until > now,
+    now,
+  };
+
+  // Dedup: skip if a nudge is already queued or being sent
+  const [existingRow] = await db
+    .select({ total: count() })
+    .from(proactiveMessageQueueTable)
+    .where(
+      and(
+        eq(proactiveMessageQueueTable.household_id, householdId),
+        eq(proactiveMessageQueueTable.trigger_type, "inbox_nudge"),
+        or(
+          eq(proactiveMessageQueueTable.status, "queued"),
+          eq(proactiveMessageQueueTable.status, "sending"),
+        ),
+      ),
+    );
+
+  const entry = buildInboxNudgeQueueEntry({
+    ctx,
+    hasExistingQueued: (existingRow?.total ?? 0) > 0,
+    tz,
+    qStart,
+    qEnd,
+    now,
+  });
+  if (!entry) return;
+
+  await db.insert(proactiveMessageQueueTable).values({
+    household_id: householdId,
+    trigger_type: "inbox_nudge",
+    template_name: entry.templateName,
+    payload: { message: entry.message },
+    scheduled_at: entry.scheduledAt,
+    status: "queued",
+  });
+
+  logger.info(
+    { householdId, staleCount, scheduledAt: entry.scheduledAt },
+    "Proactive: inbox nudge enqueued",
+  );
+}
+
 // ── Main scheduling function ──────────────────────────────────────────────────
 
 /**
@@ -653,6 +916,9 @@ export async function scheduleProactiveMessages(householdId: number): Promise<vo
     });
     logger.info({ householdId, taskId: task.id, title: task.title }, "Proactive: payment_due enqueued");
   }
+
+  // ── 4. Pending inbox nudge ───────────────────────────────────────────────────
+  await checkPendingInboxNudge(householdId);
 }
 
 // ── Sending tick ──────────────────────────────────────────────────────────────
