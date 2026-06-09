@@ -30,6 +30,7 @@ import {
 } from "@workspace/db";
 import type { WaOnboardingStep, WaOnboardingData } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
+import { isOnboardingRestartGreeting, replyWarmRestart } from "./wa-onboarding-recovery";
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MAGIC_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -352,12 +353,17 @@ export async function handleWaOnboarding(
     .where(eq(waOnboardingSessionsTable.phone, phoneNorm))
     .limit(1);
 
-  // If session is expired, delete it and start fresh
+  // If session is expired, delete it and start fresh.
+  // Track whether the user had previously made progress (LGPD accepted) so
+  // we can send a warmer "welcome back" message on greeting inputs.
+  let hadPreviousProgress = false;
   if (session && session.expires_at < new Date()) {
+    hadPreviousProgress = session.lgpd_accepted;
     await db
       .delete(waOnboardingSessionsTable)
       .where(eq(waOnboardingSessionsTable.id, session.id));
     session = undefined as unknown as typeof session;
+    log.info({ phone: phoneNorm, hadPreviousProgress }, "wa-onboarding: expired session cleared");
   }
 
   if (!session) {
@@ -373,6 +379,13 @@ export async function handleWaOnboarding(
       })
       .returning();
     log.info({ phone: phoneNorm }, "wa-onboarding: new session created");
+
+    // If the user had a previous session that expired and they're sending a
+    // casual greeting ("oi", "olá", etc.), reply with a warm re-entry message
+    // instead of the generic LGPD banner so the context switch feels natural.
+    if (hadPreviousProgress && isOnboardingRestartGreeting(input)) {
+      return { kind: "wa_onboarding", phone: phoneRaw, reply: replyWarmRestart() };
+    }
   }
 
   const currentStep = session.step as WaOnboardingStep;

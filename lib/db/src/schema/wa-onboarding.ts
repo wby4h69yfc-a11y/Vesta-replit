@@ -41,6 +41,8 @@ export const waOnboardingSessionsTable = pgTable(
     magic_token_expires_at: timestamp("magic_token_expires_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /** Set when the ~23h re-engagement reminder has been sent to this phone. */
+    reminder_sent_at: timestamp("reminder_sent_at", { withTimezone: true }),
   },
   (table) => [
     index("wa_onboarding_sessions_phone_idx").on(table.phone),

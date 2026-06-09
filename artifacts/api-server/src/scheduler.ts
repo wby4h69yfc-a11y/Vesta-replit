@@ -7,6 +7,7 @@ import { runConsentRenewalJob } from "./lib/consent-renewal-scheduler";
 import { expireOldConversations } from "./lib/wa-prompt-store";
 import { pruneExpiredQaSessions } from "./lib/wa-qa-session-store";
 import { expireWaOnboardingSessions } from "./lib/wa-onboarding-handler";
+import { sendOnboardingReminders } from "./lib/wa-onboarding-recovery";
 import {
   scheduleProactiveForAllHouseholds,
   scheduleProactiveMessages,
@@ -22,6 +23,7 @@ const QA_SESSION_PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const PROACTIVE_SCHEDULE_INTERVAL_MS = 60 * 60 * 1000;
 const PROACTIVE_SEND_INTERVAL_MS = 5 * 60 * 1000;
 const PAYMENT_REMINDER_INTERVAL_MS = 60 * 60 * 1000; // every hour
+const ONBOARDING_REMINDER_INTERVAL_MS = 60 * 60 * 1000; // every hour
 
 let briefingIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let patternIntervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -31,6 +33,7 @@ let proactiveScheduleIntervalHandle: ReturnType<typeof setInterval> | null = nul
 let proactiveSendIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let paymentReminderIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let qaSessionPruneIntervalHandle: ReturnType<typeof setInterval> | null = null;
+let onboardingReminderIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
 function localHourInTimezone(date: Date, timezone: string): number {
   try {
@@ -178,6 +181,14 @@ async function qaSessionPruneTick(): Promise<void> {
   }
 }
 
+async function onboardingReminderTick(): Promise<void> {
+  try {
+    await sendOnboardingReminders();
+  } catch (err) {
+    logger.error({ err }, "Scheduler: WA onboarding reminder tick error");
+  }
+}
+
 async function paymentReminderTick(): Promise<void> {
   try {
     const now = new Date();
@@ -285,6 +296,12 @@ export function startScheduler(): void {
     void qaSessionPruneTick();
   }, QA_SESSION_PRUNE_INTERVAL_MS);
   logger.info({ intervalMs: QA_SESSION_PRUNE_INTERVAL_MS }, "Q&A session prune tick started");
+
+  void onboardingReminderTick();
+  onboardingReminderIntervalHandle = setInterval(() => {
+    void onboardingReminderTick();
+  }, ONBOARDING_REMINDER_INTERVAL_MS);
+  logger.info({ intervalMs: ONBOARDING_REMINDER_INTERVAL_MS }, "WA onboarding reminder tick started");
 }
 
 export function stopScheduler(): void {
@@ -327,5 +344,10 @@ export function stopScheduler(): void {
     clearInterval(qaSessionPruneIntervalHandle);
     qaSessionPruneIntervalHandle = null;
     logger.info("Q&A session prune tick stopped");
+  }
+  if (onboardingReminderIntervalHandle !== null) {
+    clearInterval(onboardingReminderIntervalHandle);
+    onboardingReminderIntervalHandle = null;
+    logger.info("WA onboarding reminder tick stopped");
   }
 }
