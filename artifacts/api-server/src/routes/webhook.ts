@@ -33,6 +33,10 @@ import {
   replyPreferredDeclined,
   replyGroupNonAdmin,
   replyGroupMutationBlocked,
+  replyMutationProposal,
+  replyMutationExecuted,
+  replyMutationDismissed,
+  replyMutationError,
 } from "../lib/wa-reply-composer";
 
 const router = Router();
@@ -499,6 +503,49 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         req.log.info(
           { householdId: outcome.householdId, preview: outcome.reply.substring(0, 80) },
           "Q&A reply sent to admin via WhatsApp",
+        );
+        break;
+
+      // ── Mutation intent proposal ───────────────────────────────────────────
+      // A DM admin sent a mutation command; the handler parsed it, found the
+      // target entity, and stored a mutation_confirm conversation. Send the
+      // proposal message so the admin can confirm with sim/não.
+      case "mutation_proposed_via_wa":
+        void sendWhatsApp(replyDest(outcome.phone), replyMutationProposal(outcome.proposal));
+        req.log.info(
+          { householdId: outcome.householdId, preview: outcome.proposal.substring(0, 80) },
+          "Mutation proposal sent to admin via WhatsApp",
+        );
+        break;
+
+      // ── Mutation executed ─────────────────────────────────────────────────
+      // Admin replied "sim" — the mutation was applied and audited.
+      case "mutation_executed_via_wa":
+        void sendWhatsApp(replyDest(outcome.phone), replyMutationExecuted(outcome.description));
+        req.log.info(
+          { householdId: outcome.householdId, description: outcome.description },
+          "Mutation executed via WhatsApp — confirmation sent",
+        );
+        break;
+
+      // ── Mutation dismissed ────────────────────────────────────────────────
+      // Admin replied "não" — the pending mutation was discarded.
+      case "mutation_dismissed_via_wa":
+        void sendWhatsApp(replyDest(outcome.phone), replyMutationDismissed());
+        req.log.info(
+          { householdId: outcome.householdId },
+          "Mutation proposal dismissed by admin",
+        );
+        break;
+
+      // ── Mutation error ────────────────────────────────────────────────────
+      // Handler could not parse the command or find the target entity.
+      // Send the error reply so the admin knows what went wrong.
+      case "mutation_error_via_wa":
+        void sendWhatsApp(replyDest(outcome.phone), replyMutationError(outcome.reply));
+        req.log.info(
+          { householdId: outcome.householdId, preview: outcome.reply.substring(0, 80) },
+          "Mutation error reply sent to admin via WhatsApp",
         );
         break;
 

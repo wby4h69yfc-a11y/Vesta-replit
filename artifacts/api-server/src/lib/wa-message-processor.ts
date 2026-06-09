@@ -32,6 +32,8 @@ import { recordPrompt } from "./wa-prompt-store";
 import { detectPatternsForHousehold } from "./pattern-detector";
 import { isConsentActive } from "./whatsapp";
 import { handleQuestionIntent, isMutationCommand } from "./wa-qa-handler";
+import { handleMutationIntent, executeConfirmedMutation } from "./wa-mutation-handler";
+import type { MutationProposedPayload } from "./wa-mutation-handler";
 
 /** Payload shape normalised by the webhook handler before calling us. */
 export interface InboundWAMessage {
@@ -86,6 +88,14 @@ export type ProcessOutcome =
   | { kind: "promoted_to_preferred"; contactId: number; contactName: string; householdId: number; phone: string }
   | { kind: "suggest_preferred_declined"; contactId: number; contactName: string; householdId: number; phone: string }
   | { kind: "question_answered"; reply: string; householdId: number; phone: string }
+  /** A DM mutation command was parsed and a proposal was sent — waiting for sim/não. */
+  | { kind: "mutation_proposed_via_wa"; proposal: string; householdId: number; phone: string }
+  /** Admin confirmed a pending mutation proposal — the action was executed. */
+  | { kind: "mutation_executed_via_wa"; description: string; householdId: number; phone: string }
+  /** Admin declined a pending mutation proposal. */
+  | { kind: "mutation_dismissed_via_wa"; householdId: number; phone: string }
+  /** Mutation command received but the handler could not parse or resolve it. */
+  | { kind: "mutation_error_via_wa"; reply: string; householdId: number; phone: string }
   /** A /vesta group command arrived from a non-admin household member. */
   | { kind: "group_non_admin"; phone: string; groupId: string }
   /** A mutation command (cancela, cria, apaga…) arrived from a group chat. */
@@ -398,6 +408,86 @@ export async function processInboundWAMessage(
       );
   }
 
+  // ── 4.5a. Mutation proposal confirmation (SIM / NÃO) ─────────────────────
+  // When the admin has an open mutation_confirm conversation (created by
+  // section 4.59 below) and replies SIM/NÃO, execute or dismiss the pending
+  // mutation.
+  //
+  // PRIORITY: This MUST run BEFORE handleApprovalResponse (4.5b). If both a
+  // pending suggested action and a mutation proposal exist simultaneously,
+  // the mutation confirmation takes priority because:
+  //   a) Mutations are explicitly addressed commands, more destructive, and
+  //      less recoverable than approving a suggested action.
+  //   b) The admin just issued the mutation command, so it is most recent.
+  //   c) Approving a suggested action unexpectedly when the admin was
+  //      confirming a mutation cancellation is a worse UX error than
+  //      deferring an action approval by one turn.
+  //
+  // Security: scoped by household_id AND sender_phone so two admins in the same
+  // household cannot accidentally confirm each other's pending mutations.
+  if (bodyText && senderIsAdmin) {
+    const upper = bodyText.trim().toUpperCase();
+    if (upper === "SIM" || upper === "NÃO" || upper === "NAO") {
+      const [mutConv] = await db
+        .select()
+        .from(waConversationsTable)
+        .where(
+          and(
+            eq(waConversationsTable.household_id, householdId),
+            eq(waConversationsTable.sender_phone, normalisePhone(phoneRaw)),
+            eq(waConversationsTable.thread_context, "mutation_confirm"),
+            eq(waConversationsTable.state, "awaiting_confirmation"),
+            sql`${waConversationsTable.expires_at} > NOW()`,
+          ),
+        )
+        .orderBy(desc(waConversationsTable.created_at))
+        .limit(1);
+
+      if (mutConv) {
+        if (upper === "NÃO" || upper === "NAO") {
+          await db
+            .update(waConversationsTable)
+            .set({ state: "dismissed", last_message_at: new Date() })
+            .where(eq(waConversationsTable.id, mutConv.id));
+
+          log.info(
+            { householdId, convId: mutConv.id },
+            "wa-mutation: admin dismissed pending mutation proposal",
+          );
+          return { kind: "mutation_dismissed_via_wa", householdId, phone: phoneRaw };
+        }
+
+        // "SIM" — execute the confirmed mutation
+        const mutPayload = mutConv.proposed_payload as unknown as MutationProposedPayload | null;
+        if (mutPayload) {
+          const result = await executeConfirmedMutation(
+            mutConv.id,
+            mutPayload,
+            householdId,
+            phoneRaw,
+            log,
+          );
+          if (result) {
+            return {
+              kind: "mutation_executed_via_wa",
+              description: result.description,
+              householdId,
+              phone: phoneRaw,
+            };
+          }
+          // Execution failed — send an error reply rather than silently falling through
+          return {
+            kind: "mutation_error_via_wa",
+            reply: "⚠️ Não consegui executar essa ação. Tente novamente ou use o app.",
+            householdId,
+            phone: phoneRaw,
+          };
+        }
+      }
+    }
+  }
+
+  // ── 4.5b. WhatsApp-native approval / dismiss / edit / undo ────────────────
   if (bodyText && senderIsAdmin) {
     const approvalOutcome = await handleApprovalResponse(bodyText, householdId, phoneRaw, log);
     if (approvalOutcome) {
@@ -638,10 +728,48 @@ export async function processInboundWAMessage(
     }
   }
 
-  // ── 4.57. Conversational Q&A — admin questions about household data ─────────
+  // ── 4.59. Mutation intent proposal (DM only, admin only) ─────────────────
+  // When a DM admin sends a mutation command ("Cancela aquela reunião", "Cria
+  // uma tarefa…"), route to the mutation handler which parses the intent,
+  // resolves the target entity, and creates a mutation_confirm conversation.
+  //
+  // Group mutation commands are already blocked at the group_mutation_blocked
+  // gate (section 4.0) and never reach this point.
+  //
+  // The Q&A handler (4.60) also has a mutation guard that returns a "not
+  // supported" reply — that guard now serves as a fallback only for edge cases
+  // not caught here.
+  if (bodyText && senderIsAdmin && !payload.groupId && isMutationCommand(bodyText)) {
+    log.info(
+      { householdId, phone: phoneRaw, preview: bodyText.substring(0, 60) },
+      "wa-mutation: DM mutation command intercepted — routing to mutation handler",
+    );
+    const mutResult = await handleMutationIntent(bodyText, householdId, phoneRaw, log);
+
+    if (mutResult?.kind === "proposed") {
+      return {
+        kind: "mutation_proposed_via_wa",
+        proposal: mutResult.proposal,
+        householdId,
+        phone: phoneRaw,
+      };
+    }
+    if (mutResult?.kind === "error") {
+      return {
+        kind: "mutation_error_via_wa",
+        reply: mutResult.reply,
+        householdId,
+        phone: phoneRaw,
+      };
+    }
+    // Shouldn't reach here, but fall through to Q&A as a safety net
+  }
+
+  // ── 4.60. Conversational Q&A — admin questions about household data ─────────
   // Intercept recognised questions (agenda, tasks, inbox) from the household
   // admin and reply with live data instead of routing to the ingestion pipeline.
   // Non-question messages return undefined here and fall through normally.
+  // The mutation guard inside handleQuestionIntent is now a fallback only.
   if (bodyText && senderIsAdmin) {
     const qaResult = await handleQuestionIntent(bodyText, householdId, log);
     if (qaResult) {

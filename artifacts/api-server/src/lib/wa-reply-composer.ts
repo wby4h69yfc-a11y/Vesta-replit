@@ -356,6 +356,41 @@ export function replyRatingSuggestPreferred(providerName: string): string {
   );
 }
 
+// ── Mutation proposal replies ─────────────────────────────────────────────────
+
+/**
+ * Sent to the admin when a DM mutation command was executed successfully.
+ * `description` is a short human-readable summary of what was done.
+ */
+export function replyMutationExecuted(description: string): string {
+  const short = description.length > 80 ? description.substring(0, 77) + "…" : description;
+  return `✅ Feito!\n\n${short}`;
+}
+
+/**
+ * Sent to the admin when they reply "não" to a mutation proposal.
+ */
+export function replyMutationDismissed(): string {
+  return "👍 Tudo bem, cancelei. Me avise se quiser fazer algo diferente.";
+}
+
+/**
+ * Sent to the admin when a mutation proposal was created (sim/não prompt).
+ * The `proposalText` is built by the mutation handler and already contains the
+ * full proposal with the confirmation options — pass it through unchanged.
+ */
+export function replyMutationProposal(proposalText: string): string {
+  return proposalText;
+}
+
+/**
+ * Sent to the admin when the mutation handler cannot parse the command or
+ * find the target entity — includes a friendly error message.
+ */
+export function replyMutationError(errorText: string): string {
+  return errorText;
+}
+
 // ── Group /vesta command replies ──────────────────────────────────────────────
 
 /**
