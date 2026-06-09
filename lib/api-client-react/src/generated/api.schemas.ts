@@ -126,6 +126,16 @@ export interface Household {
    * @maximum 23
    */
   quiet_hour_end?: number;
+  /** Number of consecutive failed WhatsApp delivery attempts. Resets to 0 on any successful send. */
+  whatsapp_consecutive_failures?: number;
+  /**
+   * Timestamp of the most recent failed WhatsApp delivery attempt.
+   * @nullable
+   */
+  whatsapp_last_failure_at?: string | null;
+  /** True when WhatsApp delivery has failed 2 or more consecutive times and the authenticated caller is a household admin. Use this field to decide whether to show the delivery-failure warning banner.
+   */
+  whatsapp_alert?: boolean;
   created_at?: string;
 }
 

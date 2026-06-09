@@ -1,4 +1,4 @@
-import { Clock, ListChecks, Inbox as InboxIcon, Zap, ChevronRight, ArrowRight, Banknote, CheckCircle2, School, AlertTriangle } from "lucide-react";
+import { Clock, ListChecks, Inbox as InboxIcon, Zap, ChevronRight, ArrowRight, Banknote, CheckCircle2, School, AlertTriangle, WifiOff } from "lucide-react";
 import WaitlistCard from "@/components/WaitlistCard";
 import { Link } from "wouter";
 import {
@@ -11,6 +11,7 @@ import {
   useSettlePaymentObligation,
   getGetPaymentReimbursementsQueryKey,
   useListActionCascades,
+  useGetHousehold,
   type PaymentObligation,
   type ActionCascadeWithActions,
 } from "@workspace/api-client-react";
@@ -233,6 +234,7 @@ export default function AppDashboard() {
   const { data: todayEvents } = useGetTodayEvents();
   const { data: upcomingTasks } = useGetUpcomingTasks();
   const { data: activityFeed } = useGetActivityFeed();
+  const { data: household } = useGetHousehold();
 
   const today = new Date();
   const hour = today.getHours();
@@ -240,6 +242,28 @@ export default function AppDashboard() {
 
   return (
     <div className="px-4 py-6 md:py-8 space-y-7 animate-fade-in-up">
+
+      {/* WhatsApp delivery failure banner — admin only */}
+      {household?.whatsapp_alert && (
+        <Link href="/casa">
+          <div
+            data-testid="wa-delivery-banner"
+            className="flex items-start gap-3 rounded-2xl px-4 py-3.5"
+            style={{ background: "#FEF2F2", border: "1px solid rgba(220,38,38,0.25)" }}
+          >
+            <WifiOff className="w-5 h-5 shrink-0 mt-0.5" style={{ color: "#DC2626" }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold" style={{ color: "#991B1B" }}>
+                Não conseguimos enviar mensagens para o seu WhatsApp
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: "#B91C1C" }}>
+                Verifique o número cadastrado → Casa
+              </p>
+            </div>
+            <ChevronRight className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#DC2626" }} />
+          </div>
+        </Link>
+      )}
 
       {/* Greeting */}
       <div>

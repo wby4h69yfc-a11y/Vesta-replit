@@ -66,10 +66,15 @@ router.get("/household", async (req, res) => {
         .insert(householdsTable)
         .values({ name: "Minha Casa", plan: "free" })
         .returning();
-      return res.json(created);
+      return res.json({ ...created, whatsapp_alert: false });
     }
 
-    return res.json(household);
+    const role = await getCallerRole(req);
+    const whatsapp_alert =
+      role === "admin" &&
+      (household.whatsapp_consecutive_failures ?? 0) >= 2;
+
+    return res.json({ ...household, whatsapp_alert });
   } catch (err) {
     req.log.error({ err }, "Failed to get household");
     res.status(500).json({ error: "Internal server error" });

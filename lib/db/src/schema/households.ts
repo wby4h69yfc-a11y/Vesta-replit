@@ -21,6 +21,10 @@ export const householdsTable = pgTable("households", {
   quiet_hour_start: integer("quiet_hour_start").notNull().default(21),
   /** Local hour (0-23) at which the quiet window ends — held messages are released at this hour */
   quiet_hour_end: integer("quiet_hour_end").notNull().default(7),
+  /** Number of consecutive failed WhatsApp delivery attempts (briefing or proactive). Resets to 0 on any successful send. */
+  whatsapp_consecutive_failures: integer("whatsapp_consecutive_failures").notNull().default(0),
+  /** Timestamp of the most recent failed WhatsApp delivery attempt. */
+  whatsapp_last_failure_at: timestamp("whatsapp_last_failure_at", { withTimezone: true }),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -195,11 +195,20 @@ export async function sendHouseholdBriefing(
     // *successful* delivery rather than a failed attempt.
     await db
       .update(householdsTable)
-      .set({ last_briefing_sent_at: claimed[0].prev ?? null })
+      .set({
+        last_briefing_sent_at: claimed[0].prev ?? null,
+        whatsapp_consecutive_failures: sql`${householdsTable.whatsapp_consecutive_failures} + 1`,
+        whatsapp_last_failure_at: new Date(),
+      })
       .where(eq(householdsTable.id, householdId));
     logger.warn({ householdId, error: result.error }, "Briefing send failed");
     return { ok: false, reason: "send_failed", error: result.error };
   }
+
+  await db
+    .update(householdsTable)
+    .set({ whatsapp_consecutive_failures: 0 })
+    .where(eq(householdsTable.id, householdId));
 
   logger.info({ householdId, sid: result.sid, adminPhone }, "Daily briefing sent");
   return { ok: true, sid: result.sid, eventsCount: events.length, tasksCount: tasks.length };

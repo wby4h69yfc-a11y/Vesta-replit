@@ -31,6 +31,7 @@ import {
 } from "@workspace/api-client-react";
 import UpgradePrompt from "@/components/UpgradePrompt";
 import PatternSuggestions from "@/components/PatternSuggestions";
+import { Link } from "wouter";
 import { useAuth } from "@workspace/replit-auth-web";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -669,6 +670,25 @@ function InicioTab() {
 
   return (
     <div className="space-y-6 py-6">
+      {(household?.whatsapp_alert) && (
+        <Link href="/casa">
+          <div
+            data-testid="wa-delivery-banner"
+            className="flex items-start gap-3 rounded-2xl px-4 py-3.5"
+            style={{ background: "#FEF2F2", border: "1px solid rgba(220,38,38,0.25)" }}
+          >
+            <WifiOff className="w-5 h-5 shrink-0 mt-0.5" style={{ color: "#DC2626" }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold" style={{ color: "#991B1B" }}>
+                Não conseguimos enviar mensagens para o seu WhatsApp
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: "#B91C1C" }}>
+                Verifique o número cadastrado em Casa → WhatsApp
+              </p>
+            </div>
+          </div>
+        </Link>
+      )}
       <WhatsAppConnectionScreen />
 
       {household && (

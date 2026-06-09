@@ -1677,6 +1677,24 @@ export const ExportPrivacyDataResponse = zod.object({
         .describe(
           "Local hour (0–23) at which the household's quiet window ends. Held messages are released at this hour. Default 7 (07h00 local).",
         ),
+      whatsapp_consecutive_failures: zod
+        .number()
+        .optional()
+        .describe(
+          "Number of consecutive failed WhatsApp delivery attempts. Resets to 0 on any successful send.",
+        ),
+      whatsapp_last_failure_at: zod.coerce
+        .date()
+        .nullish()
+        .describe(
+          "Timestamp of the most recent failed WhatsApp delivery attempt.",
+        ),
+      whatsapp_alert: zod
+        .boolean()
+        .optional()
+        .describe(
+          "True when WhatsApp delivery has failed 2 or more consecutive times and the authenticated caller is a household admin. Use this field to decide whether to show the delivery-failure warning banner.\n",
+        ),
       created_at: zod.coerce.date().optional(),
     })
     .nullish(),
@@ -2267,6 +2285,22 @@ export const GetHouseholdResponse = zod.object({
     .describe(
       "Local hour (0–23) at which the household's quiet window ends. Held messages are released at this hour. Default 7 (07h00 local).",
     ),
+  whatsapp_consecutive_failures: zod
+    .number()
+    .optional()
+    .describe(
+      "Number of consecutive failed WhatsApp delivery attempts. Resets to 0 on any successful send.",
+    ),
+  whatsapp_last_failure_at: zod.coerce
+    .date()
+    .nullish()
+    .describe("Timestamp of the most recent failed WhatsApp delivery attempt."),
+  whatsapp_alert: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when WhatsApp delivery has failed 2 or more consecutive times and the authenticated caller is a household admin. Use this field to decide whether to show the delivery-failure warning banner.\n",
+    ),
   created_at: zod.coerce.date().optional(),
 });
 
@@ -2393,6 +2427,22 @@ export const UpdateHouseholdResponse = zod.object({
     .optional()
     .describe(
       "Local hour (0–23) at which the household's quiet window ends. Held messages are released at this hour. Default 7 (07h00 local).",
+    ),
+  whatsapp_consecutive_failures: zod
+    .number()
+    .optional()
+    .describe(
+      "Number of consecutive failed WhatsApp delivery attempts. Resets to 0 on any successful send.",
+    ),
+  whatsapp_last_failure_at: zod.coerce
+    .date()
+    .nullish()
+    .describe("Timestamp of the most recent failed WhatsApp delivery attempt."),
+  whatsapp_alert: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when WhatsApp delivery has failed 2 or more consecutive times and the authenticated caller is a household admin. Use this field to decide whether to show the delivery-failure warning banner.\n",
     ),
   created_at: zod.coerce.date().optional(),
 });

@@ -841,6 +841,11 @@ async function processSingleMessage(
       .set({ status: "sent", sent_at: new Date() })
       .where(eq(proactiveMessageQueueTable.id, msgId));
 
+    // Reset delivery-failure counter on any successful send
+    await db.update(householdsTable)
+      .set({ whatsapp_consecutive_failures: 0 })
+      .where(eq(householdsTable.id, householdId));
+
     // After sending a provider rating request, open a wa_conversations row so
     // the admin's reply is matched to the correct rating context.
     if (row.trigger_type === "provider_rating_request") {
@@ -880,6 +885,15 @@ async function processSingleMessage(
         scheduled_at: giveUp ? scheduledAt : retryAt,
       })
       .where(eq(proactiveMessageQueueTable.id, msgId));
+
+    // Increment consecutive-failure counter so the app can surface a warning
+    await db.update(householdsTable)
+      .set({
+        whatsapp_consecutive_failures: sql`${householdsTable.whatsapp_consecutive_failures} + 1`,
+        whatsapp_last_failure_at: now,
+      })
+      .where(eq(householdsTable.id, householdId));
+
     logger.warn({ msgId, householdId, retry: retryCount, giveUp }, "Proactive: send failed");
   }
 }
