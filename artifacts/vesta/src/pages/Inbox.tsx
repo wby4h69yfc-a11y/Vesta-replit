@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, MessageCircle, Mail, Camera, PenLine, RefreshCw, Brain, CheckCircle2, X } from "lucide-react";
+import { Plus, MessageCircle, Mail, Camera, PenLine, RefreshCw, Brain, CheckCircle2, X, Users } from "lucide-react";
 import {
   useListInboxItems,
   useListActions,
@@ -28,6 +28,7 @@ import { V } from "@/lib/brand";
 
 const SOURCE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   whatsapp: ({ className }) => <MessageCircle className={cn(className, "text-emerald-600")} />,
+  group:    ({ className }) => <Users className={cn(className, "text-emerald-600")} />,
   email:    ({ className }) => <Mail className={cn(className, "text-blue-500")} />,
   photo:    ({ className }) => <Camera className={cn(className, "text-purple-500")} />,
   manual:   ({ className }) => <PenLine className={cn(className, "text-muted-foreground")} />,
@@ -359,9 +360,18 @@ export default function InboxPage() {
                 <div className="flex items-start gap-2.5">
                   <SourceIcon className="w-4 h-4 mt-0.5 shrink-0" />
                   <div className="flex-1 min-w-0">
-                    {item.sender_name && (
-                      <span className="text-xs font-semibold text-foreground">{item.sender_name} · </span>
-                    )}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {item.sender_name && (
+                        <span className="text-xs font-semibold text-foreground">{item.sender_name}</span>
+                      )}
+                      {item.source === "group" && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                          <Users className="w-2.5 h-2.5" />
+                          grupo
+                        </span>
+                      )}
+                      {item.sender_name && <span className="text-xs text-muted-foreground">·</span>}
+                    </div>
                     <p className="text-sm text-foreground leading-snug line-clamp-2">{item.raw_content}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">

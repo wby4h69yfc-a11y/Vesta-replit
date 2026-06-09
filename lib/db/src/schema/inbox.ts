@@ -15,6 +15,7 @@ export const inboxItemsTable = pgTable(
     sender_name: text("sender_name"),
     twilio_message_sid: text("twilio_message_sid"),
     gmail_message_id: text("gmail_message_id"),
+    group_id: text("group_id"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },

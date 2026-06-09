@@ -256,7 +256,7 @@ export const ListInboxItemsQueryParams = zod.object({
 
 export const ListInboxItemsResponseItem = zod.object({
   id: zod.number(),
-  source: zod.enum(["whatsapp", "email", "manual", "photo"]),
+  source: zod.enum(["whatsapp", "email", "manual", "photo", "group"]),
   raw_content: zod.string(),
   media_url: zod.string().nullish(),
   status: zod.enum([
@@ -269,6 +269,12 @@ export const ListInboxItemsResponseItem = zod.object({
     "manual_review",
   ]),
   sender_name: zod.string().nullish(),
+  group_id: zod
+    .string()
+    .nullish()
+    .describe(
+      "WhatsApp group JID when item originated from a group \/vesta command",
+    ),
   created_at: zod.coerce.date(),
   actions_count: zod.number().optional(),
 });
@@ -279,7 +285,7 @@ export const ListInboxItemsResponse = zod.array(ListInboxItemsResponseItem);
  */
 export const CreateInboxItemBody = zod.object({
   raw_content: zod.string(),
-  source: zod.enum(["manual", "whatsapp", "email", "photo"]),
+  source: zod.enum(["manual", "whatsapp", "email", "photo", "group"]),
   sender_name: zod.string().optional(),
 });
 
@@ -297,6 +303,12 @@ export const GetInboxItemResponse = zod.object({
   media_url: zod.string().nullish(),
   status: zod.string(),
   sender_name: zod.string().nullish(),
+  group_id: zod
+    .string()
+    .nullish()
+    .describe(
+      "WhatsApp group JID when item originated from a group \/vesta command",
+    ),
   created_at: zod.coerce.date(),
   actions: zod.array(
     zod.object({
@@ -345,7 +357,7 @@ export const ClassifyInboxItemParams = zod.object({
 
 export const ClassifyInboxItemResponse = zod.object({
   id: zod.number(),
-  source: zod.enum(["whatsapp", "email", "manual", "photo"]),
+  source: zod.enum(["whatsapp", "email", "manual", "photo", "group"]),
   raw_content: zod.string(),
   media_url: zod.string().nullish(),
   status: zod.enum([
@@ -358,6 +370,12 @@ export const ClassifyInboxItemResponse = zod.object({
     "manual_review",
   ]),
   sender_name: zod.string().nullish(),
+  group_id: zod
+    .string()
+    .nullish()
+    .describe(
+      "WhatsApp group JID when item originated from a group \/vesta command",
+    ),
   created_at: zod.coerce.date(),
   actions_count: zod.number().optional(),
 });
@@ -1761,7 +1779,7 @@ export const ExportPrivacyDataResponse = zod.object({
     .array(
       zod.object({
         id: zod.number(),
-        source: zod.enum(["whatsapp", "email", "manual", "photo"]),
+        source: zod.enum(["whatsapp", "email", "manual", "photo", "group"]),
         raw_content: zod.string(),
         media_url: zod.string().nullish(),
         status: zod.enum([
@@ -1774,6 +1792,12 @@ export const ExportPrivacyDataResponse = zod.object({
           "manual_review",
         ]),
         sender_name: zod.string().nullish(),
+        group_id: zod
+          .string()
+          .nullish()
+          .describe(
+            "WhatsApp group JID when item originated from a group \/vesta command",
+          ),
         created_at: zod.coerce.date(),
         actions_count: zod.number().optional(),
       }),

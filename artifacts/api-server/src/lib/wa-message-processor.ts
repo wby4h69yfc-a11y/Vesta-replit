@@ -792,12 +792,15 @@ export async function processInboundWAMessage(
     .insert(inboxItemsTable)
     .values({
       household_id: householdId,
-      source,
+      // Group /vesta commands are tagged "group" so the inbox UI can surface a
+      // badge and distinguish them from regular WhatsApp DM forwards.
+      source: payload.groupId ? "group" : source,
       raw_content: rawContent,
       media_url: payload.mediaUrl ?? null,
       status: "classifying",
       sender_name: senderName,
       twilio_message_sid: payload.messageSid ?? null,
+      group_id: payload.groupId ?? null,
     })
     .returning();
 

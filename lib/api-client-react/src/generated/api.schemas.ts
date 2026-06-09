@@ -529,6 +529,7 @@ export const InboxItemSource = {
   email: "email",
   manual: "manual",
   photo: "photo",
+  group: "group",
 } as const;
 
 export type InboxItemStatus =
@@ -553,6 +554,11 @@ export interface InboxItem {
   status: InboxItemStatus;
   /** @nullable */
   sender_name?: string | null;
+  /**
+   * WhatsApp group JID when item originated from a group /vesta command
+   * @nullable
+   */
+  group_id?: string | null;
   created_at: string;
   actions_count?: number;
 }
@@ -1021,6 +1027,11 @@ export interface InboxItemDetail {
   status: string;
   /** @nullable */
   sender_name?: string | null;
+  /**
+   * WhatsApp group JID when item originated from a group /vesta command
+   * @nullable
+   */
+  group_id?: string | null;
   created_at: string;
   actions: SuggestedAction[];
 }
@@ -1033,6 +1044,7 @@ export const InboxItemInputSource = {
   whatsapp: "whatsapp",
   email: "email",
   photo: "photo",
+  group: "group",
 } as const;
 
 export interface InboxItemInput {
