@@ -1,4 +1,4 @@
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { getLLMClient } from "@workspace/llm-client";
 import {
   speechToText,
   ensureCompatibleFormat,
@@ -46,36 +46,19 @@ async function analyzeImage(
   contentType: string,
 ): Promise<string | null> {
   const base64 = buffer.toString("base64");
-  const dataUrl = `data:${contentType};base64,${base64}`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-5-mini",
-      max_completion_tokens: 400,
-      messages: [
-        {
-          role: "system",
-          content:
-            "Você é um assistente de família que analisa imagens recebidas via WhatsApp. " +
-            "Descreva o conteúdo da imagem de forma concisa em português (máximo 3 frases), " +
-            "focando em informações relevantes para a gestão doméstica: eventos, datas, " +
-            "horários, locais, nomes, tarefas ou compromissos visíveis. " +
-            "Se não houver texto ou informação relevante, diga brevemente o que a imagem mostra.",
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "image_url",
-              image_url: { url: dataUrl, detail: "low" },
-            },
-          ],
-        },
-      ],
-    });
-
-    const text = response.choices[0]?.message?.content?.trim();
-    return text ?? null;
+    const text = await getLLMClient().visionCompletion(
+      "Você é um assistente de família que analisa imagens recebidas via WhatsApp. " +
+        "Descreva o conteúdo da imagem de forma concisa em português (máximo 3 frases), " +
+        "focando em informações relevantes para a gestão doméstica: eventos, datas, " +
+        "horários, locais, nomes, tarefas ou compromissos visíveis. " +
+        "Se não houver texto ou informação relevante, diga brevemente o que a imagem mostra.",
+      base64,
+      contentType,
+      { maxTokens: 400 },
+    );
+    return text.trim() || null;
   } catch (err) {
     logger.error({ err, contentType }, "Image analysis failed");
     return null;

@@ -13,6 +13,7 @@ A full-stack family logistics assistant that organises household tasks, school m
 - WhatsApp BSP env: `WA_BSP` (`"twilio"` default or `"360dialog"`), then per-BSP:
   - Twilio: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`
   - 360Dialog: `DIALOG360_API_KEY`, `DIALOG360_WHATSAPP_NUMBER`, `DIALOG360_HUB_SECRET` (HMAC secret, production only)
+- LLM env: `LLM_PROVIDER` — active LLM provider (`openai` | `anthropic` | `gemini` | `openrouter`; default `openai`); `LLM_MODEL` — override the model for the chosen provider (defaults: openai→`gpt-4o-mini`, anthropic→`claude-3-5-haiku-20241022`, gemini→`gemini-2.0-flash`, openrouter→`openai/gpt-4o-mini`)
 
 ## Stack
 

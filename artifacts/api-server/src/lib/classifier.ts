@@ -1,4 +1,4 @@
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { getLLMClient } from "@workspace/llm-client";
 import { db } from "@workspace/db";
 import {
   inboxItemsTable,
@@ -328,16 +328,13 @@ Regras gerais:
 
 async function classifyWithAI(text: string): Promise<ClassificationResult | null> {
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-5-mini",
-      max_completion_tokens: 600,
-      messages: [
+    const raw = (await getLLMClient().chatCompletion(
+      [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: text.substring(0, 1500) },
       ],
-    });
-
-    const raw = response.choices[0]?.message?.content?.trim();
+      { maxTokens: 600 },
+    )).trim();
     if (!raw) return null;
 
     // Strip markdown code fences if present

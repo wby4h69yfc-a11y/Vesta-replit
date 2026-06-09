@@ -37,7 +37,7 @@ import type { Logger } from "pino";
 import { db } from "@workspace/db";
 import { calendarEventsTable, tasksTable, inboxItemsTable } from "@workspace/db";
 import { eq, and, gte, lt, asc, desc, sql } from "drizzle-orm";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { getLLMClient } from "@workspace/llm-client";
 import { loadQaSession, appendQaTurn } from "./wa-qa-session-store";
 import type { QATurnRecord } from "./wa-qa-session-store";
 
@@ -337,15 +337,13 @@ async function detectWithLLM(
         ? buildContextAwareSystemPrompt(priorTurns)
         : QA_SYSTEM_PROMPT;
 
-    const resp = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_completion_tokens: 50,
-      messages: [
+    const raw = (await getLLMClient().chatCompletion(
+      [
         { role: "system", content: systemPrompt },
         { role: "user", content: text.substring(0, 200) },
       ],
-    });
-    const raw = (resp.choices[0]?.message?.content ?? "").trim();
+      { maxTokens: 50 },
+    )).trim();
     const json = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
     const parsed = JSON.parse(json) as { is_question?: boolean; type?: string };
     if (!parsed.is_question || !parsed.type || parsed.type === "other") {
