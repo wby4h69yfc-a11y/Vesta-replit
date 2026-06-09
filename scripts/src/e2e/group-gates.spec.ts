@@ -448,6 +448,168 @@ test.describe("WhatsApp group gates", () => {
     expect(sends).toHaveLength(1);
     expect(sends[0]!.to).toContain("@g.us");
     expect(sends[0]!.to).toBe(groupJid);
-    expect(sends[0]!.body).toBe(NON_ADMIN_BODY);
+    // The Tier-0 DM-only gate in webhook.ts fires before processInboundWAMessage,
+    // so any sender (admin or non-admin) gets replyGroupMutationBlocked().
+    expect(sends[0]!.body).toContain(MUTATION_BLOCKED_BODY_PREFIX);
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tier-0 DM-only gate: PAUSAR / PARAR / RETOMAR in group chats
+  //
+  // webhook.ts lines 192–208: when a Tier-0 keyword arrives from a group JID the
+  // route calls sendWhatsApp(groupId, replyGroupMutationBlocked()) and returns
+  // immediately, before any household lookup or processInboundWAMessage call.
+  //
+  // Assertions per command (PAUSAR, PARAR, RETOMAR):
+  //   a) Webhook returns 200
+  //   b) Exactly one sendWhatsApp call is made
+  //   c) `to` is the group JID (contains "@g.us"), NOT the sender's phone
+  //   d) Body contains MUTATION_BLOCKED_BODY_PREFIX
+  //   e) No inbox item is created (early return before ingestion)
+  //
+  // Contrast (test 17): the same keywords sent as a DM (no @g.us in To) do NOT
+  // trigger the group-block reply — the DM path handles them normally.
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  // ── 14. Tier-0 PAUSAR in group: replyGroupMutationBlocked sent to group JID ───
+
+  test("Tier-0 PAUSAR in group: replyGroupMutationBlocked sent to group JID, no inbox item", async ({ request }) => {
+    const adminPhone = uniquePhone();
+    const groupJid = uniqueGroupJid();
+    const hhId = await seedHousehold(db, "tier0-grp-pausar");
+    await seedMember(db, hhId, adminPhone, "admin");
+
+    await drainWaSends(request);
+    const countBefore = await countInboxItems(db, hhId);
+
+    // Group messages need the /vesta prefix; the webhook strips it before the
+    // Tier-0 check so effectiveBody becomes "PAUSAR".
+    const { status } = await sendWebhook(request, {
+      from: adminPhone,
+      to: groupJid,
+      body: "/vesta PAUSAR",
+      messageSid: uniqueSid("tier0-grp-pausar"),
+    });
+
+    expect(status).toBe(200);
+
+    // No inbox item — the gate returns before ingestion.
+    expect(await countInboxItems(db, hhId)).toBe(countBefore);
+
+    const sends = await drainWaSends(request);
+    // Exactly one reply.
+    expect(sends).toHaveLength(1);
+    const send = sends[0]!;
+    // (c) Must go to the group JID, not the sender's DM.
+    expect(send.to).toContain("@g.us");
+    expect(send.to).toBe(groupJid);
+    expect(send.to).not.toContain(adminPhone.replace(/\D/g, ""));
+    // (d) Body identifies the group-mutation-blocked outcome.
+    expect(send.body).toContain(MUTATION_BLOCKED_BODY_PREFIX);
+  });
+
+  // ── 15. Tier-0 PARAR in group: replyGroupMutationBlocked sent to group JID ────
+
+  test("Tier-0 PARAR in group: replyGroupMutationBlocked sent to group JID, no inbox item", async ({ request }) => {
+    const adminPhone = uniquePhone();
+    const groupJid = uniqueGroupJid();
+    const hhId = await seedHousehold(db, "tier0-grp-parar");
+    await seedMember(db, hhId, adminPhone, "admin");
+
+    await drainWaSends(request);
+    const countBefore = await countInboxItems(db, hhId);
+
+    const { status } = await sendWebhook(request, {
+      from: adminPhone,
+      to: groupJid,
+      body: "/vesta PARAR",
+      messageSid: uniqueSid("tier0-grp-parar"),
+    });
+
+    expect(status).toBe(200);
+    expect(await countInboxItems(db, hhId)).toBe(countBefore);
+
+    const sends = await drainWaSends(request);
+    expect(sends).toHaveLength(1);
+    const send = sends[0]!;
+    expect(send.to).toContain("@g.us");
+    expect(send.to).toBe(groupJid);
+    expect(send.to).not.toContain(adminPhone.replace(/\D/g, ""));
+    expect(send.body).toContain(MUTATION_BLOCKED_BODY_PREFIX);
+  });
+
+  // ── 16. Tier-0 RETOMAR in group: replyGroupMutationBlocked sent to group JID ──
+
+  test("Tier-0 RETOMAR in group: replyGroupMutationBlocked sent to group JID, no inbox item", async ({ request }) => {
+    const adminPhone = uniquePhone();
+    const groupJid = uniqueGroupJid();
+    const hhId = await seedHousehold(db, "tier0-grp-retomar");
+    await seedMember(db, hhId, adminPhone, "admin");
+
+    await drainWaSends(request);
+    const countBefore = await countInboxItems(db, hhId);
+
+    const { status } = await sendWebhook(request, {
+      from: adminPhone,
+      to: groupJid,
+      body: "/vesta RETOMAR",
+      messageSid: uniqueSid("tier0-grp-retomar"),
+    });
+
+    expect(status).toBe(200);
+    expect(await countInboxItems(db, hhId)).toBe(countBefore);
+
+    const sends = await drainWaSends(request);
+    expect(sends).toHaveLength(1);
+    const send = sends[0]!;
+    expect(send.to).toContain("@g.us");
+    expect(send.to).toBe(groupJid);
+    expect(send.to).not.toContain(adminPhone.replace(/\D/g, ""));
+    expect(send.body).toContain(MUTATION_BLOCKED_BODY_PREFIX);
+  });
+
+  // ── 17. Contrast: Tier-0 keywords via DM are NOT blocked by the group gate ────
+  //
+  // When the `To` field is a plain Twilio number (no "@g.us"), groupSourced is
+  // false.  The Tier-0 DM-only gate (if (groupSourced)) is skipped, and
+  // replyGroupMutationBlocked() is never sent.
+  //
+  // For each keyword the test seeds no onboarding_state for the sender phone so
+  // the household lookup finds nothing and no reply is sent at all.  An empty
+  // send-buffer proves the group-block reply was NOT triggered by the DM path.
+
+  const tier0DmCases: Array<[string, string]> = [
+    ["PAUSAR", "tier0-dm-pausar"],
+    ["PARAR", "tier0-dm-parar"],
+    ["RETOMAR", "tier0-dm-retomar"],
+  ];
+
+  for (const [keyword, label] of tier0DmCases) {
+    test(`Tier-0 ${keyword} via DM: replyGroupMutationBlocked is NOT sent (group gate does not fire)`, async ({ request }) => {
+      // Use a phone number that has no onboarding_state row so the DM Tier-0
+      // handler finds no household and sends nothing — cleanly proving the
+      // group-block reply was not triggered.
+      const unknownPhone = uniquePhone();
+      const twilioNumber = uniqueTwilioNumber(); // plain number, no "@g.us"
+
+      await drainWaSends(request);
+
+      const { status } = await sendWebhook(request, {
+        from: unknownPhone,
+        to: twilioNumber, // DM: To is the Twilio number, NOT a group JID
+        body: keyword,    // no /vesta prefix required for DMs
+        messageSid: uniqueSid(label),
+      });
+
+      expect(status).toBe(200);
+
+      const sends = await drainWaSends(request);
+      // No household lookup succeeds → no reply at all, proving the
+      // group-mutation-blocked gate did not fire for a DM.
+      const blockedSends = sends.filter((s) =>
+        s.body.includes(MUTATION_BLOCKED_BODY_PREFIX),
+      );
+      expect(blockedSends).toHaveLength(0);
+    });
+  }
 });
