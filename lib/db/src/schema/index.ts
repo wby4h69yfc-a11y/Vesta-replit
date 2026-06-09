@@ -15,4 +15,5 @@ export * from "./invites";
 export * from "./proactive";
 export * from "./payments";
 export * from "./creche";
+export * from "./wa-rate-limits";
 export { ruleTemplatesTable } from "./rules";

@@ -19,6 +19,7 @@ import {
   proactiveMessageQueueTable,
   waConversationsTable,
   auditLogTable,
+  waMediaRateLimitsTable,
 } from "@workspace/db";
 import { applyContactRating } from "./provider-rating";
 import type { RatingKeyword } from "./provider-rating";
@@ -108,33 +109,33 @@ function normalisePhone(p: string): string {
   return p.replace(/\D/g, "");
 }
 
-// ── Per-sender media rate limiting ────────────────────────────────────────────
+// ── Per-sender media rate limiting (DB-backed) ────────────────────────────────
 // Limits unbounded media download + AI processing to at most MEDIA_RATE_LIMIT
-// messages per MEDIA_RATE_WINDOW_MS per sender, preventing resource exhaustion
-// by any single recognized WhatsApp number.
+// messages per hour per sender.  The counter is stored in PostgreSQL so all
+// autoscaled instances share the same window — an in-process Map would only
+// enforce the limit per-instance and allow senders to exceed the cap by
+// hitting different workers.
+//
+// A single atomic upsert (INSERT … ON CONFLICT DO UPDATE) increments the
+// counter or resets it when the 1-hour window has expired, so no two instances
+// can race to double-count or double-reset.
 
 const MEDIA_RATE_LIMIT = 10;
-const MEDIA_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
-interface RateLimitEntry {
-  count: number;
-  windowStart: number;
-}
+async function checkMediaRateLimit(phoneNorm: string): Promise<boolean> {
+  const [row] = await db
+    .insert(waMediaRateLimitsTable)
+    .values({ phone_norm: phoneNorm, count: 1, window_start: new Date() })
+    .onConflictDoUpdate({
+      target: waMediaRateLimitsTable.phone_norm,
+      set: {
+        count: sql`CASE WHEN NOW() - ${waMediaRateLimitsTable.window_start} > INTERVAL '1 hour' THEN 1 ELSE ${waMediaRateLimitsTable.count} + 1 END`,
+        window_start: sql`CASE WHEN NOW() - ${waMediaRateLimitsTable.window_start} > INTERVAL '1 hour' THEN NOW() ELSE ${waMediaRateLimitsTable.window_start} END`,
+      },
+    })
+    .returning({ count: waMediaRateLimitsTable.count });
 
-const mediaRateLimitStore = new Map<string, RateLimitEntry>();
-
-function checkMediaRateLimit(phoneNorm: string): boolean {
-  const now = Date.now();
-  const entry = mediaRateLimitStore.get(phoneNorm);
-  if (!entry || now - entry.windowStart > MEDIA_RATE_WINDOW_MS) {
-    mediaRateLimitStore.set(phoneNorm, { count: 1, windowStart: now });
-    return true;
-  }
-  if (entry.count >= MEDIA_RATE_LIMIT) {
-    return false;
-  }
-  entry.count++;
-  return true;
+  return (row?.count ?? 1) <= MEDIA_RATE_LIMIT;
 }
 
 type MatchedMember = {
@@ -706,7 +707,7 @@ export async function processInboundWAMessage(
   let rawContent = bodyText;
 
   if (hasMedia && payload.mediaUrl && payload.mediaContentType) {
-    if (!checkMediaRateLimit(phoneNorm)) {
+    if (!(await checkMediaRateLimit(phoneNorm))) {
       log.warn(
         { phone: phoneRaw, householdId },
         "Media rate limit exceeded for sender — skipping media processing",
