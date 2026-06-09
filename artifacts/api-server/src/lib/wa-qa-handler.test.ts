@@ -25,8 +25,8 @@ test("detects agenda_tomorrow: 'minha agenda amanhã'", () => {
   assert.equal(detectQuestionKeyword("minha agenda amanhã"), "agenda_tomorrow");
 });
 
-test("detects agenda_tomorrow: 'agenda de amanhã'", () => {
-  assert.equal(detectQuestionKeyword("agenda de amanhã"), "agenda_tomorrow");
+test("detects agenda_tomorrow: 'agenda de amanhã?' (with question mark)", () => {
+  assert.equal(detectQuestionKeyword("agenda de amanhã?"), "agenda_tomorrow");
 });
 
 test("detects agenda_tomorrow: no-accent 'o que tenho amanha'", () => {
@@ -53,8 +53,8 @@ test("detects agenda_week: 'o que tenho essa semana?'", () => {
   assert.equal(detectQuestionKeyword("o que tenho essa semana?"), "agenda_week");
 });
 
-test("detects agenda_week: 'agenda desta semana'", () => {
-  assert.equal(detectQuestionKeyword("agenda desta semana"), "agenda_week");
+test("detects agenda_week: 'agenda desta semana?' (with question mark)", () => {
+  assert.equal(detectQuestionKeyword("agenda desta semana?"), "agenda_week");
 });
 
 test("detects agenda_week: 'o que tem na semana que vem'", () => {
@@ -97,8 +97,8 @@ test("detects inbox_pending: 'caixa de entrada'", () => {
   assert.equal(detectQuestionKeyword("caixa de entrada"), "inbox_pending");
 });
 
-test("detects inbox_pending: 'mensagens pendentes'", () => {
-  assert.equal(detectQuestionKeyword("mensagens pendentes"), "inbox_pending");
+test("detects inbox_pending: 'mensagens pendentes?' (with question mark)", () => {
+  assert.equal(detectQuestionKeyword("mensagens pendentes?"), "inbox_pending");
 });
 
 test("inbox beats agenda_today: 'o que tem no inbox hoje'", () => {
@@ -128,6 +128,24 @@ test("returns null for approval 'não'", () => {
 
 test("returns null for 'amanhã tem reunião de pais' (statement, no question marker)", () => {
   assert.equal(detectQuestionKeyword("amanhã tem reunião de pais"), null);
+});
+
+test("returns null for 'agenda de amanhã' without question mark (prevents false positive on forwarded content)", () => {
+  assert.equal(detectQuestionKeyword("agenda de amanhã"), null);
+});
+
+test("returns null for 'Temos reunião com agenda de amanhã às 14h' (forwarded message)", () => {
+  assert.equal(
+    detectQuestionKeyword("Temos reunião com agenda de amanhã às 14h"),
+    null,
+  );
+});
+
+test("returns null for 'Mensagem da escola sobre pendências da matrícula' (contains pendência but not a question)", () => {
+  assert.equal(
+    detectQuestionKeyword("Mensagem da escola sobre pendências da matrícula"),
+    null,
+  );
 });
 
 test("returns null for blank string", () => {

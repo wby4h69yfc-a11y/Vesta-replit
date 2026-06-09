@@ -21,7 +21,7 @@
 import type { Logger } from "pino";
 import { db } from "@workspace/db";
 import { calendarEventsTable, tasksTable, inboxItemsTable } from "@workspace/db";
-import { eq, and, gte, lt, ne, asc, desc } from "drizzle-orm";
+import { eq, and, gte, lt, asc, desc, sql } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 
 export type QuestionType =
@@ -107,43 +107,87 @@ function catEmoji(category: string | null | undefined): string {
 
 // ── Keyword-based question type detection ─────────────────────────────────────
 
-const INBOX_RE =
-  /\b(inbox|caixa\s*de\s*entrada)\b|mensagen[s]?\s*(pendente|para\s*revisar)|o\s*que\s*(tem|há|ha|está|esta)\s*no\s*(inbox|caixa)|revisão\s*pendente/i;
-
-const TASKS_RE =
-  /quai?s?\s*tarefa[s]?|tarefa[s]?\s*(aberta[s]?|pendente[s]?)|lista\s*(de\s*)?tarefa[s]?|o\s*que\s*(está|esta|tem)\s*(pra|para)\s*fazer|afazeres?|pend[eê]ncia[s]?/i;
-
 const TOMORROW_RE = /\b(amanhã|amanha)\b/i;
 const TODAY_RE = /\bhoje\b/i;
 const WEEK_RE = /(essa|esta|próxima|proxima)\s*semana|(semana\s*que\s*vem)|próximos\s*dias/i;
 
-const QUESTION_MARKER_RE =
-  /(\?$|^(o\s*(que|q)\b|qual\b|quai?s?\b|me\s*(diz|conta|fala|mostra)\b|minha?\s*agenda|meu\s*dia|o\s*que\s*(tenho|tem)\b|tenho\b))/i;
+/**
+ * Returns true when the message carries an explicit question intent:
+ * ends with "?" or starts with an interrogative word (o que, qual, quais …).
+ */
+function isExplicitQuestion(text: string): boolean {
+  const t = text.trim();
+  return (
+    t.endsWith("?") ||
+    /^(o\s*(que|q)\b|qual\b|quai?s?\b|me\s*(diz|conta|fala|mostra)\b|tenho\b)/i.test(t)
+  );
+}
 
+/**
+ * Fast-path keyword detector.  Conservative by design:
+ *
+ * Tier 1 — always unambiguous (no question marker needed):
+ *   • `inbox` / `caixa de entrada` standing alone
+ *   • `quais tarefas …`, `lista de tarefas`, `o que [tenho|tem] [pra|para] fazer`, `afazeres`
+ *   • `o que tenho/tem [amanhã|hoje|semana]`
+ *   • `minha agenda [timeref]` / `meu dia`
+ *
+ * Tier 2 — require explicit question intent (ends with `?` or starts with
+ *   `o que`/`qual`/`quais`/…):
+ *   • bare `agenda` keyword with a time reference
+ *   • `tarefa(s)` alone
+ *   • `mensagens pendentes`
+ *
+ * Anything that does not clearly fall into either tier returns `null` so that
+ * the message is forwarded to the normal ingestion pipeline undisturbed.
+ */
 export function detectQuestionKeyword(text: string): QuestionType | null {
   const t = text.trim();
 
-  if (INBOX_RE.test(t)) return "inbox_pending";
-  if (TASKS_RE.test(t)) return "tasks_open";
+  // ── Tier 1: always unambiguous ──────────────────────────────────────────────
 
-  // "agenda [timeframe]" is a common pt-BR shorthand for "o que tenho [timeframe]?"
-  // e.g. "agenda de amanhã", "agenda desta semana", "agenda hoje"
+  // "inbox" / "caixa de entrada" as query term
+  if (/\b(inbox|caixa\s*de\s*entrada)\b/i.test(t)) return "inbox_pending";
+
+  // Unambiguous task queries
+  if (
+    /quai?s?\s*tarefa[s]?\b|lista\s*(de\s*)?tarefa[s]?\b|o\s*que\s*(está|esta|tem)\s*(pra|para)\s*fazer\b|afazeres?\b/i.test(
+      t,
+    )
+  ) {
+    return "tasks_open";
+  }
+
+  // "o que tenho/tem [timeframe]" — always an agenda question
+  if (/\bo\s*que\s*(tenho|tem)\b/i.test(t)) {
+    if (TOMORROW_RE.test(t)) return "agenda_tomorrow";
+    if (TODAY_RE.test(t)) return "agenda_today";
+    if (WEEK_RE.test(t)) return "agenda_week";
+    return "agenda_tomorrow"; // ambiguous timeframe → default to tomorrow
+  }
+
+  // "minha agenda [timeref]" or "meu dia" at the start of the message
+  if (/^(minha?\s*agenda|meu\s*dia)\b/i.test(t)) {
+    if (TOMORROW_RE.test(t)) return "agenda_tomorrow";
+    if (WEEK_RE.test(t)) return "agenda_week";
+    if (TODAY_RE.test(t) || /^meu\s*dia\b/i.test(t)) return "agenda_today";
+    return "agenda_tomorrow";
+  }
+
+  // ── Tier 2: ambiguous patterns — require explicit question intent ───────────
+  if (!isExplicitQuestion(t)) return null;
+
+  // Inbox — requires question marker to avoid false positives
+  if (/mensagen[s]?\s*(pendente[s]?|para\s*revisar)/i.test(t)) return "inbox_pending";
+
+  // Tasks — bare "tarefa" keyword with question marker
+  if (/\btarefa[s]?\b/i.test(t)) return "tasks_open";
+
+  // Bare "agenda" keyword with question marker + time reference
   if (/\bagenda\b/i.test(t)) {
     if (TOMORROW_RE.test(t)) return "agenda_tomorrow";
     if (TODAY_RE.test(t)) return "agenda_today";
     if (WEEK_RE.test(t)) return "agenda_week";
-    // bare "agenda" with no time context defaults to tomorrow (most useful)
-    return "agenda_tomorrow";
-  }
-
-  const hasQuestion = QUESTION_MARKER_RE.test(t);
-  if (!hasQuestion) return null;
-
-  if (TOMORROW_RE.test(t)) return "agenda_tomorrow";
-  if (TODAY_RE.test(t)) return "agenda_today";
-  if (WEEK_RE.test(t)) return "agenda_week";
-
-  if (/\b(evento[s]?|compromisso[s]?|o\s*que\s*(tenho|tem))\b/i.test(t)) {
     return "agenda_tomorrow";
   }
 
@@ -373,27 +417,41 @@ async function buildTasksReply(householdId: number): Promise<string> {
 }
 
 async function buildInboxReply(householdId: number): Promise<string> {
-  const items = await db
-    .select({
-      raw_content: inboxItemsTable.raw_content,
-      sender_name: inboxItemsTable.sender_name,
-      created_at: inboxItemsTable.created_at,
-    })
-    .from(inboxItemsTable)
-    .where(
-      and(
-        eq(inboxItemsTable.household_id, householdId),
-        eq(inboxItemsTable.status, "ready_for_review"),
-      ),
-    )
-    .orderBy(desc(inboxItemsTable.created_at))
-    .limit(5);
+  const PREVIEW_LIMIT = 5;
 
-  if (items.length === 0) {
+  const [countRow, items] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(inboxItemsTable)
+      .where(
+        and(
+          eq(inboxItemsTable.household_id, householdId),
+          eq(inboxItemsTable.status, "ready_for_review"),
+        ),
+      ),
+    db
+      .select({
+        raw_content: inboxItemsTable.raw_content,
+        sender_name: inboxItemsTable.sender_name,
+      })
+      .from(inboxItemsTable)
+      .where(
+        and(
+          eq(inboxItemsTable.household_id, householdId),
+          eq(inboxItemsTable.status, "ready_for_review"),
+        ),
+      )
+      .orderBy(desc(inboxItemsTable.created_at))
+      .limit(PREVIEW_LIMIT),
+  ]);
+
+  const totalCount = Number(countRow[0]?.count ?? 0);
+
+  if (totalCount === 0) {
     return "📬 Inbox vazio — nenhuma mensagem pendente. 👌";
   }
 
-  const lines: string[] = [`📬 *Inbox pendente* (${items.length})`, ""];
+  const lines: string[] = [`📬 *Inbox pendente* (${totalCount})`, ""];
 
   for (const item of items) {
     const preview = item.raw_content.replace(/\n+/g, " ").substring(0, 55);
@@ -402,7 +460,11 @@ async function buildInboxReply(householdId: number): Promise<string> {
     lines.push(`• ${preview}${ellipsis}${from}`);
   }
 
-  lines.push("", "Acesse o Vesta para revisar e aprovar.");
+  if (totalCount > PREVIEW_LIMIT) {
+    lines.push("", `_... e mais ${totalCount - PREVIEW_LIMIT} iten(s). Abra o Vesta para ver todos._`);
+  } else {
+    lines.push("", "Acesse o Vesta para revisar e aprovar.");
+  }
 
   return lines.join("\n");
 }
@@ -462,7 +524,12 @@ export async function handleQuestionIntent(
     }
     return { reply };
   } catch (err) {
-    log.error({ err, householdId, qType }, "wa-qa: data resolver failed — falling through");
-    return undefined;
+    // qType was identified, so we owe the admin a response — send a graceful
+    // error reply rather than silently falling through to ingestion, which
+    // would create a spurious inbox item from what was clearly a question.
+    log.error({ err, householdId, qType }, "wa-qa: data resolver failed — sending graceful error reply");
+    return {
+      reply: "⚠️ Não consegui buscar seus dados agora. Tente de novo em instantes.",
+    };
   }
 }
