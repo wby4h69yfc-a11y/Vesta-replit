@@ -14,6 +14,13 @@
  *   tasks_open      — all open (status="pending") tasks
  *   inbox_pending   — all inbox items awaiting review
  *
+ * ── Multi-turn context ───────────────────────────────────────────────────────
+ *
+ * A short per-sender conversation window (max 5 turns, 15-min TTL) lets the
+ * LLM resolve follow-up questions like "e amanhã?" or "e para a Maria?" in
+ * context.  The keyword fast-path is always tried first; the session context
+ * is only injected into the LLM call when the fast-path returns null.
+ *
  * ── Scope boundaries (intentional, not gaps) ────────────────────────────────
  *
  * READ-ONLY: This handler only reads household data. Mutation commands
@@ -21,12 +28,6 @@
  * with a clear "not supported here" reply rather than falling to ingestion,
  * which would create a confusing inbox item. Mutation support is a separate
  * future feature.
- *
- * SINGLE-TURN: Each invocation is fully independent — no conversation history
- * is stored or consulted. Follow-up questions ("e amanhã?", "e as tarefas?")
- * are treated as fresh independent queries. Multi-turn context is tracked as
- * a separate future feature; do not add session state to this handler without
- * a corresponding schema migration and security review.
  *
  * All DB queries are scoped to the caller's `householdId` — no cross-household
  * reads are possible.
@@ -37,6 +38,8 @@ import { db } from "@workspace/db";
 import { calendarEventsTable, tasksTable, inboxItemsTable } from "@workspace/db";
 import { eq, and, gte, lt, asc, desc, sql } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { loadQaSession, appendQaTurn } from "./wa-qa-session-store";
+import type { QATurnRecord } from "./wa-qa-session-store";
 
 export type QuestionType =
   | "agenda_today"
@@ -246,7 +249,39 @@ export function isTier0Command(text: string): boolean {
   return TIER0_KEYWORDS.has(text.trim().toUpperCase());
 }
 
-// ── LLM-based fallback detection ─────────────────────────────────────────────
+// ── Follow-up detection ───────────────────────────────────────────────────────
+
+/**
+ * Returns true when the message looks like a follow-up to a prior Q&A turn
+ * rather than a standalone new question.
+ *
+ * Signals:
+ *   • Starts with "e " / "e as " / "e os " / "e para " (conjunctive)
+ *   • Short message (≤ 60 chars) with a temporal or pronoun reference
+ *   • Temporal shorthand like "amanhã", "hoje", "semana", "próxima" without
+ *     an accompanying explicit question opener ("o que", "qual")
+ *   • Pronoun reference: "ela", "ele", "eles", "elas", "isso"
+ *
+ * Deliberately conservative: only returns true when there is a strong signal
+ * so that genuine new questions are never misrouted to the context LLM call.
+ */
+function looksLikeFollowUp(text: string): boolean {
+  const t = text.trim().toLowerCase();
+
+  // Conjunctive opener — "e amanhã?", "e as tarefas?", "e para ela?"
+  if (/^e\s+(a[s]?\s|o[s]?\s|para\s|de\s|do\s|da\s)/.test(t)) return true;
+  if (/^e\s+(amanhã|amanha|hoje|semana|inbox|tarefas?|agenda)\b/.test(t)) return true;
+
+  // Short (≤60 chars) message that is just a bare time reference + "?"
+  if (t.length <= 60 && /^(amanhã|amanha|hoje|essa semana|esta semana|semana que vem|próxima semana)\??$/.test(t)) return true;
+
+  // Pronoun reference without explicit question opener — only when short
+  if (t.length <= 60 && /\b(ela|ele|eles|elas|isso)\b/.test(t) && !t.startsWith("o que")) return true;
+
+  return false;
+}
+
+// ── LLM-based single-turn classification ─────────────────────────────────────
 
 const QA_SYSTEM_PROMPT = `O usuário enviou uma mensagem pelo WhatsApp para um assistente doméstico chamado Vesta.
 Classifique se a mensagem é uma pergunta sobre dados domésticos e, em caso positivo, qual tipo.
@@ -259,17 +294,54 @@ Tipos:
 - inbox_pending: o que está no inbox, mensagens para revisar, pendências
 Responda APENAS com o JSON, sem markdown.`;
 
+// ── LLM-based context-aware classification (multi-turn) ──────────────────────
+
+/**
+ * Builds a context-aware system prompt that includes prior Q&A turns.
+ * The LLM uses the conversation history to resolve relative references
+ * ("e amanhã?" → agenda_tomorrow after an agenda_today turn).
+ */
+function buildContextAwareSystemPrompt(priorTurns: QATurnRecord[]): string {
+  const turnLines = priorTurns
+    .map((t, i) => `  Turno ${i + 1}: pergunta="${t.q.substring(0, 150)}" → tipo_resolvido="${t.type}"`)
+    .join("\n");
+
+  return `O usuário enviou mensagens pelo WhatsApp para um assistente doméstico chamado Vesta.
+Histórico recente da conversa (do mais antigo ao mais recente):
+${turnLines}
+
+Com base no histórico acima, classifique a NOVA mensagem do usuário.
+Resolva referências relativas: "e amanhã?" após agenda_today → agenda_tomorrow. "e as tarefas?" → tasks_open. "e para ela/ele?" após uma pergunta sobre um membro → mantenha o mesmo tipo de dado mas para o mesmo membro.
+Retorne APENAS JSON: {"is_question": boolean, "type": "agenda_today"|"agenda_tomorrow"|"agenda_week"|"tasks_open"|"inbox_pending"|"other"}
+Tipos:
+- agenda_today: o que tenho hoje, eventos de hoje, agenda do dia
+- agenda_tomorrow: o que tenho amanhã, agenda de amanhã
+- agenda_week: o que tenho essa semana, agenda da semana, próximos dias
+- tasks_open: tarefas pendentes/abertas, lista de tarefas, o que precisa ser feito
+- inbox_pending: o que está no inbox, mensagens para revisar, pendências
+Responda APENAS com o JSON, sem markdown.`;
+}
+
 type LLMClassification =
   | { kind: "classified"; type: QuestionType | null }
   | { kind: "error" };
 
-async function detectWithLLM(text: string, log: Logger): Promise<LLMClassification> {
+async function detectWithLLM(
+  text: string,
+  log: Logger,
+  priorTurns?: QATurnRecord[],
+): Promise<LLMClassification> {
   try {
+    const systemPrompt =
+      priorTurns && priorTurns.length > 0
+        ? buildContextAwareSystemPrompt(priorTurns)
+        : QA_SYSTEM_PROMPT;
+
     const resp = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       max_completion_tokens: 50,
       messages: [
-        { role: "system", content: QA_SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: text.substring(0, 200) },
       ],
     });
@@ -539,10 +611,21 @@ async function buildInboxReply(householdId: number): Promise<string> {
  * to normal message ingestion).
  *
  * Security: caller MUST verify `senderIsAdmin === true` before calling this.
+ *
+ * Multi-turn: prior Q&A turns for this sender+household are loaded from the
+ * session store and injected into the LLM context when the keyword fast-path
+ * returns null and the message looks like a follow-up.  On success, the turn
+ * is appended to the session store so subsequent follow-ups resolve correctly.
+ *
+ * @param text         Inbound message text
+ * @param householdId  Authenticated household (already resolved by caller)
+ * @param senderPhone  Raw phone string (e.g. "+5511999990000") used as session key
+ * @param log          Request-scoped logger
  */
 export async function handleQuestionIntent(
   text: string,
   householdId: number,
+  senderPhone: string,
   log: Logger,
 ): Promise<QAResult | undefined> {
   // 0. Mutation guard — intercept before keyword/LLM detection.
@@ -560,18 +643,30 @@ export async function handleQuestionIntent(
     };
   }
 
-  // 1. Keyword fast-path — no network call
+  // 1. Load prior session turns (scoped to sender + household)
+  const priorTurns = await loadQaSession(senderPhone, householdId);
+
+  // 2. Keyword fast-path — no network call
   let qType = detectQuestionKeyword(text);
 
-  // 2. LLM fallback — only when text carries a question signal but keyword missed
+  // 3. Context-aware LLM fallback
   if (!qType) {
+    const isFollowUp = priorTurns.length > 0 && looksLikeFollowUp(text);
     const mightBeQuestion =
+      isFollowUp ||
       /\?|^(o\s*(que|q)\b|qual\b|quai?s?\b|me\s*(diz|conta|mostra)\b|tenho\b|tem\b)/i.test(
         text.trim(),
       );
+
     if (!mightBeQuestion) return undefined;
 
-    const llmResult = await detectWithLLM(text, log);
+    // Pass prior turns to the LLM when we have context and the message is a
+    // follow-up, so it can resolve relative references like "e amanhã?".
+    const llmResult = await detectWithLLM(
+      text,
+      log,
+      isFollowUp ? priorTurns : undefined,
+    );
 
     if (llmResult.kind === "error") {
       // LLM was unavailable. The message looked like a question, so we owe the
@@ -585,8 +680,9 @@ export async function handleQuestionIntent(
 
   if (!qType) return undefined;
 
+  const isMultiTurn = priorTurns.length > 0;
   log.info(
-    { householdId, qType, preview: text.substring(0, 60) },
+    { householdId, qType, multiTurn: isMultiTurn, priorTurns: priorTurns.length, preview: text.substring(0, 60) },
     "wa-qa: question detected — resolving household data",
   );
 
@@ -609,6 +705,14 @@ export async function handleQuestionIntent(
         reply = await buildInboxReply(householdId);
         break;
     }
+
+    // 4. Persist the turn so the next follow-up can resolve relative references.
+    //    Fire-and-forget — a session write failure must never block the reply.
+    const turn: QATurnRecord = { q: text.substring(0, 200), type: qType };
+    appendQaTurn(senderPhone, householdId, turn).catch((err) => {
+      log.warn({ err, householdId }, "wa-qa: failed to persist session turn (non-fatal)");
+    });
+
     return { reply };
   } catch (err) {
     // qType was identified, so we owe the admin a response — send a graceful

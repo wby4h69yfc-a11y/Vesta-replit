@@ -5,6 +5,7 @@ import { logger } from "./lib/logger";
 import { detectPatternsForAllHouseholds } from "./lib/pattern-detector";
 import { runConsentRenewalJob } from "./lib/consent-renewal-scheduler";
 import { expireOldConversations } from "./lib/wa-prompt-store";
+import { pruneExpiredQaSessions } from "./lib/wa-qa-session-store";
 import {
   scheduleProactiveForAllHouseholds,
   scheduleProactiveMessages,
@@ -16,6 +17,7 @@ const TICK_INTERVAL_MS = 60_000;
 const PATTERN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const CONSENT_RENEWAL_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const WA_CONV_EXPIRY_INTERVAL_MS = 15 * 60 * 1000;
+const QA_SESSION_PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const PROACTIVE_SCHEDULE_INTERVAL_MS = 60 * 60 * 1000;
 const PROACTIVE_SEND_INTERVAL_MS = 5 * 60 * 1000;
 const PAYMENT_REMINDER_INTERVAL_MS = 60 * 60 * 1000; // every hour
@@ -27,6 +29,7 @@ let waConvExpiryIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let proactiveScheduleIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let proactiveSendIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let paymentReminderIntervalHandle: ReturnType<typeof setInterval> | null = null;
+let qaSessionPruneIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
 function localHourInTimezone(date: Date, timezone: string): number {
   try {
@@ -152,6 +155,17 @@ async function proactiveSendTick(): Promise<void> {
  * household admin. Runs only in the 8–9 am hour window to avoid sending more
  * than one reminder per day without requiring a dedicated reminded_at column.
  */
+async function qaSessionPruneTick(): Promise<void> {
+  try {
+    const deleted = await pruneExpiredQaSessions();
+    if (deleted > 0) {
+      logger.info({ deleted }, "Scheduler: pruned expired Q&A sessions");
+    }
+  } catch (err) {
+    logger.error({ err }, "Scheduler: Q&A session prune error");
+  }
+}
+
 async function paymentReminderTick(): Promise<void> {
   try {
     const now = new Date();
@@ -247,6 +261,12 @@ export function startScheduler(): void {
     void paymentReminderTick();
   }, PAYMENT_REMINDER_INTERVAL_MS);
   logger.info({ intervalMs: PAYMENT_REMINDER_INTERVAL_MS }, "Payment reminder tick started");
+
+  void qaSessionPruneTick();
+  qaSessionPruneIntervalHandle = setInterval(() => {
+    void qaSessionPruneTick();
+  }, QA_SESSION_PRUNE_INTERVAL_MS);
+  logger.info({ intervalMs: QA_SESSION_PRUNE_INTERVAL_MS }, "Q&A session prune tick started");
 }
 
 export function stopScheduler(): void {
@@ -284,5 +304,10 @@ export function stopScheduler(): void {
     clearInterval(paymentReminderIntervalHandle);
     paymentReminderIntervalHandle = null;
     logger.info("Payment reminder tick stopped");
+  }
+  if (qaSessionPruneIntervalHandle !== null) {
+    clearInterval(qaSessionPruneIntervalHandle);
+    qaSessionPruneIntervalHandle = null;
+    logger.info("Q&A session prune tick stopped");
   }
 }

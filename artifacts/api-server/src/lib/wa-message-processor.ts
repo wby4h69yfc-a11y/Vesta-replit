@@ -32,6 +32,7 @@ import { recordPrompt } from "./wa-prompt-store";
 import { detectPatternsForHousehold } from "./pattern-detector";
 import { isConsentActive } from "./whatsapp";
 import { handleQuestionIntent, isMutationCommand } from "./wa-qa-handler";
+import { clearQaSession } from "./wa-qa-session-store";
 import { handleMutationIntent, executeConfirmedMutation } from "./wa-mutation-handler";
 import type { MutationProposedPayload } from "./wa-mutation-handler";
 
@@ -444,6 +445,9 @@ export async function processInboundWAMessage(
         .limit(1);
 
       if (mutConv) {
+        // Clear the Q&A session — admin is now in a mutation flow
+        void clearQaSession(phoneRaw, householdId);
+
         if (upper === "NÃO" || upper === "NAO") {
           await db
             .update(waConversationsTable)
@@ -491,6 +495,8 @@ export async function processInboundWAMessage(
   if (bodyText && senderIsAdmin) {
     const approvalOutcome = await handleApprovalResponse(bodyText, householdId, phoneRaw, log);
     if (approvalOutcome) {
+      // Admin is engaging with an approval flow — clear any stale Q&A session
+      void clearQaSession(phoneRaw, householdId);
       return { ...approvalOutcome, phone: phoneRaw };
     }
   }
@@ -747,6 +753,8 @@ export async function processInboundWAMessage(
     const mutResult = await handleMutationIntent(bodyText, householdId, phoneRaw, log);
 
     if (mutResult?.kind === "proposed") {
+      // Admin entered a mutation flow — clear any open Q&A session
+      void clearQaSession(phoneRaw, householdId);
       return {
         kind: "mutation_proposed_via_wa",
         proposal: mutResult.proposal,
@@ -771,7 +779,7 @@ export async function processInboundWAMessage(
   // Non-question messages return undefined here and fall through normally.
   // The mutation guard inside handleQuestionIntent is now a fallback only.
   if (bodyText && senderIsAdmin) {
-    const qaResult = await handleQuestionIntent(bodyText, householdId, log);
+    const qaResult = await handleQuestionIntent(bodyText, householdId, phoneRaw, log);
     if (qaResult) {
       log.info(
         { householdId, phone: phoneRaw, preview: bodyText.substring(0, 60) },
