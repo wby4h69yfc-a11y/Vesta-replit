@@ -33,7 +33,7 @@ Production assumptions for this scan:
 ## Scan Anchors
 
 - **Production entry points:** `artifacts/api-server/src/index.ts`, `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/*.ts`, `artifacts/vesta/src/App.tsx`.
-- **Highest-risk code areas:** `artifacts/api-server/src/routes/` (especially `auth*.ts`, `household.ts`, `household-invite.ts`, `privacy.ts`, `webhook.ts`, `google.ts`), `artifacts/api-server/src/lib/wa-message-processor.ts`, `artifacts/api-server/src/lib/wa-approval-handler.ts`, `artifacts/api-server/src/lib/whatsapp.ts`, `artifacts/api-server/src/lib/classifier.ts`, `lib/db/src/schema/*`.
+- **Highest-risk code areas:** `artifacts/api-server/src/routes/` (especially `auth*.ts`, `household.ts`, `household-invite.ts`, `privacy.ts`, `webhook.ts`, `google.ts`, `onboarding.ts`, `contacts.ts`), `artifacts/api-server/src/lib/wa-message-processor.ts`, `artifacts/api-server/src/lib/wa-approval-handler.ts`, `artifacts/api-server/src/lib/whatsapp.ts`, `artifacts/api-server/src/lib/wa-token-store.ts`, `artifacts/api-server/src/lib/classifier.ts`, `lib/db/src/schema/*`.
 - **Public vs authenticated surfaces:** business routes are currently mounted behind a protected router that applies `requireAuth` and `requireHousehold`; the nominally public surfaces that still need careful review are auth routes, OTP routes, social-login callbacks, and the Twilio webhook, but the current `private` deployment means exploitation should be judged based on deployment-authorized access rather than anonymous public reachability.
 - **Dev-only surface usually ignored:** `artifacts/mockup-sandbox/**`.
 
@@ -48,6 +48,7 @@ Required guarantees:
 - OTP login MUST rate-limit issuance and verification attempts strongly enough to prevent account takeover.
 - Public webhook and callback endpoints MUST validate provider signatures or token proofs before trusting inbound data.
 - OAuth `state` and similar callback correlation values MUST NOT be live bearer credentials or account selectors, and callback results MUST be bound to the initiating authenticated user.
+- One-time verification tokens and similar possession proofs MUST NOT be written to application logs or other operator-visible telemetry in plaintext.
 
 ### Tampering
 
@@ -59,6 +60,7 @@ Required guarantees:
 - Business objects MUST be written with the correct household/user scope rather than relying on implicit defaults.
 - External inbound data MUST be authenticated before it can create inbox items, tasks, events, or suggested actions.
 - Webhook sender identity MUST be matched using exact normalized identifiers rather than lossy partial-phone comparisons that can collide across households.
+- Phone numbers used to route inbound WhatsApp traffic MUST only be treated as authoritative household identifiers when ownership has been verified or global conflicts are otherwise prevented.
 - WhatsApp approval or undo commands MUST be bound to both an authorized sender and a specific action, not just to the household as a whole.
 - External-provider identifiers used for sync or deduplication (for example Google event IDs) MUST be scoped to the owning household or account, not treated as globally tenant-agnostic keys.
 
