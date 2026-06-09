@@ -7,6 +7,7 @@ import {
   calendarEventsTable,
   paymentObligationsTable,
   auditLogTable,
+  contactsTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
@@ -73,6 +74,18 @@ router.post("/actions/cascades/:id/approve-all", async (req, res) => {
     const hid = getHouseholdId(req);
     const cascadeId = parseInt(req.params.id, 10);
     const providerContactId = (req.body as { provider_contact_id?: number | null })?.provider_contact_id ?? null;
+
+    // Validate provider_contact_id belongs to this household (prevents cross-household injection).
+    if (providerContactId !== null) {
+      const [contact] = await db
+        .select({ id: contactsTable.id })
+        .from(contactsTable)
+        .where(and(eq(contactsTable.id, providerContactId), eq(contactsTable.household_id, hid)));
+      if (!contact) {
+        res.status(400).json({ error: "Invalid provider_contact_id" });
+        return;
+      }
+    }
 
     const [cascade] = await db
       .select()

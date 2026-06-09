@@ -156,18 +156,20 @@ export default function CascadeCard({ cascade }: { cascade: ActionCascadeWithAct
     ([kw]) => cascadeText.includes(kw),
   )?.[1] ?? null;
 
-  // Only fetch when we have a concrete service_category match — never fall back to
-  // an unfiltered query that would surface unrelated preferred/backup providers.
+  // Two-tier query strategy:
+  // Tier 1: keyword matched a known service_category → query scoped to that category.
+  // Tier 2: no keyword match but cascade has servicos actions → safe fallback to all
+  //         preferred/backup providers for this household (reliability-gated, not category-free).
   const providerQueryParams = detectedCategory
     ? { service_category: detectedCategory, reliability_status: "preferred,backup" }
-    : null;
+    : { reliability_status: "preferred,backup" };
 
   const { data: preferredProviders } = useListContacts(
-    providerQueryParams ?? {},
+    providerQueryParams,
     {
       query: {
-        queryKey: getListContactsQueryKey(providerQueryParams ?? {}),
-        enabled: hasServicos && detectedCategory !== null,
+        queryKey: getListContactsQueryKey(providerQueryParams),
+        enabled: hasServicos,
         staleTime: 60_000,
       },
     },

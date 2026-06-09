@@ -61,7 +61,20 @@ router.post("/actions/:id/approve", async (req, res) => {
     if (action.type === "task" || action.type === "reminder" || action.type === "payment") {
       const pd = action.payment_data as { amount_cents?: number | null; payment_method?: string | null; due_date?: string | null } | null;
       const suggestedOwner = (req.body as { suggested_owner?: string | null; provider_contact_id?: number | null }).suggested_owner ?? null;
-      const providerContactId = (req.body as { provider_contact_id?: number | null }).provider_contact_id ?? null;
+      const rawProviderId = (req.body as { provider_contact_id?: number | null }).provider_contact_id ?? null;
+
+      // Validate provider_contact_id belongs to this household (prevents cross-household injection).
+      if (rawProviderId !== null) {
+        const [contact] = await db
+          .select({ id: contactsTable.id })
+          .from(contactsTable)
+          .where(and(eq(contactsTable.id, rawProviderId), eq(contactsTable.household_id, hid)));
+        if (!contact) {
+          res.status(400).json({ error: "Invalid provider_contact_id" });
+          return;
+        }
+      }
+      const providerContactId = rawProviderId;
       const ownerIdNum = suggestedOwner ? (parseInt(suggestedOwner, 10) || null) : null;
       const [insertedTask] = await db.insert(tasksTable).values({
         household_id:         hid,
