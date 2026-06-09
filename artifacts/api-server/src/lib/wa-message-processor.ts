@@ -29,6 +29,7 @@ import { looksLikeToken, markTokenVerified } from "./wa-token-store";
 import { handleApprovalResponse } from "./wa-approval-handler";
 import { recordPrompt } from "./wa-prompt-store";
 import { detectPatternsForHousehold } from "./pattern-detector";
+import { isConsentActive } from "./whatsapp";
 
 /** Payload shape normalised by the webhook handler before calling us. */
 export interface InboundWAMessage {
@@ -149,6 +150,7 @@ type MatchedContact = {
   phone: string | null;
   household_id: number;
   consent_status: string | null;
+  consent_check_in_due_at: Date | null;
   created_at: Date;
 };
 
@@ -195,6 +197,7 @@ async function resolveHousehold(
       phone: contactsTable.phone,
       household_id: contactsTable.household_id,
       consent_status: contactsTable.consent_status,
+      consent_check_in_due_at: contactsTable.consent_check_in_due_at,
       created_at: contactsTable.created_at,
     })
     .from(contactsTable);
@@ -672,9 +675,20 @@ export async function processInboundWAMessage(
   if (contactMatch) {
     senderName = contactMatch.name;
     senderIsContact = true;
-    consentGranted = contactMatch.consent_status === "granted";
+    consentGranted = isConsentActive(contactMatch);
+    if (!consentGranted) {
+      log.info(
+        {
+          contactId: contactMatch.id,
+          householdId,
+          consentStatus: contactMatch.consent_status,
+          consentCheckInDueAt: contactMatch.consent_check_in_due_at,
+        },
+        "Outbound WhatsApp reply suppressed — contact consent inactive or expired",
+      );
+    }
     log.info(
-      { contact: contactMatch.name, householdId, consent: contactMatch.consent_status },
+      { contact: contactMatch.name, householdId, consent: contactMatch.consent_status, consentActive: consentGranted },
       "Matched sender to contact",
     );
   } else {

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { suggestedActionsTable, inboxItemsTable, calendarEventsTable, tasksTable, auditLogTable, contactsTable, paymentObligationsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { sendWhatsApp, resolveHouseholdAdminPhone } from "../lib/whatsapp";
+import { sendWhatsApp, resolveHouseholdAdminPhone, isConsentActive } from "../lib/whatsapp";
 import { getHouseholdId } from "../lib/tenant";
 
 const router = Router();
@@ -186,9 +186,21 @@ router.post("/actions/:id/approve", async (req, res) => {
           );
 
         const contact = contacts[0];
-        if (contact?.phone && contact.consent_status === "granted") {
-          const summary = action.title.substring(0, 80);
-          void sendWhatsApp(contact.phone, `✓ Confirmado! ${summary}`);
+        if (contact?.phone) {
+          if (isConsentActive(contact)) {
+            const summary = action.title.substring(0, 80);
+            void sendWhatsApp(contact.phone, `✓ Confirmado! ${summary}`);
+          } else {
+            req.log.info(
+              {
+                contactId: contact.id,
+                householdId: hid,
+                consentStatus: contact.consent_status,
+                consentCheckInDueAt: contact.consent_check_in_due_at,
+              },
+              "Outbound WhatsApp suppressed — contact consent inactive or expired",
+            );
+          }
         }
       }
     }

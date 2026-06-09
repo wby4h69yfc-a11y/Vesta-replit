@@ -8,6 +8,28 @@ export type SendResult =
   | { ok: false; error: string };
 
 /**
+ * Returns true only when the contact has active, unexpired LGPD consent.
+ *
+ * A contact's consent is active when BOTH conditions hold:
+ *   1. consent_status === 'consented'  — explicit agreement was received, AND
+ *   2. consent_check_in_due_at is null (no expiry configured) OR the expiry
+ *      date is strictly in the future (the annual check-in has not yet lapsed).
+ *
+ * Important: contacts whose check-in date has already passed retain
+ * consent_status = 'consented' in the database until the daily renewal
+ * scheduler resets them to 'pending'.  Do NOT rely on consent_status alone —
+ * always call this function before sending any outbound message to a contact.
+ */
+export function isConsentActive(contact: {
+  consent_status: string | null;
+  consent_check_in_due_at: Date | null;
+}): boolean {
+  if (contact.consent_status !== "consented") return false;
+  if (contact.consent_check_in_due_at === null) return true;
+  return contact.consent_check_in_due_at > new Date();
+}
+
+/**
  * Returns true only when all three Twilio credentials are present.
  * sendWhatsApp() uses the same check — no silent fallbacks exist.
  */
