@@ -14,7 +14,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isMutationCommand } from "./wa-qa-handler.js";
+import { isMutationCommand, isTier0Command } from "./wa-qa-handler.js";
 import { replyGroupMutationBlocked } from "./wa-reply-composer.js";
 
 // ── isMutationCommand: imperative form ───────────────────────────────────────
@@ -123,6 +123,48 @@ test("does NOT block a rating keyword: 'Bom'", () => {
 
 test("does NOT block inbox query: 'minha agenda hoje'", () => {
   assert.equal(isMutationCommand("minha agenda hoje"), false);
+});
+
+// ── isTier0Command: recognises Tier-0 keywords ───────────────────────────────
+
+test("isTier0Command matches PAUSAR", () => {
+  assert.equal(isTier0Command("PAUSAR"), true);
+});
+
+test("isTier0Command matches PARAR", () => {
+  assert.equal(isTier0Command("PARAR"), true);
+});
+
+test("isTier0Command matches RETOMAR", () => {
+  assert.equal(isTier0Command("RETOMAR"), true);
+});
+
+test("isTier0Command is case-insensitive: 'pausar'", () => {
+  assert.equal(isTier0Command("pausar"), true);
+});
+
+test("isTier0Command is case-insensitive: 'Retomar'", () => {
+  assert.equal(isTier0Command("Retomar"), true);
+});
+
+test("isTier0Command trims surrounding whitespace", () => {
+  assert.equal(isTier0Command("  PARAR  "), true);
+});
+
+test("isTier0Command does NOT match a partial word: 'pausar agora'", () => {
+  assert.equal(isTier0Command("pausar agora"), false);
+});
+
+test("isTier0Command does NOT match a mutation command: 'cancela reunião'", () => {
+  assert.equal(isTier0Command("cancela reunião"), false);
+});
+
+test("isTier0Command does NOT match a regular message: 'o que tenho hoje'", () => {
+  assert.equal(isTier0Command("o que tenho hoje"), false);
+});
+
+test("isTier0Command does NOT match empty string", () => {
+  assert.equal(isTier0Command(""), false);
 });
 
 // ── replyGroupMutationBlocked: composer output ───────────────────────────────

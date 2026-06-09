@@ -192,33 +192,19 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     if (isPausar || isParar || isRetomar) {
       const senderPhone = (From ?? "").replace(/^whatsapp:/i, "");
 
-      // ── Group admin gate for Tier-0 commands ─────────────────────────────
-      // PAUSAR/PARAR/RETOMAR are processed before processInboundWAMessage, so
-      // they would bypass the group_non_admin gate in the processor. Apply the
-      // same check here: for group /vesta commands only household admins may
-      // invoke Tier-0 controls.
+      // ── DM-only gate for Tier-0 commands ─────────────────────────────────
+      // PAUSAR/PARAR/RETOMAR mutate household digest state, so they follow the
+      // same principle as mutation commands: group chats are blocked entirely
+      // and the sender is redirected to a private DM.  This is also simpler
+      // than the earlier per-role admin gate and consistent with the processor-
+      // level group mutation gate in processInboundWAMessage.
       if (groupSourced) {
-        const senderDigits = senderPhone.replace(/\D/g, "");
-        // Fetch all members and check role via JS-side normalised comparison
-        // (mirrors the processor's normalisePhone approach).
-        const allMembers = await db
-          .select({ phone: membersTable.phone, role: membersTable.role })
-          .from(membersTable);
-        const isAdmin = allMembers.some(
-          (m) => m.role === "admin" && (m.phone ?? "").replace(/\D/g, "") === senderDigits,
+        void sendWhatsApp(groupId!, replyGroupMutationBlocked());
+        req.log.info(
+          { senderPhone, group_id: groupId, command: normalizedBody, source: "group" },
+          "Group Tier-0 command rejected — DM-only",
         );
-        const isMember = allMembers.some(
-          (m) => (m.phone ?? "").replace(/\D/g, "") === senderDigits,
-        );
-        if (isMember && !isAdmin) {
-          void sendWhatsApp(groupId!, replyGroupNonAdmin());
-          req.log.info(
-            { senderPhone, group_id: groupId, command: normalizedBody, source: "group" },
-            "Group Tier-0 command rejected — non-admin member",
-          );
-          return;
-        }
-        // Unknown senders (isMember === false) → silent ignore, same as DM path.
+        return;
       }
 
       // Resolve household from verified phone

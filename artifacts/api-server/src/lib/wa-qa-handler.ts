@@ -234,6 +234,18 @@ export function isMutationCommand(text: string): boolean {
   return MUTATION_IMPERATIVE_RE.test(t) || MUTATION_MODAL_RE.test(t);
 }
 
+/** The exact normalised keywords that constitute a Tier-0 proactive command. */
+const TIER0_KEYWORDS = new Set(["PAUSAR", "PARAR", "RETOMAR"]);
+
+/**
+ * Returns true when the message is a Tier-0 proactive control keyword
+ * (PAUSAR / PARAR / RETOMAR).  These commands mutate household digest state
+ * and must be sent from a private DM, not a group chat.
+ */
+export function isTier0Command(text: string): boolean {
+  return TIER0_KEYWORDS.has(text.trim().toUpperCase());
+}
+
 // ── LLM-based fallback detection ─────────────────────────────────────────────
 
 const QA_SYSTEM_PROMPT = `O usuário enviou uma mensagem pelo WhatsApp para um assistente doméstico chamado Vesta.
