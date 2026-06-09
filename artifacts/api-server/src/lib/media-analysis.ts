@@ -4,80 +4,7 @@ import {
   ensureCompatibleFormat,
 } from "@workspace/integrations-openai-ai-server/audio";
 import { logger } from "./logger";
-
-/**
- * Maximum size allowed for a single Twilio media download.
- * WhatsApp caps voice notes at ~16 MB and images at ~5 MB in practice, so
- * 20 MB gives a safe margin while blocking maliciously large payloads that
- * would exhaust server memory or trigger excessive AI spend.
- */
-const MAX_MEDIA_BYTES = 20 * 1024 * 1024; // 20 MB
-
-/**
- * Hard timeout for a single Twilio media fetch.
- * Prevents a stalled/slow download from tying up the event loop indefinitely.
- */
-const DOWNLOAD_TIMEOUT_MS = 30_000; // 30 seconds
-
-/**
- * Download a Twilio-hosted media file using Basic auth
- * (Twilio requires AccountSID:AuthToken credentials to fetch its media URLs).
- *
- * Enforces a 20 MB size cap (checked via Content-Length before reading and
- * re-verified after) and a 30-second fetch timeout to prevent resource
- * exhaustion from oversized or stalled downloads.
- */
-async function downloadTwilioMedia(
-  url: string,
-): Promise<{ buffer: Buffer; contentType: string }> {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-
-  const headers: Record<string, string> = {};
-  if (accountSid && authToken) {
-    const creds = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
-    headers["Authorization"] = `Basic ${creds}`;
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(url, { headers, signal: controller.signal });
-    if (!res.ok) {
-      throw new Error(
-        `Failed to download Twilio media: ${res.status} ${res.statusText}`,
-      );
-    }
-
-    // Reject before reading the body when Content-Length is present and over limit.
-    // This avoids allocating memory for payloads we will discard anyway.
-    const contentLengthHeader = res.headers.get("content-length");
-    if (contentLengthHeader !== null) {
-      const declared = parseInt(contentLengthHeader, 10);
-      if (!isNaN(declared) && declared > MAX_MEDIA_BYTES) {
-        throw new Error(
-          `Twilio media rejected: Content-Length ${declared} bytes exceeds limit of ${MAX_MEDIA_BYTES} bytes`,
-        );
-      }
-    }
-
-    const contentType =
-      res.headers.get("content-type") ?? "application/octet-stream";
-    const arrayBuffer = await res.arrayBuffer();
-
-    // Re-check actual size in case Content-Length was absent or lying.
-    if (arrayBuffer.byteLength > MAX_MEDIA_BYTES) {
-      throw new Error(
-        `Twilio media rejected: actual size ${arrayBuffer.byteLength} bytes exceeds limit of ${MAX_MEDIA_BYTES} bytes`,
-      );
-    }
-
-    return { buffer: Buffer.from(arrayBuffer), contentType };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
+import { getBspAdapter } from "./wa-bsp";
 
 /**
  * Detect the broad media category from a MIME type.
@@ -164,10 +91,10 @@ export type MediaProcessingResult = {
 /**
  * Process an incoming WhatsApp media attachment.
  *
- * - Audio (voice memos): downloaded from Twilio and transcribed with Whisper.
- *   rawContent becomes the transcript; source is set to "voice".
- * - Images: downloaded and described by GPT vision.
- *   rawContent becomes the description; source is "photo".
+ * Downloads the media via the active BSP adapter (Twilio URL with Basic Auth,
+ * or 360Dialog media ID via their /v1/media/{id} endpoint), then:
+ * - Audio (voice memos): transcribed with Whisper. rawContent = transcript; source = "voice".
+ * - Images: described by GPT vision. rawContent = description; source = "photo".
  * - Video / other: stored with a placeholder so the item is still reviewable.
  *
  * If processing fails for any reason the function returns a safe placeholder
@@ -179,10 +106,11 @@ export async function processWhatsAppMedia(
   textBody: string | undefined,
 ): Promise<MediaProcessingResult> {
   const category = mediaCategoryFromMime(contentTypeHeader);
+  const adapter = getBspAdapter();
 
   if (category === "audio") {
     try {
-      const { buffer } = await downloadTwilioMedia(mediaUrl);
+      const { buffer } = await adapter.downloadMedia(mediaUrl, contentTypeHeader);
       const transcript = await transcribeAudio(buffer);
       if (transcript) {
         logger.info({ chars: transcript.length }, "Voice memo transcribed successfully");
@@ -200,7 +128,7 @@ export async function processWhatsAppMedia(
 
   if (category === "image") {
     try {
-      const { buffer, contentType } = await downloadTwilioMedia(mediaUrl);
+      const { buffer, contentType } = await adapter.downloadMedia(mediaUrl, contentTypeHeader);
       const description = await analyzeImage(buffer, contentType);
       if (description) {
         const prefix = textBody?.trim() ? `${textBody.trim()}\n\n` : "";

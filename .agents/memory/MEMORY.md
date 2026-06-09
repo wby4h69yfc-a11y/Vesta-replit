@@ -3,3 +3,4 @@
 - [React Query staleTime 30s](react-query-staletime.md) — QueryClient default staleTime=30s; seed test data BEFORE browser first load or it caches empty results.
 - [Playwright E2E runner](playwright-e2e-runner.md) — `runTest` is blocked; run via `cd scripts && pnpm exec playwright test --config playwright.config.ts`.
 - [wa_conversations proposed_payload for non-approval contexts](wa-conversations-rating-context.md) — Use `as any` cast when inserting rating_request context; the .$type<> is typed for approval payloads only.
+- [WA BSP adapter abstraction](wa-bsp-abstraction.md) — Factory in wa-bsp.ts uses lazy require() to break circular dep; two separate webhook routes; 360Dialog uses raw body + HMAC-SHA256.

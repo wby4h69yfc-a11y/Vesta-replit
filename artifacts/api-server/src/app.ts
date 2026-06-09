@@ -124,6 +124,7 @@ const PUBLIC_API_EXACT: ReadonlySet<string> = new Set([
   "/auth/apple/callback",
   "/auth/social/available",
   "/webhook/whatsapp",
+  "/webhook/whatsapp/360dialog",
   "/webhook/whatsapp/info",
   "/mobile-auth/token-exchange",
   "/mobile-auth/logout",

@@ -10,6 +10,9 @@ A full-stack family logistics assistant that organises household tasks, school m
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string, `SESSION_SECRET` — cookie signing
+- WhatsApp BSP env: `WA_BSP` (`"twilio"` default or `"360dialog"`), then per-BSP:
+  - Twilio: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`
+  - 360Dialog: `DIALOG360_API_KEY`, `DIALOG360_WHATSAPP_NUMBER`, `DIALOG360_HUB_SECRET` (HMAC secret, production only)
 
 ## Stack
 

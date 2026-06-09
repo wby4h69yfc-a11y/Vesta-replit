@@ -2,10 +2,9 @@ import { logger } from "./logger";
 import { db } from "@workspace/db";
 import { onboardingStateTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { getBspAdapter, type SendResult } from "./wa-bsp";
 
-export type SendResult =
-  | { ok: true; sid: string }
-  | { ok: false; error: string };
+export type { SendResult } from "./wa-bsp";
 
 /**
  * Dev/test telemetry: every sendWhatsApp call is recorded here when
@@ -13,6 +12,7 @@ export type SendResult =
  * which is exposed through the GET /api/dev/wa-sends endpoint.
  *
  * Never populated in production — the guard is inlined at the call site.
+ * Works regardless of which BSP adapter is active.
  */
 const _waSendLog: Array<{ to: string; body: string; at: string }> = [];
 
@@ -48,7 +48,8 @@ export function isConsentActive(contact: {
 
 /**
  * Returns true only when all three Twilio credentials are present.
- * sendWhatsApp() uses the same check — no silent fallbacks exist.
+ * Kept for backward compatibility with the /webhook/whatsapp/info endpoint.
+ * For BSP-agnostic configuration checks, use getBspAdapter().isConfigured().
  */
 export function isTwilioConfigured(): boolean {
   return !!(
@@ -100,41 +101,26 @@ export async function resolveHouseholdAdminPhone(
 }
 
 /**
- * Sends a WhatsApp message via Twilio.
+ * Sends a WhatsApp message via the active BSP adapter (Twilio or 360Dialog).
  * Returns a result object — never throws.
- * All three Twilio env vars must be set; there are no silent fallbacks.
+ *
+ * The active BSP is determined by the WA_BSP env var (default: "twilio").
+ * Dev/test telemetry is recorded in _waSendLog regardless of which BSP is
+ * active so existing E2E tests continue to work with either adapter.
  */
 export async function sendWhatsApp(to: string, message: string): Promise<SendResult> {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const from = process.env.TWILIO_WHATSAPP_FROM;
+  const adapter = getBspAdapter();
 
+  // Normalise address for telemetry: add whatsapp: prefix if absent.
+  // For 360Dialog the adapter strips it again before sending, but the log
+  // captures the address in the same canonical form as the Twilio path.
   const toAddr = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
 
   // Dev/test telemetry: record every attempted send so E2E tests can verify
-  // the destination and body without needing Twilio credentials.
+  // the destination and body without needing live BSP credentials.
   if (process.env.NODE_ENV !== "production") {
     _waSendLog.push({ to: toAddr, body: message, at: new Date().toISOString() });
   }
 
-  if (!accountSid || !authToken || !from) {
-    logger.warn({ to }, "sendWhatsApp: Twilio not configured — skipping");
-    return { ok: false, error: "Twilio not configured" };
-  }
-  const fromAddr = from.startsWith("whatsapp:") ? from : `whatsapp:${from}`;
-
-  try {
-    const twilio = await import("twilio");
-    const client = twilio.default(accountSid, authToken);
-    const msg = await client.messages.create({
-      from: fromAddr,
-      to: toAddr,
-      body: message,
-    });
-    logger.info({ to, sid: msg.sid }, "WhatsApp sent");
-    return { ok: true, sid: msg.sid };
-  } catch (err) {
-    logger.error({ err, to }, "WhatsApp send failed");
-    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
-  }
+  return adapter.send(to, message);
 }
