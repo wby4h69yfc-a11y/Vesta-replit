@@ -1046,6 +1046,10 @@ export const ListContactsQueryParams = zod.object({
   category: zod.coerce.string().optional(),
 });
 
+export const listContactsResponseReliabilityStatusDefault = `untested`;
+export const listContactsResponseNoShowCountDefault = 0;
+export const listContactsResponseHouseholdRatingMax = 5;
+
 export const ListContactsResponseItem = zod.object({
   id: zod.number(),
   name: zod.string(),
@@ -1071,6 +1075,41 @@ export const ListContactsResponseItem = zod.object({
   consent_withdrawn_at: zod.coerce.date().nullish(),
   consent_check_in_due_at: zod.coerce.date().nullish(),
   last_consent_requested_at: zod.coerce.date().nullish(),
+  service_category: zod
+    .enum([
+      "diarista",
+      "eletricista",
+      "encanador",
+      "pintor",
+      "jardineiro",
+      "ar_condicionado",
+      "dedetizadora",
+      "piscineiro",
+      "marido_de_aluguel",
+      "mudanca",
+      "tecnico_eletrodomestico",
+      "outro",
+    ])
+    .nullish()
+    .describe("Sub-category for service providers (null for non-providers)"),
+  reliability_status: zod
+    .enum(["preferred", "backup", "avoid", "untested"])
+    .default(listContactsResponseReliabilityStatusDefault)
+    .describe("Provider reliability badge"),
+  last_used_at: zod.coerce.date().nullish(),
+  last_price_range: zod
+    .string()
+    .nullish()
+    .describe('Free-text price anchor, e.g. \"R$80–120\"'),
+  no_show_count: zod.number().default(listContactsResponseNoShowCountDefault),
+  payment_notes: zod.string().nullish(),
+  household_rating: zod
+    .number()
+    .min(1)
+    .max(listContactsResponseHouseholdRatingMax)
+    .nullish(),
+  reliability_notes: zod.string().nullish(),
+  last_rating: zod.enum(["bom", "ok", "ruim", "no_show"]).nullish(),
   created_at: zod.coerce.date().optional(),
 });
 export const ListContactsResponse = zod.array(ListContactsResponseItem);
@@ -1113,7 +1152,33 @@ export const UpdateContactBody = zod.object({
   consent_status: zod
     .enum(["not_required", "pending", "consented", "revoked"])
     .optional(),
+  service_category: zod
+    .enum([
+      "diarista",
+      "eletricista",
+      "encanador",
+      "pintor",
+      "jardineiro",
+      "ar_condicionado",
+      "dedetizadora",
+      "piscineiro",
+      "marido_de_aluguel",
+      "mudanca",
+      "tecnico_eletrodomestico",
+      "outro",
+    ])
+    .nullish(),
+  reliability_status: zod
+    .enum(["preferred", "backup", "avoid", "untested"])
+    .optional(),
+  last_price_range: zod.string().nullish(),
+  payment_notes: zod.string().nullish(),
+  reliability_notes: zod.string().nullish(),
 });
+
+export const updateContactResponseReliabilityStatusDefault = `untested`;
+export const updateContactResponseNoShowCountDefault = 0;
+export const updateContactResponseHouseholdRatingMax = 5;
 
 export const UpdateContactResponse = zod.object({
   id: zod.number(),
@@ -1140,6 +1205,41 @@ export const UpdateContactResponse = zod.object({
   consent_withdrawn_at: zod.coerce.date().nullish(),
   consent_check_in_due_at: zod.coerce.date().nullish(),
   last_consent_requested_at: zod.coerce.date().nullish(),
+  service_category: zod
+    .enum([
+      "diarista",
+      "eletricista",
+      "encanador",
+      "pintor",
+      "jardineiro",
+      "ar_condicionado",
+      "dedetizadora",
+      "piscineiro",
+      "marido_de_aluguel",
+      "mudanca",
+      "tecnico_eletrodomestico",
+      "outro",
+    ])
+    .nullish()
+    .describe("Sub-category for service providers (null for non-providers)"),
+  reliability_status: zod
+    .enum(["preferred", "backup", "avoid", "untested"])
+    .default(updateContactResponseReliabilityStatusDefault)
+    .describe("Provider reliability badge"),
+  last_used_at: zod.coerce.date().nullish(),
+  last_price_range: zod
+    .string()
+    .nullish()
+    .describe('Free-text price anchor, e.g. \"R$80–120\"'),
+  no_show_count: zod.number().default(updateContactResponseNoShowCountDefault),
+  payment_notes: zod.string().nullish(),
+  household_rating: zod
+    .number()
+    .min(1)
+    .max(updateContactResponseHouseholdRatingMax)
+    .nullish(),
+  reliability_notes: zod.string().nullish(),
+  last_rating: zod.enum(["bom", "ok", "ruim", "no_show"]).nullish(),
   created_at: zod.coerce.date().optional(),
 });
 
@@ -1153,6 +1253,10 @@ export const DeleteContactParams = zod.object({
 /**
  * @summary List contacts whose consent check-in is overdue or due within the next 14 days
  */
+export const getContactsConsentDueResponseReliabilityStatusDefault = `untested`;
+export const getContactsConsentDueResponseNoShowCountDefault = 0;
+export const getContactsConsentDueResponseHouseholdRatingMax = 5;
+
 export const GetContactsConsentDueResponseItem = zod.object({
   id: zod.number(),
   name: zod.string(),
@@ -1178,6 +1282,43 @@ export const GetContactsConsentDueResponseItem = zod.object({
   consent_withdrawn_at: zod.coerce.date().nullish(),
   consent_check_in_due_at: zod.coerce.date().nullish(),
   last_consent_requested_at: zod.coerce.date().nullish(),
+  service_category: zod
+    .enum([
+      "diarista",
+      "eletricista",
+      "encanador",
+      "pintor",
+      "jardineiro",
+      "ar_condicionado",
+      "dedetizadora",
+      "piscineiro",
+      "marido_de_aluguel",
+      "mudanca",
+      "tecnico_eletrodomestico",
+      "outro",
+    ])
+    .nullish()
+    .describe("Sub-category for service providers (null for non-providers)"),
+  reliability_status: zod
+    .enum(["preferred", "backup", "avoid", "untested"])
+    .default(getContactsConsentDueResponseReliabilityStatusDefault)
+    .describe("Provider reliability badge"),
+  last_used_at: zod.coerce.date().nullish(),
+  last_price_range: zod
+    .string()
+    .nullish()
+    .describe('Free-text price anchor, e.g. \"R$80–120\"'),
+  no_show_count: zod
+    .number()
+    .default(getContactsConsentDueResponseNoShowCountDefault),
+  payment_notes: zod.string().nullish(),
+  household_rating: zod
+    .number()
+    .min(1)
+    .max(getContactsConsentDueResponseHouseholdRatingMax)
+    .nullish(),
+  reliability_notes: zod.string().nullish(),
+  last_rating: zod.enum(["bom", "ok", "ruim", "no_show"]).nullish(),
   created_at: zod.coerce.date().optional(),
 });
 export const GetContactsConsentDueResponse = zod.array(
@@ -1185,11 +1326,113 @@ export const GetContactsConsentDueResponse = zod.array(
 );
 
 /**
+ * @summary Rate a service provider after an interaction
+ */
+export const RateContactParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RateContactBody = zod.object({
+  rating: zod.enum(["bom", "ok", "ruim", "no_show"]),
+});
+
+export const rateContactResponseContactReliabilityStatusDefault = `untested`;
+export const rateContactResponseContactNoShowCountDefault = 0;
+export const rateContactResponseContactHouseholdRatingMax = 5;
+
+export const RateContactResponse = zod.object({
+  contact: zod.object({
+    id: zod.number(),
+    name: zod.string(),
+    phone: zod.string().nullish(),
+    category: zod.enum([
+      "escola",
+      "saude",
+      "casa",
+      "diarista",
+      "portaria",
+      "sindico",
+      "social",
+      "servicos",
+      "familia",
+      "outros",
+    ]),
+    aliases: zod.array(zod.string()).optional(),
+    notes: zod.string().nullish(),
+    consent_status: zod
+      .enum(["not_required", "pending", "consented", "revoked"])
+      .nullish(),
+    consent_granted_at: zod.coerce.date().nullish(),
+    consent_withdrawn_at: zod.coerce.date().nullish(),
+    consent_check_in_due_at: zod.coerce.date().nullish(),
+    last_consent_requested_at: zod.coerce.date().nullish(),
+    service_category: zod
+      .enum([
+        "diarista",
+        "eletricista",
+        "encanador",
+        "pintor",
+        "jardineiro",
+        "ar_condicionado",
+        "dedetizadora",
+        "piscineiro",
+        "marido_de_aluguel",
+        "mudanca",
+        "tecnico_eletrodomestico",
+        "outro",
+      ])
+      .nullish()
+      .describe("Sub-category for service providers (null for non-providers)"),
+    reliability_status: zod
+      .enum(["preferred", "backup", "avoid", "untested"])
+      .default(rateContactResponseContactReliabilityStatusDefault)
+      .describe("Provider reliability badge"),
+    last_used_at: zod.coerce.date().nullish(),
+    last_price_range: zod
+      .string()
+      .nullish()
+      .describe('Free-text price anchor, e.g. \"R$80–120\"'),
+    no_show_count: zod
+      .number()
+      .default(rateContactResponseContactNoShowCountDefault),
+    payment_notes: zod.string().nullish(),
+    household_rating: zod
+      .number()
+      .min(1)
+      .max(rateContactResponseContactHouseholdRatingMax)
+      .nullish(),
+    reliability_notes: zod.string().nullish(),
+    last_rating: zod.enum(["bom", "ok", "ruim", "no_show"]).nullish(),
+    created_at: zod.coerce.date().optional(),
+  }),
+  suggest_upgrade: zod
+    .boolean()
+    .describe(
+      'True when two consecutive \"bom\" ratings suggest upgrading to preferred',
+    ),
+});
+
+/**
+ * @summary Send a WhatsApp rating prompt to the household admin for this provider
+ */
+export const RequestContactRatingParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RequestContactRatingResponse = zod.object({
+  whatsapp_sent: zod.boolean(),
+});
+
+/**
  * @summary Send a WhatsApp consent request to a contact (LGPD)
  */
 export const RequestContactConsentParams = zod.object({
   id: zod.coerce.number(),
 });
+
+export const requestContactConsentResponseContactReliabilityStatusDefault = `untested`;
+export const requestContactConsentResponseContactNoShowCountDefault = 0;
+export const requestContactConsentResponseContactHouseholdRatingMax = 5;
 
 export const RequestContactConsentResponse = zod.object({
   contact: zod.object({
@@ -1217,6 +1460,43 @@ export const RequestContactConsentResponse = zod.object({
     consent_withdrawn_at: zod.coerce.date().nullish(),
     consent_check_in_due_at: zod.coerce.date().nullish(),
     last_consent_requested_at: zod.coerce.date().nullish(),
+    service_category: zod
+      .enum([
+        "diarista",
+        "eletricista",
+        "encanador",
+        "pintor",
+        "jardineiro",
+        "ar_condicionado",
+        "dedetizadora",
+        "piscineiro",
+        "marido_de_aluguel",
+        "mudanca",
+        "tecnico_eletrodomestico",
+        "outro",
+      ])
+      .nullish()
+      .describe("Sub-category for service providers (null for non-providers)"),
+    reliability_status: zod
+      .enum(["preferred", "backup", "avoid", "untested"])
+      .default(requestContactConsentResponseContactReliabilityStatusDefault)
+      .describe("Provider reliability badge"),
+    last_used_at: zod.coerce.date().nullish(),
+    last_price_range: zod
+      .string()
+      .nullish()
+      .describe('Free-text price anchor, e.g. \"R$80–120\"'),
+    no_show_count: zod
+      .number()
+      .default(requestContactConsentResponseContactNoShowCountDefault),
+    payment_notes: zod.string().nullish(),
+    household_rating: zod
+      .number()
+      .min(1)
+      .max(requestContactConsentResponseContactHouseholdRatingMax)
+      .nullish(),
+    reliability_notes: zod.string().nullish(),
+    last_rating: zod.enum(["bom", "ok", "ruim", "no_show"]).nullish(),
     created_at: zod.coerce.date().optional(),
   }),
   whatsapp_sent: zod.boolean(),
@@ -1252,6 +1532,10 @@ export const exportPrivacyDataResponseHouseholdOneQuietHourStartMax = 23;
 
 export const exportPrivacyDataResponseHouseholdOneQuietHourEndMin = 0;
 export const exportPrivacyDataResponseHouseholdOneQuietHourEndMax = 23;
+
+export const exportPrivacyDataResponseContactsItemReliabilityStatusDefault = `untested`;
+export const exportPrivacyDataResponseContactsItemNoShowCountDefault = 0;
+export const exportPrivacyDataResponseContactsItemHouseholdRatingMax = 5;
 
 export const ExportPrivacyDataResponse = zod.object({
   exported_at: zod.coerce.date(),
@@ -1370,6 +1654,47 @@ export const ExportPrivacyDataResponse = zod.object({
         consent_withdrawn_at: zod.coerce.date().nullish(),
         consent_check_in_due_at: zod.coerce.date().nullish(),
         last_consent_requested_at: zod.coerce.date().nullish(),
+        service_category: zod
+          .enum([
+            "diarista",
+            "eletricista",
+            "encanador",
+            "pintor",
+            "jardineiro",
+            "ar_condicionado",
+            "dedetizadora",
+            "piscineiro",
+            "marido_de_aluguel",
+            "mudanca",
+            "tecnico_eletrodomestico",
+            "outro",
+          ])
+          .nullish()
+          .describe(
+            "Sub-category for service providers (null for non-providers)",
+          ),
+        reliability_status: zod
+          .enum(["preferred", "backup", "avoid", "untested"])
+          .default(
+            exportPrivacyDataResponseContactsItemReliabilityStatusDefault,
+          )
+          .describe("Provider reliability badge"),
+        last_used_at: zod.coerce.date().nullish(),
+        last_price_range: zod
+          .string()
+          .nullish()
+          .describe('Free-text price anchor, e.g. \"R$80–120\"'),
+        no_show_count: zod
+          .number()
+          .default(exportPrivacyDataResponseContactsItemNoShowCountDefault),
+        payment_notes: zod.string().nullish(),
+        household_rating: zod
+          .number()
+          .min(1)
+          .max(exportPrivacyDataResponseContactsItemHouseholdRatingMax)
+          .nullish(),
+        reliability_notes: zod.string().nullish(),
+        last_rating: zod.enum(["bom", "ok", "ruim", "no_show"]).nullish(),
         created_at: zod.coerce.date().optional(),
       }),
     )

@@ -264,3 +264,78 @@ export function replyUndone(title: string): string {
   const short = title.length > 60 ? title.substring(0, 57) + "…" : title;
   return `↩️ Desfeito!\n\n*${short}* foi removido.`;
 }
+
+// ── Provider rating messages ───────────────────────────────────────────────────
+
+/**
+ * Sent to the household admin after a service interaction.
+ * Asks them to rate the provider. The reply is caught by the WA processor.
+ */
+export function replyRatingRequest(providerName: string): string {
+  return (
+    `⭐ Como foi com *${providerName}*?\n\n` +
+    `Responda:\n*Bom* · *Ok* · *Ruim* · *Não apareceu*`
+  );
+}
+
+/**
+ * Sent after admin rates a provider "bom".
+ */
+export function replyRatingBom(providerName: string): string {
+  return `✅ Anotado! *${providerName}* recebeu uma avaliação positiva.`;
+}
+
+/**
+ * Sent after admin rates "ok" (neutral).
+ */
+export function replyRatingOk(providerName: string): string {
+  return `👍 Anotado! Avaliação de *${providerName}* registrada.`;
+}
+
+/**
+ * Sent after admin rates "ruim" — confirms the status change to "avoid".
+ */
+export function replyRatingRuim(providerName: string): string {
+  return (
+    `⚠️ Entendido. *${providerName}* foi marcado como *Evitar*.\n\n` +
+    `Você pode alterar isso nas configurações de contato.`
+  );
+}
+
+/**
+ * Sent after admin reports a no-show.
+ */
+export function replyRatingNoShow(providerName: string, noShowCount: number): string {
+  const extra =
+    noShowCount >= 2
+      ? `\n\n⚠️ Já foram ${noShowCount} faltas. Marcado como *Evitar*.`
+      : "";
+  return `🚫 Falta registrada para *${providerName}*.${extra}`;
+}
+
+/**
+ * Sent to the admin when two consecutive "Bom" ratings suggest upgrading
+ * the provider to Preferred.
+ */
+export function replyRatingSuggestPreferred(providerName: string): string {
+  return (
+    `🌟 *${providerName}* recebeu duas avaliações positivas seguidas!\n\n` +
+    `Promover para *Preferido*? Responda *Sim* para confirmar.`
+  );
+}
+
+/**
+ * Sent when a preferred provider is relevant to a new task or cascade.
+ */
+export function replyPreferredProviderSuggestion(
+  providerName: string,
+  rating: number | null,
+  lastPriceRange: string | null,
+): string {
+  const stars = rating ? "⭐".repeat(Math.min(5, Math.max(1, rating))) : "";
+  const price = lastPriceRange ? ` · ${lastPriceRange}` : "";
+  return (
+    `💡 Você usou *${providerName}* da última vez${stars ? ` (${stars}${price})` : ""}.\n` +
+    `Deseja chamar novamente?`
+  );
+}

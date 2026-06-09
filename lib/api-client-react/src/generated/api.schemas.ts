@@ -377,6 +377,56 @@ export const ContactConsentStatus = {
   revoked: "revoked",
 } as const;
 
+/**
+ * Sub-category for service providers (null for non-providers)
+ * @nullable
+ */
+export type ContactServiceCategory =
+  | (typeof ContactServiceCategory)[keyof typeof ContactServiceCategory]
+  | null;
+
+export const ContactServiceCategory = {
+  diarista: "diarista",
+  eletricista: "eletricista",
+  encanador: "encanador",
+  pintor: "pintor",
+  jardineiro: "jardineiro",
+  ar_condicionado: "ar_condicionado",
+  dedetizadora: "dedetizadora",
+  piscineiro: "piscineiro",
+  marido_de_aluguel: "marido_de_aluguel",
+  mudanca: "mudanca",
+  tecnico_eletrodomestico: "tecnico_eletrodomestico",
+  outro: "outro",
+} as const;
+
+/**
+ * Provider reliability badge
+ */
+export type ContactReliabilityStatus =
+  (typeof ContactReliabilityStatus)[keyof typeof ContactReliabilityStatus];
+
+export const ContactReliabilityStatus = {
+  preferred: "preferred",
+  backup: "backup",
+  avoid: "avoid",
+  untested: "untested",
+} as const;
+
+/**
+ * @nullable
+ */
+export type ContactLastRating =
+  | (typeof ContactLastRating)[keyof typeof ContactLastRating]
+  | null;
+
+export const ContactLastRating = {
+  bom: "bom",
+  ok: "ok",
+  ruim: "ruim",
+  no_show: "no_show",
+} as const;
+
 export interface Contact {
   id: number;
   name: string;
@@ -396,7 +446,54 @@ export interface Contact {
   consent_check_in_due_at?: string | null;
   /** @nullable */
   last_consent_requested_at?: string | null;
+  /**
+   * Sub-category for service providers (null for non-providers)
+   * @nullable
+   */
+  service_category?: ContactServiceCategory;
+  /** Provider reliability badge */
+  reliability_status?: ContactReliabilityStatus;
+  /** @nullable */
+  last_used_at?: string | null;
+  /**
+   * Free-text price anchor, e.g. "R$80–120"
+   * @nullable
+   */
+  last_price_range?: string | null;
+  no_show_count?: number;
+  /** @nullable */
+  payment_notes?: string | null;
+  /**
+   * @minimum 1
+   * @maximum 5
+   * @nullable
+   */
+  household_rating?: number | null;
+  /** @nullable */
+  reliability_notes?: string | null;
+  /** @nullable */
+  last_rating?: ContactLastRating;
   created_at?: string;
+}
+
+export type ContactRateInputRating =
+  (typeof ContactRateInputRating)[keyof typeof ContactRateInputRating];
+
+export const ContactRateInputRating = {
+  bom: "bom",
+  ok: "ok",
+  ruim: "ruim",
+  no_show: "no_show",
+} as const;
+
+export interface ContactRateInput {
+  rating: ContactRateInputRating;
+}
+
+export interface ContactRateResult {
+  contact: Contact;
+  /** True when two consecutive "bom" ratings suggest upgrading to preferred */
+  suggest_upgrade: boolean;
 }
 
 export interface ConsentRequestResponse {
@@ -850,6 +947,38 @@ export const ContactUpdateConsentStatus = {
   revoked: "revoked",
 } as const;
 
+/**
+ * @nullable
+ */
+export type ContactUpdateServiceCategory =
+  | (typeof ContactUpdateServiceCategory)[keyof typeof ContactUpdateServiceCategory]
+  | null;
+
+export const ContactUpdateServiceCategory = {
+  diarista: "diarista",
+  eletricista: "eletricista",
+  encanador: "encanador",
+  pintor: "pintor",
+  jardineiro: "jardineiro",
+  ar_condicionado: "ar_condicionado",
+  dedetizadora: "dedetizadora",
+  piscineiro: "piscineiro",
+  marido_de_aluguel: "marido_de_aluguel",
+  mudanca: "mudanca",
+  tecnico_eletrodomestico: "tecnico_eletrodomestico",
+  outro: "outro",
+} as const;
+
+export type ContactUpdateReliabilityStatus =
+  (typeof ContactUpdateReliabilityStatus)[keyof typeof ContactUpdateReliabilityStatus];
+
+export const ContactUpdateReliabilityStatus = {
+  preferred: "preferred",
+  backup: "backup",
+  avoid: "avoid",
+  untested: "untested",
+} as const;
+
 export interface ContactUpdate {
   name?: string;
   phone?: string;
@@ -857,6 +986,15 @@ export interface ContactUpdate {
   aliases?: string[];
   notes?: string;
   consent_status?: ContactUpdateConsentStatus;
+  /** @nullable */
+  service_category?: ContactUpdateServiceCategory;
+  reliability_status?: ContactUpdateReliabilityStatus;
+  /** @nullable */
+  last_price_range?: string | null;
+  /** @nullable */
+  payment_notes?: string | null;
+  /** @nullable */
+  reliability_notes?: string | null;
 }
 
 export interface InboxItemDetail {
@@ -1502,6 +1640,10 @@ export type ListEventsParams = {
 
 export type ListContactsParams = {
   category?: string;
+};
+
+export type RequestContactRating200 = {
+  whatsapp_sent: boolean;
 };
 
 export type ListPatternsParams = {

@@ -17,8 +17,10 @@ import {
   membersTable,
   suggestedActionsTable,
   proactiveMessageQueueTable,
+  waConversationsTable,
+  auditLogTable,
 } from "@workspace/db";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import { classifyAndSaveAction } from "./classifier";
 import { processWhatsAppMedia } from "./media-analysis";
 import { looksLikeToken, markTokenVerified } from "./wa-token-store";
@@ -42,6 +44,8 @@ export interface InboundWAMessage {
   messageSid?: string | null;
 }
 
+type RatingKeyword = "bom" | "ok" | "ruim" | "no_show";
+
 export type ProcessOutcome =
   | { kind: "token_verified"; userId: string; phone: string }
   | { kind: "token_expired"; phone: string }
@@ -56,6 +60,17 @@ export type ProcessOutcome =
   | { kind: "edit_prompt_via_wa"; actionId: number; householdId: number; phone: string }
   | { kind: "undone_via_wa"; actionTitle: string; householdId: number; phone: string }
   | { kind: "consent_updated"; contactId: number; newStatus: "consented" | "revoked"; phone: string; householdId: number; contactName: string }
+  | {
+      kind: "provider_rated";
+      contactId: number;
+      contactName: string;
+      rating: RatingKeyword;
+      reliabilityStatus: string;
+      noShowCount: number;
+      suggestUpgrade: boolean;
+      householdId: number;
+      phone: string;
+    }
   | {
       kind: "ingested";
       inboxItemId: number;
@@ -336,6 +351,133 @@ export async function processInboundWAMessage(
     const approvalOutcome = await handleApprovalResponse(bodyText, householdId, phoneRaw, log);
     if (approvalOutcome) {
       return { ...approvalOutcome, phone: phoneRaw };
+    }
+  }
+
+  // ── 4.55. Provider rating reply (BOM / OK / RUIM / NÃO APARECEU) ─────────
+  // Only admin senders can rate providers (same privilege as action approval).
+  // We check for an open wa_conversations row with thread_context='rating_request'
+  // so that arbitrary messages from the admin don't accidentally trigger a rating.
+  // The rating conversation expires after 24 hours.
+  if (bodyText && senderIsAdmin) {
+    const upper = bodyText.trim().toUpperCase();
+    const ratingMap: Record<string, RatingKeyword> = {
+      BOM: "bom",
+      OK: "ok",
+      RUIM: "ruim",
+      "NÃO APARECEU": "no_show",
+      "NAO APARECEU": "no_show",
+    };
+    const ratingKw = ratingMap[upper];
+
+    if (ratingKw) {
+      const [ratingConv] = await db
+        .select()
+        .from(waConversationsTable)
+        .where(
+          and(
+            eq(waConversationsTable.household_id, householdId),
+            eq(waConversationsTable.sender_phone, phoneRaw),
+            eq(waConversationsTable.thread_context, "rating_request"),
+            eq(waConversationsTable.state, "awaiting_confirmation"),
+            sql`${waConversationsTable.expires_at} > NOW()`,
+          ),
+        )
+        .limit(1);
+
+      if (ratingConv) {
+        const ratingPayload = ratingConv.proposed_payload as unknown as {
+          contact_id?: number;
+          contact_name?: string;
+        } | null;
+        const contactId = ratingPayload?.contact_id;
+        const contactName = ratingPayload?.contact_name ?? "prestador";
+
+        if (contactId) {
+          const [currentContact] = await db
+            .select()
+            .from(contactsTable)
+            .where(and(eq(contactsTable.id, contactId), eq(contactsTable.household_id, householdId)));
+
+          if (currentContact) {
+            const now = new Date();
+            const prevRating = currentContact.last_rating as RatingKeyword | null;
+            const prevNoShows = currentContact.no_show_count ?? 0;
+
+            let reliabilityStatus = currentContact.reliability_status ?? "untested";
+            let householdRating = currentContact.household_rating ?? null;
+            let noShowCount = prevNoShows;
+            let lastUsedAt = currentContact.last_used_at;
+            let suggestUpgrade = false;
+
+            if (ratingKw === "bom") {
+              householdRating = Math.min(5, (householdRating ?? 3) + 1);
+              lastUsedAt = now;
+              if (prevRating === "bom" && reliabilityStatus !== "preferred") {
+                suggestUpgrade = true;
+              }
+            } else if (ratingKw === "ok") {
+              lastUsedAt = now;
+            } else if (ratingKw === "ruim") {
+              reliabilityStatus = "avoid";
+              lastUsedAt = now;
+            } else if (ratingKw === "no_show") {
+              noShowCount = prevNoShows + 1;
+              if (noShowCount >= 2) reliabilityStatus = "avoid";
+            }
+
+            await db
+              .update(contactsTable)
+              .set({
+                reliability_status: reliabilityStatus,
+                household_rating: householdRating,
+                no_show_count: noShowCount,
+                last_used_at: lastUsedAt,
+                last_rating: ratingKw,
+              })
+              .where(and(eq(contactsTable.id, contactId), eq(contactsTable.household_id, householdId)));
+
+            await db.insert(auditLogTable).values({
+              household_id: householdId,
+              action: "contact_rated",
+              actor: `wa:${phoneRaw}`,
+              action_type: "updated",
+              category: "contacts",
+              description: `Prestador "${contactName}" avaliado como "${ratingKw}" via WhatsApp. Status: ${reliabilityStatus}.`,
+              metadata: {
+                contact_id: contactId,
+                rating: ratingKw,
+                reliability_status: reliabilityStatus,
+                no_show_count: noShowCount,
+                suggest_upgrade: suggestUpgrade,
+              },
+            });
+
+            // Close the rating conversation so it cannot be re-used.
+            await db
+              .update(waConversationsTable)
+              .set({ state: "completed" })
+              .where(eq(waConversationsTable.id, ratingConv.id));
+
+            log.info(
+              { contactId, contactName, rating: ratingKw, reliabilityStatus, suggestUpgrade, householdId },
+              "Provider rated via WhatsApp",
+            );
+
+            return {
+              kind: "provider_rated",
+              contactId,
+              contactName,
+              rating: ratingKw,
+              reliabilityStatus,
+              noShowCount,
+              suggestUpgrade,
+              householdId,
+              phone: phoneRaw,
+            };
+          }
+        }
+      }
     }
   }
 

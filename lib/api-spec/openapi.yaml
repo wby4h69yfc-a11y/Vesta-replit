@@ -44,6 +44,8 @@ tags:
     description: Creche waitlist and school workflow tracking
   - name: templates
     description: Pre-built rule templates library
+  - name: providers
+    description: Service provider reliability memory
 
 paths:
   /storage/uploads/request-url:
@@ -916,6 +918,60 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Contact"
+
+  /contacts/{id}/rate:
+    post:
+      operationId: rateContact
+      tags: [providers]
+      summary: Rate a service provider after an interaction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactRateInput"
+      responses:
+        "200":
+          description: Rating applied; contact reliability updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactRateResult"
+        "400":
+          description: Invalid rating value
+        "404":
+          description: Contact not found
+
+  /contacts/{id}/request-rating:
+    post:
+      operationId: requestContactRating
+      tags: [providers]
+      summary: Send a WhatsApp rating prompt to the household admin for this provider
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Rating request sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [whatsapp_sent]
+                properties:
+                  whatsapp_sent:
+                    type: boolean
+        "404":
+          description: Contact not found
 
   /contacts/{id}/request-consent:
     post:
@@ -2248,9 +2304,56 @@ components:
         last_consent_requested_at:
           type: ["string", "null"]
           format: date-time
+        service_category:
+          type: ["string", "null"]
+          enum: [diarista, eletricista, encanador, pintor, jardineiro, ar_condicionado, dedetizadora, piscineiro, marido_de_aluguel, mudanca, tecnico_eletrodomestico, outro]
+          description: Sub-category for service providers (null for non-providers)
+        reliability_status:
+          type: string
+          enum: [preferred, backup, avoid, untested]
+          default: untested
+          description: Provider reliability badge
+        last_used_at:
+          type: ["string", "null"]
+          format: date-time
+        last_price_range:
+          type: ["string", "null"]
+          description: Free-text price anchor, e.g. "R$80–120"
+        no_show_count:
+          type: integer
+          default: 0
+        payment_notes:
+          type: ["string", "null"]
+        household_rating:
+          type: ["integer", "null"]
+          minimum: 1
+          maximum: 5
+        reliability_notes:
+          type: ["string", "null"]
+        last_rating:
+          type: ["string", "null"]
+          enum: [bom, ok, ruim, no_show]
         created_at:
           type: string
           format: date-time
+
+    ContactRateInput:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: string
+          enum: [bom, ok, ruim, no_show]
+
+    ContactRateResult:
+      type: object
+      required: [contact, suggest_upgrade]
+      properties:
+        contact:
+          $ref: "#/components/schemas/Contact"
+        suggest_upgrade:
+          type: boolean
+          description: True when two consecutive "bom" ratings suggest upgrading to preferred
 
     ConsentRequestResponse:
       type: object
@@ -2389,6 +2492,18 @@ components:
         consent_status:
           type: string
           enum: [not_required, pending, consented, revoked]
+        service_category:
+          type: ["string", "null"]
+          enum: [diarista, eletricista, encanador, pintor, jardineiro, ar_condicionado, dedetizadora, piscineiro, marido_de_aluguel, mudanca, tecnico_eletrodomestico, outro]
+        reliability_status:
+          type: string
+          enum: [preferred, backup, avoid, untested]
+        last_price_range:
+          type: ["string", "null"]
+        payment_notes:
+          type: ["string", "null"]
+        reliability_notes:
+          type: ["string", "null"]
 
     # ── Inbox ────────────────────────────────────────────────────
     InboxItem:

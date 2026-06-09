@@ -36,6 +36,8 @@ import type {
   ConsentRequestResponse,
   Contact,
   ContactInput,
+  ContactRateInput,
+  ContactRateResult,
   ContactUpdate,
   CrecheWaitlist,
   CrecheWaitlistInput,
@@ -80,6 +82,7 @@ import type {
   PlanStatus,
   PrivacyExport,
   PrivacyExportSummary,
+  RequestContactRating200,
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
   Rule,
@@ -3935,6 +3938,177 @@ export function useGetContactsConsentDue<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Rate a service provider after an interaction
+ */
+export const getRateContactUrl = (id: number) => {
+  return `/api/contacts/${id}/rate`;
+};
+
+export const rateContact = async (
+  id: number,
+  contactRateInput: ContactRateInput,
+  options?: RequestInit,
+): Promise<ContactRateResult> => {
+  return customFetch<ContactRateResult>(getRateContactUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(contactRateInput),
+  });
+};
+
+export const getRateContactMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rateContact>>,
+    TError,
+    { id: number; data: BodyType<ContactRateInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof rateContact>>,
+  TError,
+  { id: number; data: BodyType<ContactRateInput> },
+  TContext
+> => {
+  const mutationKey = ["rateContact"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof rateContact>>,
+    { id: number; data: BodyType<ContactRateInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return rateContact(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RateContactMutationResult = NonNullable<
+  Awaited<ReturnType<typeof rateContact>>
+>;
+export type RateContactMutationBody = BodyType<ContactRateInput>;
+export type RateContactMutationError = ErrorType<void>;
+
+/**
+ * @summary Rate a service provider after an interaction
+ */
+export const useRateContact = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rateContact>>,
+    TError,
+    { id: number; data: BodyType<ContactRateInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof rateContact>>,
+  TError,
+  { id: number; data: BodyType<ContactRateInput> },
+  TContext
+> => {
+  return useMutation(getRateContactMutationOptions(options));
+};
+
+/**
+ * @summary Send a WhatsApp rating prompt to the household admin for this provider
+ */
+export const getRequestContactRatingUrl = (id: number) => {
+  return `/api/contacts/${id}/request-rating`;
+};
+
+export const requestContactRating = async (
+  id: number,
+  options?: RequestInit,
+): Promise<RequestContactRating200> => {
+  return customFetch<RequestContactRating200>(getRequestContactRatingUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRequestContactRatingMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestContactRating>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestContactRating>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["requestContactRating"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestContactRating>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return requestContactRating(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestContactRatingMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestContactRating>>
+>;
+
+export type RequestContactRatingMutationError = ErrorType<void>;
+
+/**
+ * @summary Send a WhatsApp rating prompt to the household admin for this provider
+ */
+export const useRequestContactRating = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestContactRating>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestContactRating>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRequestContactRatingMutationOptions(options));
+};
 
 /**
  * @summary Send a WhatsApp consent request to a contact (LGPD)
