@@ -3,7 +3,7 @@ import { isTwilioConfigured, sendWhatsApp } from "../lib/whatsapp";
 import { resolveHouseholdAdminPhone } from "../lib/whatsapp";
 import { processInboundWAMessage } from "../lib/wa-message-processor";
 import { db } from "@workspace/db";
-import { householdsTable, onboardingStateTable } from "@workspace/db";
+import { householdsTable, onboardingStateTable, waConversationsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   replyVerificationSuccess,
@@ -26,6 +26,8 @@ import {
   replyRatingRuim,
   replyRatingNoShow,
   replyRatingSuggestPreferred,
+  replyAvoidConfirmed,
+  replyAvoidCancelled,
 } from "../lib/wa-reply-composer";
 
 const router = Router();
@@ -310,7 +312,7 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       }
 
       case "provider_rated": {
-        const { contactName, rating, noShowCount, suggestUpgrade, phone: ratedPhone } = outcome;
+        const { contactId, contactName, rating, noShowCount, suggestUpgrade, suggestAvoid, householdId: ratedHhId, phone: ratedPhone } = outcome;
         let ackMsg: string;
         if (rating === "bom") {
           ackMsg = replyRatingBom(contactName);
@@ -327,10 +329,37 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
           void sendWhatsApp(ratedPhone, replyRatingSuggestPreferred(contactName));
         }
 
+        if (suggestAvoid) {
+          const avoidExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          void db.insert(waConversationsTable).values({
+            household_id: ratedHhId,
+            sender_phone: ratedPhone,
+            state: "awaiting_confirmation",
+            thread_context: "avoid_confirm",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            proposed_payload: { contact_id: contactId, contact_name: contactName } as any,
+            expires_at: avoidExpiresAt,
+          });
+        }
+
         req.log.info(
-          { contactName, rating, noShowCount, suggestUpgrade },
+          { contactName, rating, noShowCount, suggestUpgrade, suggestAvoid },
           "Provider rated — WA ack sent",
         );
+        break;
+      }
+
+      case "avoid_confirmed": {
+        const { contactName, phone: avoidPhone } = outcome;
+        void sendWhatsApp(avoidPhone, replyAvoidConfirmed(contactName));
+        req.log.info({ contactName }, "Provider marked as avoid — WA confirmed");
+        break;
+      }
+
+      case "avoid_cancelled": {
+        const { contactName, phone: avoidPhone } = outcome;
+        void sendWhatsApp(avoidPhone, replyAvoidCancelled(contactName));
+        req.log.info({ contactName }, "Avoid marking cancelled by admin");
         break;
       }
 

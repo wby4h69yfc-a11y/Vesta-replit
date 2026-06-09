@@ -11,6 +11,8 @@ export const VALID_RELIABILITY: ReliabilityStatus[] = ["preferred", "backup", "a
 export interface ApplyRatingResult {
   contact: typeof contactsTable.$inferSelect;
   suggest_upgrade: boolean;
+  /** True when admin should be prompted to confirm marking provider as "avoid" */
+  suggest_avoid: boolean;
 }
 
 /**
@@ -46,6 +48,7 @@ export async function applyContactRating(
   let noShowCount = prevNoShows;
   let lastUsedAt = current.last_used_at;
   let suggestUpgrade = false;
+  let suggestAvoid = false;
 
   if (rating === "bom") {
     householdRating = Math.min(5, (householdRating ?? 3) + 1);
@@ -56,12 +59,14 @@ export async function applyContactRating(
   } else if (rating === "ok") {
     lastUsedAt = now;
   } else if (rating === "ruim") {
-    reliabilityStatus = "avoid";
+    // Do NOT auto-set avoid — return suggest_avoid so the caller can prompt for confirmation.
     lastUsedAt = now;
+    suggestAvoid = true;
   } else if (rating === "no_show") {
     noShowCount = prevNoShows + 1;
     if (noShowCount >= 2) {
-      reliabilityStatus = "avoid";
+      // Do NOT auto-set avoid — return suggest_avoid so the caller can prompt for confirmation.
+      suggestAvoid = true;
     }
   }
 
@@ -94,5 +99,5 @@ export async function applyContactRating(
     },
   });
 
-  return { contact: updated, suggest_upgrade: suggestUpgrade };
+  return { contact: updated, suggest_upgrade: suggestUpgrade, suggest_avoid: suggestAvoid };
 }

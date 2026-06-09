@@ -68,9 +68,12 @@ export type ProcessOutcome =
       reliabilityStatus: string;
       noShowCount: number;
       suggestUpgrade: boolean;
+      suggestAvoid: boolean;
       householdId: number;
       phone: string;
     }
+  | { kind: "avoid_confirmed"; contactId: number; contactName: string; householdId: number; phone: string }
+  | { kind: "avoid_cancelled"; contactId: number; contactName: string; householdId: number; phone: string }
   | {
       kind: "ingested";
       inboxItemId: number;
@@ -428,6 +431,80 @@ export async function processInboundWAMessage(
               reliabilityStatus: result.contact.reliability_status ?? "untested",
               noShowCount: result.contact.no_show_count ?? 0,
               suggestUpgrade: result.suggest_upgrade,
+              suggestAvoid: result.suggest_avoid,
+              householdId,
+              phone: phoneRaw,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  // ── 4.56. Avoid-marking confirmation reply (SIM / NÃO) ───────────────────
+  // Handles admin confirming or declining to mark a provider as "avoid" after
+  // receiving a "ruim" rating or ≥ 2 no-shows.
+  if (bodyText && senderIsAdmin) {
+    const upper = bodyText.trim().toUpperCase();
+    if (upper === "SIM" || upper === "NÃO" || upper === "NAO") {
+      const [avoidConv] = await db
+        .select()
+        .from(waConversationsTable)
+        .where(
+          and(
+            eq(waConversationsTable.household_id, householdId),
+            eq(waConversationsTable.sender_phone, phoneRaw),
+            eq(waConversationsTable.thread_context, "avoid_confirm"),
+            eq(waConversationsTable.state, "awaiting_confirmation"),
+            sql`${waConversationsTable.expires_at} > NOW()`,
+          ),
+        )
+        .limit(1);
+
+      if (avoidConv) {
+        const avoidPayload = avoidConv.proposed_payload as unknown as { contact_id?: number; contact_name?: string } | null;
+        const avoidContactId = avoidPayload?.contact_id;
+        const avoidContactName = avoidPayload?.contact_name ?? "prestador";
+
+        if (avoidContactId) {
+          await db
+            .update(waConversationsTable)
+            .set({ state: "completed" })
+            .where(eq(waConversationsTable.id, avoidConv.id));
+
+          if (upper === "SIM") {
+            await db
+              .update(contactsTable)
+              .set({ reliability_status: "avoid" })
+              .where(
+                and(
+                  eq(contactsTable.id, avoidContactId),
+                  eq(contactsTable.household_id, householdId),
+                ),
+              );
+
+            await db.insert(auditLogTable).values({
+              household_id: householdId,
+              action: "contact_marked_avoid",
+              actor: `wa:${phoneRaw}`,
+              action_type: "updated",
+              category: "contacts",
+              description: `Prestador "${avoidContactName}" marcado como "evitar" via WhatsApp.`,
+              metadata: { contact_id: avoidContactId, contact_name: avoidContactName },
+            });
+
+            return {
+              kind: "avoid_confirmed",
+              contactId: avoidContactId,
+              contactName: avoidContactName,
+              householdId,
+              phone: phoneRaw,
+            };
+          } else {
+            return {
+              kind: "avoid_cancelled",
+              contactId: avoidContactId,
+              contactName: avoidContactName,
               householdId,
               phone: phoneRaw,
             };

@@ -28,6 +28,7 @@ import {
   calendarEventsTable,
   tasksTable,
   onboardingStateTable,
+  waConversationsTable,
 } from "@workspace/db";
 import { and, eq, gte, lte, lt, sql, count, or } from "drizzle-orm";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "./whatsapp";
@@ -839,6 +840,25 @@ async function processSingleMessage(
     await db.update(proactiveMessageQueueTable)
       .set({ status: "sent", sent_at: new Date() })
       .where(eq(proactiveMessageQueueTable.id, msgId));
+
+    // After sending a provider rating request, open a wa_conversations row so
+    // the admin's reply is matched to the correct rating context.
+    if (row.trigger_type === "provider_rating_request") {
+      const ratingPayload = payload as { contact_id?: number; contact_name?: string } | null;
+      if (ratingPayload?.contact_id) {
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await db.insert(waConversationsTable).values({
+          household_id: householdId,
+          sender_phone: adminPhone,
+          state: "awaiting_confirmation",
+          thread_context: "rating_request",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          proposed_payload: { contact_id: ratingPayload.contact_id, contact_name: ratingPayload.contact_name ?? "prestador" } as any,
+          expires_at: expiresAt,
+        });
+        logger.info({ msgId, householdId, contactId: ratingPayload.contact_id }, "Proactive: opened rating_request wa_conversation");
+      }
+    }
 
     // Keep last_briefing_sent_at in sync for backward compatibility
     if (row.trigger_type === "daily_digest") {

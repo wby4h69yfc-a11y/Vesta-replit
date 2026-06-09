@@ -293,24 +293,42 @@ export function replyRatingOk(providerName: string): string {
 }
 
 /**
- * Sent after admin rates "ruim" — confirms the status change to "avoid".
+ * Sent after admin rates "ruim" — asks for confirmation before marking as avoid.
  */
 export function replyRatingRuim(providerName: string): string {
   return (
-    `⚠️ Entendido. *${providerName}* foi marcado como *Evitar*.\n\n` +
-    `Você pode alterar isso nas configurações de contato.`
+    `⚠️ Avaliação negativa registrada para *${providerName}*.\n\n` +
+    `Deseja adicioná-lo à lista de *Evitar*? Responda *Sim* para confirmar.`
   );
 }
 
 /**
  * Sent after admin reports a no-show.
+ * When noShowCount >= 2, asks for confirmation before marking as avoid.
  */
 export function replyRatingNoShow(providerName: string, noShowCount: number): string {
   const extra =
     noShowCount >= 2
-      ? `\n\n⚠️ Já foram ${noShowCount} faltas. Marcado como *Evitar*.`
+      ? `\n\n⚠️ Já foram ${noShowCount} faltas. Deseja marcar *${providerName}* como *Evitar*? Responda *Sim* para confirmar.`
       : "";
   return `🚫 Falta registrada para *${providerName}*.${extra}`;
+}
+
+/**
+ * Sent when the admin confirms the "avoid" marking.
+ */
+export function replyAvoidConfirmed(providerName: string): string {
+  return (
+    `✅ *${providerName}* foi adicionado à lista de *Evitar*.\n\n` +
+    `Você pode alterar isso nas configurações de contato.`
+  );
+}
+
+/**
+ * Sent when the admin declines the "avoid" marking.
+ */
+export function replyAvoidCancelled(providerName: string): string {
+  return `👍 Ok! *${providerName}* mantido como estava.`;
 }
 
 /**

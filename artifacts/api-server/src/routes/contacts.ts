@@ -7,7 +7,7 @@ import {
   auditLogTable,
   waConversationsTable,
 } from "@workspace/db";
-import { eq, and, sql, lte, isNotNull } from "drizzle-orm";
+import { eq, and, sql, lte, isNotNull, inArray } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "../lib/whatsapp";
 import {
@@ -42,11 +42,15 @@ router.get("/contacts", async (req, res) => {
     if (category) conditions.push(eq(contactsTable.category, category));
     if (service_category) conditions.push(eq(contactsTable.service_category, service_category));
     if (reliabilityFilter) {
-      const statuses = reliabilityFilter.split(",").map((s) => s.trim()).filter(Boolean);
+      const validStatuses = VALID_RELIABILITY as readonly string[];
+      const statuses = reliabilityFilter
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s): s is ReliabilityStatus => validStatuses.includes(s));
       if (statuses.length === 1) {
         conditions.push(eq(contactsTable.reliability_status, statuses[0]));
       } else if (statuses.length > 1) {
-        conditions.push(sql`${contactsTable.reliability_status} = ANY(ARRAY[${sql.raw(statuses.map((s) => `'${s}'`).join(","))}])`);
+        conditions.push(inArray(contactsTable.reliability_status, statuses));
       }
     }
 

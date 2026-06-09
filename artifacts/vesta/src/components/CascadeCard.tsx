@@ -126,9 +126,38 @@ export default function CascadeCard({ cascade }: { cascade: ActionCascadeWithAct
   const pendingActions  = cascade.actions.filter((a) => a.status === "pending");
   const resolvedActions = cascade.actions.filter((a) => a.status !== "pending");
   const allResolved     = pendingActions.length === 0;
-  const hasServicos     = cascade.actions.some((a) => a.category === "servicos");
+  const hasServicos = cascade.actions.some((a) => a.category === "servicos");
 
-  const providerQueryParams = { reliability_status: "preferred,backup" };
+  // Map keywords in cascade description/titles to a specific service_category
+  const SERVICE_CATEGORY_KEYWORDS: Record<string, string> = {
+    diarista:       "diarista",
+    faxina:         "diarista",
+    eletricista:    "eletricista",
+    elétrica:       "eletricista",
+    encanador:      "encanador",
+    encanamento:    "encanador",
+    pintor:         "pintor",
+    pintura:        "pintor",
+    jardineiro:     "jardineiro",
+    jardim:         "jardineiro",
+    "ar condicionado": "ar_condicionado",
+    "ar-condicionado": "ar_condicionado",
+    babá:           "babá",
+    baba:           "babá",
+    cuidador:       "cuidador",
+  };
+  const cascadeText = [
+    cascade.trigger_description,
+    ...cascade.actions.map((a) => a.title),
+  ].join(" ").toLowerCase();
+  const detectedCategory = Object.entries(SERVICE_CATEGORY_KEYWORDS).find(
+    ([kw]) => cascadeText.includes(kw),
+  )?.[1] ?? null;
+
+  const providerQueryParams = detectedCategory
+    ? { service_category: detectedCategory, reliability_status: "preferred,backup" }
+    : { reliability_status: "preferred,backup" };
+
   const { data: preferredProviders } = useListContacts(
     providerQueryParams,
     {

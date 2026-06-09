@@ -1,9 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { tasksTable, membersTable, auditLogTable, waConversationsTable, contactsTable } from "@workspace/db";
+import { tasksTable, membersTable, auditLogTable, contactsTable, proactiveMessageQueueTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
-import { sendWhatsApp, resolveHouseholdAdminPhone } from "../lib/whatsapp";
 import { replyRatingRequest } from "../lib/wa-reply-composer";
 
 const router = Router();
@@ -195,41 +194,40 @@ router.post("/tasks/:id/complete", async (req, res) => {
           .from(contactsTable)
           .where(and(eq(contactsTable.id, providerContactId), eq(contactsTable.household_id, hid)));
 
-        const adminPhone = contact ? await resolveHouseholdAdminPhone(hid) : null;
+        if (contact) {
+          const templateKey = `rating_request:${contact.id}:${task.id}`;
 
-        if (contact && adminPhone) {
-          // Check no open rating request already exists for this contact
-          const existing = await db
-            .select({ id: waConversationsTable.id })
-            .from(waConversationsTable)
+          // Dedup: skip if already queued or sent for this contact+task
+          const [existingQueued] = await db
+            .select({ id: proactiveMessageQueueTable.id })
+            .from(proactiveMessageQueueTable)
             .where(
               and(
-                eq(waConversationsTable.household_id, hid),
-                eq(waConversationsTable.thread_context, "rating_request"),
-                eq(waConversationsTable.state, "awaiting_confirmation"),
+                eq(proactiveMessageQueueTable.household_id, hid),
+                eq(proactiveMessageQueueTable.template_name, templateKey),
               ),
             )
             .limit(1);
 
-          if (existing.length === 0) {
-            const message = replyRatingRequest(contact.name);
-            const sendResult = await sendWhatsApp(adminPhone, message);
-            if (sendResult.ok) {
-              const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-              await db.insert(waConversationsTable).values({
-                household_id: hid,
-                sender_phone: adminPhone,
-                state: "awaiting_confirmation",
-                thread_context: "rating_request",
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                proposed_payload: { contact_id: contact.id, contact_name: contact.name } as any,
-                expires_at: expiresAt,
-              });
-              req.log.info(
-                { contactId: contact.id, contactName: contact.name },
-                "Post-task rating request sent to admin",
-              );
-            }
+          if (!existingQueued) {
+            const scheduledAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
+            await db.insert(proactiveMessageQueueTable).values({
+              household_id: hid,
+              trigger_type: "provider_rating_request",
+              trigger_source_id: contact.id,
+              template_name: templateKey,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              payload: {
+                message: replyRatingRequest(contact.name),
+                contact_id: contact.id,
+                contact_name: contact.name,
+              } as any,
+              scheduled_at: scheduledAt,
+            });
+            req.log.info(
+              { contactId: contact.id, contactName: contact.name, scheduledAt },
+              "Post-task rating request queued (2h delay)",
+            );
           }
         }
       } catch (ratingErr) {
