@@ -8,6 +8,23 @@ export type SendResult =
   | { ok: false; error: string };
 
 /**
+ * Dev/test telemetry: every sendWhatsApp call is recorded here when
+ * NODE_ENV !== "production".  The buffer is drained via drainWaSendLog()
+ * which is exposed through the GET /api/dev/wa-sends endpoint.
+ *
+ * Never populated in production — the guard is inlined at the call site.
+ */
+const _waSendLog: Array<{ to: string; body: string; at: string }> = [];
+
+/**
+ * Returns all buffered sendWhatsApp calls since the last drain and resets
+ * the buffer.  Dev/test only — not callable from production paths.
+ */
+export function drainWaSendLog(): Array<{ to: string; body: string; at: string }> {
+  return _waSendLog.splice(0);
+}
+
+/**
  * Returns true only when the contact has active, unexpired LGPD consent.
  *
  * A contact's consent is active when BOTH conditions hold:
@@ -92,12 +109,18 @@ export async function sendWhatsApp(to: string, message: string): Promise<SendRes
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const from = process.env.TWILIO_WHATSAPP_FROM;
 
+  const toAddr = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
+
+  // Dev/test telemetry: record every attempted send so E2E tests can verify
+  // the destination and body without needing Twilio credentials.
+  if (process.env.NODE_ENV !== "production") {
+    _waSendLog.push({ to: toAddr, body: message, at: new Date().toISOString() });
+  }
+
   if (!accountSid || !authToken || !from) {
     logger.warn({ to }, "sendWhatsApp: Twilio not configured — skipping");
     return { ok: false, error: "Twilio not configured" };
   }
-
-  const toAddr = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
   const fromAddr = from.startsWith("whatsapp:") ? from : `whatsapp:${from}`;
 
   try {

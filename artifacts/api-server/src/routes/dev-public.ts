@@ -3,6 +3,7 @@ import { db, usersTable, householdsTable, onboardingStateTable } from "@workspac
 import { eq } from "drizzle-orm";
 import { createSession, SESSION_COOKIE, SESSION_TTL, type SessionData } from "../lib/auth";
 import { runConsentRenewalJob } from "../lib/consent-renewal-scheduler";
+import { drainWaSendLog } from "../lib/whatsapp";
 
 const router: IRouter = Router();
 
@@ -123,6 +124,21 @@ if (process.env.NODE_ENV !== "production") {
         error: err instanceof Error ? err.message : "Unknown error",
       });
     }
+  });
+
+  /**
+   * GET /api/dev/wa-sends
+   *
+   * Dev/test only. Returns all sendWhatsApp calls recorded since the last drain
+   * and clears the buffer.  Used by E2E tests to assert on the destination (`to`)
+   * and message body of WhatsApp replies without requiring Twilio credentials.
+   *
+   * Response: { sends: Array<{ to: string; body: string; at: string }> }
+   *
+   * NEVER exposed in production (guarded by the NODE_ENV check above).
+   */
+  router.get("/dev/wa-sends", (_req: Request, res: Response) => {
+    res.json({ sends: drainWaSendLog() });
   });
 }
 

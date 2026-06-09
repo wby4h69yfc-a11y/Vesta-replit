@@ -128,9 +128,13 @@ const PUBLIC_API_EXACT: ReadonlySet<string> = new Set([
   "/mobile-auth/token-exchange",
   "/mobile-auth/logout",
   "/dev/test-login",
-  // Dev-only: job trigger for E2E tests — never reachable in production because
-  // the route itself is not registered when NODE_ENV === "production".
-  ...(process.env.NODE_ENV !== "production" ? ["/dev/run-consent-renewal"] : []),
+  // Dev-only: routes only registered when NODE_ENV !== "production".
+  ...(process.env.NODE_ENV !== "production"
+    ? [
+        "/dev/run-consent-renewal",
+        "/dev/wa-sends", // WA send telemetry drain — used by E2E integration tests
+      ]
+    : []),
 ]);
 
 app.use("/api", (req: Request, res: Response, next: NextFunction): void => {
