@@ -6,8 +6,9 @@ import {
   householdsTable,
   auditLogTable,
   waConversationsTable,
+  membersTable,
 } from "@workspace/db";
-import { eq, and, sql, lte, isNotNull, inArray } from "drizzle-orm";
+import { eq, and, sql, lte, isNotNull, inArray, ne } from "drizzle-orm";
 import { getHouseholdId } from "../lib/tenant";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "../lib/whatsapp";
 import {
@@ -25,6 +26,54 @@ import {
 export { applyContactRating } from "../lib/provider-rating";
 
 const router = Router();
+
+// ── Cross-household phone uniqueness (atomic) ────────────────────────────────
+// A phone number must not be registered as a contact or member in any other
+// household. Allowing duplicates lets one household silently block another
+// household's inbound WhatsApp messages (multi_household discard).
+//
+// We enforce uniqueness atomically: every phone-writing operation acquires a
+// per-phone PostgreSQL advisory lock (pg_advisory_xact_lock) inside a
+// transaction so that concurrent requests for the same number are serialised
+// and cannot both pass the uniqueness check.
+//
+// The lock key is derived from the digit-normalised phone string:
+//   hashtext('wa_phone') — namespace (int4)
+//   hashtext(phoneNorm)  — phone-specific key (int4)
+//
+// Returns true when a conflict was found (caller should return 409).
+// Must be called inside a transaction that holds the advisory lock.
+async function phoneExistsInOtherHousehold(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  phoneNorm: string,
+  ownHid: number,
+  excludeContactId?: number,
+): Promise<boolean> {
+  const [cc] = await tx
+    .select({ id: contactsTable.id })
+    .from(contactsTable)
+    .where(
+      and(
+        sql`regexp_replace(${contactsTable.phone}, '\\D', '', 'g') = ${phoneNorm}`,
+        ne(contactsTable.household_id, ownHid),
+        ...(excludeContactId !== undefined ? [ne(contactsTable.id, excludeContactId)] : []),
+      ),
+    )
+    .limit(1);
+  if (cc) return true;
+
+  const [cm] = await tx
+    .select({ id: membersTable.id })
+    .from(membersTable)
+    .where(
+      and(
+        sql`regexp_replace(${membersTable.phone}, '\\D', '', 'g') = ${phoneNorm}`,
+        ne(membersTable.household_id, ownHid),
+      ),
+    )
+    .limit(1);
+  return !!cm;
+}
 
 // ── GET /contacts ─────────────────────────────────────────────────────────────
 
@@ -77,18 +126,31 @@ router.post("/contacts", async (req, res) => {
 
     if (!name || !category) return res.status(400).json({ error: "name and category are required" });
 
-    const [contact] = await db
-      .insert(contactsTable)
-      .values({
-        household_id: hid,
-        name,
-        phone: phone ?? null,
-        category,
-        aliases: aliases ?? [],
-        notes: notes ?? null,
-        service_category: service_category ?? null,
-      })
-      .returning();
+    const insertValues = {
+      household_id: hid,
+      name,
+      phone: phone ?? null,
+      category,
+      aliases: (aliases ?? []) as string[],
+      notes: notes ?? null,
+      service_category: service_category ?? null,
+    };
+
+    let contact;
+    if (phone) {
+      // Atomically lock the phone number, verify uniqueness, then insert.
+      const pn = phone.replace(/\D/g, "");
+      let conflict = false;
+      const txResult = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('wa_phone'::text), hashtext(${pn}::text))`);
+        if (await phoneExistsInOtherHousehold(tx, pn, hid)) { conflict = true; return null; }
+        return tx.insert(contactsTable).values(insertValues).returning();
+      });
+      if (conflict) return res.status(409).json({ error: "Número de telefone já cadastrado" });
+      [contact] = txResult!;
+    } else {
+      [contact] = await db.insert(contactsTable).values(insertValues).returning();
+    }
 
     res.status(201).json(contact);
   } catch (err) {
@@ -142,54 +204,86 @@ router.patch("/contacts/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid reliability_status" });
     }
 
-    const [contact] = await db
-      .select()
-      .from(contactsTable)
-      .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)));
-    if (!contact) return res.status(404).json({ error: "Not found" });
+    // When the phone is changing to a new non-empty value, atomically lock
+    // the new number, verify it is not claimed by another household, then
+    // update.  When the phone is unchanged or cleared, update directly.
+    const phoneChanging = phone !== undefined && phone !== null && phone !== "";
+    const existingForPhone = phoneChanging
+      ? await db
+          .select({ p: contactsTable.phone })
+          .from(contactsTable)
+          .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)))
+          .limit(1)
+      : null;
 
-    // Derive consent timestamps from status transitions.
-    const isGranting = consent_status === "consented" && contact.consent_status !== "consented";
-    const isRevoking = consent_status === "revoked" && contact.consent_status !== "revoked";
+    if (existingForPhone !== null && existingForPhone.length === 0) {
+      return res.status(404).json({ error: "Not found" });
+    }
 
-    const consentGrantedAt = isGranting ? new Date() : contact.consent_granted_at;
-    const consentWithdrawnAt = isRevoking ? new Date() : contact.consent_withdrawn_at;
+    const currentPhone = existingForPhone?.[0]?.p ?? null;
+    const isNewPhone = phoneChanging && phone !== currentPhone;
 
-    const twelveMonthsFromNow = new Date();
-    twelveMonthsFromNow.setFullYear(twelveMonthsFromNow.getFullYear() + 1);
-    const consentCheckInDueAt = isGranting
-      ? twelveMonthsFromNow
-      : isRevoking
-        ? null
-        : contact.consent_check_in_due_at;
+    let conflict = false;
+    const txResult = await db.transaction(async (tx) => {
+      const [contact] = await tx
+        .select()
+        .from(contactsTable)
+        .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)));
+      if (!contact) return null;
 
-    const [updated] = await db
-      .update(contactsTable)
-      .set({
-        name: name ?? contact.name,
-        phone: phone !== undefined ? phone : contact.phone,
-        category: category ?? contact.category,
-        aliases: aliases ?? contact.aliases,
-        notes: notes !== undefined ? notes : contact.notes,
-        ...(consent_status !== undefined && {
-          consent_status,
-          consent_granted_at: consentGrantedAt,
-          consent_withdrawn_at: consentWithdrawnAt,
-          consent_check_in_due_at: consentCheckInDueAt,
-        }),
-        ...(service_category !== undefined && { service_category }),
-        ...(reliability_status !== undefined && { reliability_status }),
-        ...(last_price_range !== undefined && { last_price_range }),
-        ...(payment_notes !== undefined && { payment_notes }),
-        ...(reliability_notes !== undefined && { reliability_notes }),
-        ...(last_used_at !== undefined && { last_used_at: last_used_at ? new Date(last_used_at) : null }),
-        ...(no_show_count !== undefined && { no_show_count }),
-        ...(household_rating !== undefined && { household_rating }),
-      })
-      .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)))
-      .returning();
+      if (isNewPhone) {
+        const pn = phone!.replace(/\D/g, "");
+        if (pn) {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('wa_phone'::text), hashtext(${pn}::text))`);
+          if (await phoneExistsInOtherHousehold(tx, pn, hid, id)) { conflict = true; return null; }
+        }
+      }
 
-    res.json(updated);
+      // Derive consent timestamps from status transitions.
+      const isGranting = consent_status === "consented" && contact.consent_status !== "consented";
+      const isRevoking = consent_status === "revoked" && contact.consent_status !== "revoked";
+      const consentGrantedAt = isGranting ? new Date() : contact.consent_granted_at;
+      const consentWithdrawnAt = isRevoking ? new Date() : contact.consent_withdrawn_at;
+      const twelveMonthsFromNow = new Date();
+      twelveMonthsFromNow.setFullYear(twelveMonthsFromNow.getFullYear() + 1);
+      const consentCheckInDueAt = isGranting
+        ? twelveMonthsFromNow
+        : isRevoking
+          ? null
+          : contact.consent_check_in_due_at;
+
+      const [updated] = await tx
+        .update(contactsTable)
+        .set({
+          name: name ?? contact.name,
+          phone: phone !== undefined ? phone : contact.phone,
+          category: category ?? contact.category,
+          aliases: aliases ?? contact.aliases,
+          notes: notes !== undefined ? notes : contact.notes,
+          ...(consent_status !== undefined && {
+            consent_status,
+            consent_granted_at: consentGrantedAt,
+            consent_withdrawn_at: consentWithdrawnAt,
+            consent_check_in_due_at: consentCheckInDueAt,
+          }),
+          ...(service_category !== undefined && { service_category }),
+          ...(reliability_status !== undefined && { reliability_status }),
+          ...(last_price_range !== undefined && { last_price_range }),
+          ...(payment_notes !== undefined && { payment_notes }),
+          ...(reliability_notes !== undefined && { reliability_notes }),
+          ...(last_used_at !== undefined && { last_used_at: last_used_at ? new Date(last_used_at) : null }),
+          ...(no_show_count !== undefined && { no_show_count }),
+          ...(household_rating !== undefined && { household_rating }),
+        })
+        .where(and(eq(contactsTable.id, id), eq(contactsTable.household_id, hid)))
+        .returning();
+      return updated;
+    });
+
+    if (conflict) return res.status(409).json({ error: "Número de telefone já cadastrado" });
+    if (!txResult) return res.status(404).json({ error: "Not found" });
+
+    res.json(txResult);
   } catch (err) {
     req.log.error({ err }, "Failed to update contact");
     res.status(500).json({ error: "Internal server error" });
@@ -441,6 +535,10 @@ router.post("/contacts/bulk", async (req, res) => {
       return res.status(400).json({ error: "contacts array is required" });
     }
 
+    // Atomically lock each new phone number, verify cross-household uniqueness,
+    // and insert all rows in a single transaction so no concurrent request can
+    // claim the same number between our check and the insert.
+    let conflict = false;
     const values = contacts.map((c) => ({
       name: c.name,
       phone: c.phone ?? null,
@@ -450,7 +548,20 @@ router.post("/contacts/bulk", async (req, res) => {
       household_id: hid,
     }));
 
-    const created = await db.insert(contactsTable).values(values).returning();
+    const created = await db.transaction(async (tx) => {
+      for (const c of contacts) {
+        if (c.phone) {
+          const pn = c.phone.replace(/\D/g, "");
+          if (pn) {
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('wa_phone'::text), hashtext(${pn}::text))`);
+            if (await phoneExistsInOtherHousehold(tx, pn, hid)) { conflict = true; return null; }
+          }
+        }
+      }
+      return tx.insert(contactsTable).values(values).returning();
+    });
+
+    if (conflict) return res.status(409).json({ error: "Número de telefone já cadastrado" });
     res.status(201).json(created);
   } catch (err) {
     req.log.error({ err }, "Failed to bulk create contacts");

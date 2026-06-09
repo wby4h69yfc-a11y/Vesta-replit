@@ -1,11 +1,56 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { householdsTable, membersTable, rulesTable } from "@workspace/db";
-import { eq, and, count, sql } from "drizzle-orm";
+import { householdsTable, membersTable, rulesTable, contactsTable } from "@workspace/db";
+import { eq, and, count, sql, ne } from "drizzle-orm";
 import { getHouseholdId, getCallerRole } from "../lib/tenant";
 import { getPlanLimits } from "../lib/freemium";
 
 const router = Router();
+
+// ── Cross-household phone uniqueness (atomic, members) ───────────────────────
+// A member phone must not collide with a contact or member phone in any other
+// household. An attacker with admin rights in their own household could
+// register a target provider's phone as one of their own members, causing
+// the WhatsApp router to route inbound messages from that number to the wrong
+// household (cross-tenant message hijack).
+//
+// Uniqueness is enforced atomically: the caller acquires a per-phone advisory
+// lock inside a transaction before calling this function so that concurrent
+// requests for the same number are serialised and cannot both pass the check.
+//
+// Returns true when a conflict was found (caller should return 409).
+// Must be called inside a transaction that holds the advisory lock.
+async function memberPhoneExistsInOtherHousehold(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  phoneNorm: string,
+  ownHid: number,
+  excludeMemberId?: number,
+): Promise<boolean> {
+  const [cm] = await tx
+    .select({ id: membersTable.id })
+    .from(membersTable)
+    .where(
+      and(
+        sql`regexp_replace(${membersTable.phone}, '\\D', '', 'g') = ${phoneNorm}`,
+        ne(membersTable.household_id, ownHid),
+        ...(excludeMemberId !== undefined ? [ne(membersTable.id, excludeMemberId)] : []),
+      ),
+    )
+    .limit(1);
+  if (cm) return true;
+
+  const [cc] = await tx
+    .select({ id: contactsTable.id })
+    .from(contactsTable)
+    .where(
+      and(
+        sql`regexp_replace(${contactsTable.phone}, '\\D', '', 'g') = ${phoneNorm}`,
+        ne(contactsTable.household_id, ownHid),
+      ),
+    )
+    .limit(1);
+  return !!cc;
+}
 
 router.get("/household", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -209,9 +254,21 @@ router.post("/household/members", async (req, res) => {
     const relationshipType = body.relationship_type ?? "adult";
 
     const member = await db.transaction(async (tx) => {
-      // Acquire a per-household advisory lock for the duration of this
-      // transaction so concurrent inserts cannot both pass the count check.
+      // Acquire a per-household advisory lock so concurrent inserts cannot
+      // both pass the plan-limit count check.
       await tx.execute(sql`SELECT pg_advisory_xact_lock(${hid})`);
+
+      // If a phone number is supplied, also acquire a per-phone advisory lock
+      // and verify cross-household uniqueness atomically within this transaction.
+      if (body.phone) {
+        const pn = body.phone.replace(/\D/g, "");
+        if (pn) {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('wa_phone'::text), hashtext(${pn}::text))`);
+          if (await memberPhoneExistsInOtherHousehold(tx, pn, hid)) {
+            throw Object.assign(new Error("Número de telefone já cadastrado"), { status: 409 });
+          }
+        }
+      }
 
       if (relationshipType === "adult" || relationshipType === "child") {
         const [household] = await tx
@@ -264,6 +321,9 @@ router.post("/household/members", async (req, res) => {
     res.status(201).json(member);
   } catch (err: unknown) {
     const e = err as { status?: number; message?: string; limit?: number; plan?: string };
+    if (e.status === 409) {
+      return res.status(409).json({ error: e.message });
+    }
     if (e.status === 402) {
       return res.status(402).json({ error: e.message, limit: e.limit, plan: e.plan });
     }
@@ -292,43 +352,63 @@ router.patch("/household/members/:id", async (req, res) => {
       return res.status(400).json({ error: "name must be a non-empty string" });
     }
 
-    const [existing] = await db
-      .select()
-      .from(membersTable)
-      .where(and(eq(membersTable.id, id), eq(membersTable.household_id, hid)));
-    if (!existing) return res.status(404).json({ error: "Not found" });
+    // Wrap the read + phone uniqueness check + update in a single transaction.
+    // When the phone is changing to a new non-empty value, also acquire a
+    // per-phone advisory lock before the uniqueness check so the check and
+    // update are atomic across concurrent requests.
+    let phoneConflict = false;
+    let notFound = false;
+    let forbidden: string | null = null;
 
-    // Admins may edit any member. Non-admins may only edit their own profile
-    // and may not change role.
-    const isOwnRecord = existing.user_id != null && existing.user_id === req.user?.id;
-    if (callerRole !== "admin") {
-      if (!isOwnRecord) {
-        return res.status(403).json({ error: "Apenas administradores podem editar o perfil de outros membros" });
-      }
-      if (body.role !== undefined) {
-        return res.status(403).json({ error: "Apenas administradores podem alterar funções de membros" });
-      }
-    }
+    const updated = await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(membersTable)
+        .where(and(eq(membersTable.id, id), eq(membersTable.household_id, hid)));
+      if (!existing) { notFound = true; return null; }
 
-    const [updated] = await db
-      .update(membersTable)
-      .set({
-        name: body.name !== undefined ? body.name.trim() : existing.name,
-        display_name: body.display_name !== undefined ? body.display_name : existing.display_name,
-        role: body.role ?? existing.role,
-        relationship_type: body.relationship_type ?? existing.relationship_type,
-        phone: body.phone !== undefined ? body.phone : existing.phone,
-        avatar_url: body.avatar_url !== undefined ? body.avatar_url : existing.avatar_url,
-        colour: body.colour !== undefined ? body.colour : existing.colour,
-        birth_year: body.birth_year !== undefined ? body.birth_year : existing.birth_year,
-        school: body.school !== undefined ? body.school : existing.school,
-        grade: body.grade !== undefined ? body.grade : existing.grade,
-        primary_doctor: body.primary_doctor !== undefined ? body.primary_doctor : existing.primary_doctor,
-        schedule: body.schedule !== undefined ? body.schedule : existing.schedule,
-        medical_plan: body.medical_plan !== undefined ? body.medical_plan : existing.medical_plan,
-      })
-      .where(and(eq(membersTable.id, id), eq(membersTable.household_id, hid)))
-      .returning();
+      // Admins may edit any member. Non-admins may only edit their own profile
+      // and may not change role.
+      const isOwnRecord = existing.user_id != null && existing.user_id === req.user?.id;
+      if (callerRole !== "admin") {
+        if (!isOwnRecord) { forbidden = "Apenas administradores podem editar o perfil de outros membros"; return null; }
+        if (body.role !== undefined) { forbidden = "Apenas administradores podem alterar funções de membros"; return null; }
+      }
+
+      const isNewPhone = body.phone !== undefined && body.phone !== null && body.phone !== "" && body.phone !== existing.phone;
+      if (isNewPhone) {
+        const pn = body.phone!.replace(/\D/g, "");
+        if (pn) {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('wa_phone'::text), hashtext(${pn}::text))`);
+          if (await memberPhoneExistsInOtherHousehold(tx, pn, hid, id)) { phoneConflict = true; return null; }
+        }
+      }
+
+      const [row] = await tx
+        .update(membersTable)
+        .set({
+          name: body.name !== undefined ? body.name.trim() : existing.name,
+          display_name: body.display_name !== undefined ? body.display_name : existing.display_name,
+          role: body.role ?? existing.role,
+          relationship_type: body.relationship_type ?? existing.relationship_type,
+          phone: body.phone !== undefined ? body.phone : existing.phone,
+          avatar_url: body.avatar_url !== undefined ? body.avatar_url : existing.avatar_url,
+          colour: body.colour !== undefined ? body.colour : existing.colour,
+          birth_year: body.birth_year !== undefined ? body.birth_year : existing.birth_year,
+          school: body.school !== undefined ? body.school : existing.school,
+          grade: body.grade !== undefined ? body.grade : existing.grade,
+          primary_doctor: body.primary_doctor !== undefined ? body.primary_doctor : existing.primary_doctor,
+          schedule: body.schedule !== undefined ? body.schedule : existing.schedule,
+          medical_plan: body.medical_plan !== undefined ? body.medical_plan : existing.medical_plan,
+        })
+        .where(and(eq(membersTable.id, id), eq(membersTable.household_id, hid)))
+        .returning();
+      return row;
+    });
+
+    if (notFound) return res.status(404).json({ error: "Not found" });
+    if (forbidden) return res.status(403).json({ error: forbidden });
+    if (phoneConflict) return res.status(409).json({ error: "Número de telefone já cadastrado" });
 
     return res.json(updated);
   } catch (err) {

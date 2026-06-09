@@ -166,23 +166,26 @@ type ResolvedHousehold = {
  *
  * Resolution rules (strict, fail-closed):
  *
- * 1. Member matches take absolute priority over contact matches.
- *    Members are household-owned (created by admins); a contact registration
- *    in another household cannot override a member-based ownership claim.
- *    - Exactly one household has a member with this phone → route there.
- *    - Multiple member households → unresolvable (fail-closed, discard).
- *      Routing ambiguous member ownership risks cross-tenant misdelivery, so
- *      we prefer safe rejection regardless of tier.
+ * Member and contact matches are treated as equals in the household-resolution
+ * pool. A phone that appears in ANY combination of member or contact records
+ * across more than one household is ambiguous and is discarded.
  *
- * 2. No member matches → fall back to contact matches.
- *    - Exactly one household has a contact with this phone → route there.
- *    - Multiple contact households → unresolvable (fail-closed, discard).
+ * - Exactly one household matches the phone (via member and/or contact records)
+ *   → route there.
+ * - Zero households match → unknown sender (return null).
+ * - More than one household matches → unresolvable (fail-closed, return null).
  *
- * The data entry layer (POST /contacts, PATCH /contacts/:id, POST /contacts/bulk)
- * enforces that phone numbers must be unique across all households. Together,
- * those two controls prevent new collisions from being created in the first
- * place, so the fail-closed path here should only be reached for legacy data
- * that predates the uniqueness constraint.
+ * Member matches never override contact matches from other households.
+ * Giving members absolute priority would let an attacker with admin access to
+ * their own household claim an arbitrary phone number as a member and silently
+ * hijack inbound messages that legitimately belong to another household's
+ * contact. Treating both sources equally prevents that attack: if the phone
+ * is already registered as a contact in household B, adding it as a member in
+ * household A produces a two-household collision and the message is discarded.
+ *
+ * The data entry layer enforces cross-household phone uniqueness for both
+ * members and contacts, so the fail-closed path here should only be reached
+ * for legacy data that predates that constraint.
  *
  * Returns null when no match exists or when resolution is ambiguous.
  */
@@ -220,39 +223,29 @@ async function resolveHousehold(
     (m) => m.phone && normalisePhone(m.phone) === phoneNorm,
   );
 
-  // ── Priority 1: member matches — authoritative, wins over any contact match ─
-  if (matchedMembers.length > 0) {
-    const memberHouseholdIds = new Set(matchedMembers.map((m) => m.household_id));
+  // ── Merge member and contact households into one pool ─────────────────────
+  // Both sources have equal weight. A phone registered as a member in
+  // household A and a contact in household B produces a collision just as
+  // two contact registrations would.
+  const allMatchingHouseholdIds = new Set([
+    ...matchedMembers.map((m) => m.household_id),
+    ...matchedContacts.map((c) => c.household_id),
+  ]);
 
-    if (memberHouseholdIds.size === 1) {
-      // Unambiguous member ownership → route regardless of contact matches elsewhere.
-      return { householdId: [...memberHouseholdIds][0], matchedMembers, matchedContacts };
-    }
-
-    // Multiple households each claim this phone via a member record.
-    // Fail-closed: no routing guess, no tie-breaker.
-    log.warn(
-      { phone: phoneRaw, households: [...memberHouseholdIds] },
-      "Phone matched multiple member households — discarding to prevent cross-tenant misdelivery",
-    );
-    return null;
-  }
-
-  // ── Priority 2: contact-only matches ─────────────────────────────────────
-  if (matchedContacts.length === 0) {
+  if (allMatchingHouseholdIds.size === 0) {
     return null; // truly unknown sender
   }
 
-  const contactHouseholdIds = new Set(matchedContacts.map((c) => c.household_id));
-
-  if (contactHouseholdIds.size === 1) {
-    return { householdId: [...contactHouseholdIds][0], matchedMembers, matchedContacts };
+  if (allMatchingHouseholdIds.size === 1) {
+    const householdId = [...allMatchingHouseholdIds][0];
+    return { householdId, matchedMembers, matchedContacts };
   }
 
-  // Multiple households have this phone as a contact; fail-closed.
+  // Multiple households claim this phone via any combination of member/contact
+  // records. Fail-closed: no routing guess, no tie-breaker.
   log.warn(
-    { phone: phoneRaw, households: [...contactHouseholdIds] },
-    "Phone matched multiple contact households — discarding to prevent cross-tenant misdelivery",
+    { phone: phoneRaw, households: [...allMatchingHouseholdIds] },
+    "Phone matched multiple households (members and/or contacts) — discarding to prevent cross-tenant misdelivery",
   );
   return null;
 }
@@ -305,11 +298,11 @@ export async function processInboundWAMessage(
   }
 
   // ── 4. Resolve household from sender phone ─────────────────────────────────
-  // Member registrations take absolute priority over contact registrations.
-  // All multi-household ambiguity is rejected (fail-closed) — no tie-breaking.
-  // Duplicate phone registrations across households are possible (the contacts
-  // API does not enforce cross-household uniqueness to avoid leaking tenant
-  // presence). If a collision occurs, ingestion is discarded (multi_household).
+  // Member and contact phone matches have equal weight. Any collision across
+  // households (member vs member, contact vs contact, or member vs contact)
+  // is rejected fail-closed (multi_household). The data entry layer enforces
+  // cross-household phone uniqueness for both members and contacts, so this
+  // path is reached only for legacy data predating that constraint.
   const resolved = await resolveHousehold(phoneNorm, log, phoneRaw);
 
   if (!resolved) {
