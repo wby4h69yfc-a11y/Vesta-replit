@@ -306,10 +306,19 @@ router.post("/mobile-auth/logout", async (req: Request, res: Response) => {
  * WA-native onboarding flow) for a full web session cookie.
  *
  * Security guarantees:
- *   - Token is single-use: cleared on first successful claim.
+ *   - Token is single-use: cleared after a short grace window.
  *   - Token expires 30 minutes after creation (set by wa-onboarding-handler).
  *   - Returns 404 for unknown tokens (same as expired — no timing oracle).
+ *   - Grace window (10 s): if the same token is claimed a second time within
+ *     10 seconds of the first claim (e.g. double-tap or two-tab scenario) the
+ *     server creates a fresh session for the same user and returns 200, so the
+ *     user lands in the app instead of seeing a login error.
+ *   - After the grace window the token row is invalidated (magic_token → null).
  */
+
+/** Milliseconds a claimed token stays alive for duplicate-claim recovery. */
+const MAGIC_CLAIM_GRACE_MS = 10_000;
+
 router.post("/auth/claim-magic", async (req: Request, res: Response) => {
   const { token } = req.body as { token?: string };
   if (!token || typeof token !== "string") {
@@ -334,11 +343,42 @@ router.post("/auth/claim-magic", async (req: Request, res: Response) => {
       return;
     }
 
-    // Invalidate token immediately (single-use)
-    await db
-      .update(waOnboardingSessionsTable)
-      .set({ magic_token: null, magic_token_expires_at: null })
-      .where(eq(waOnboardingSessionsTable.id, session.id));
+    const now = new Date();
+
+    // --- Grace-window: token was already claimed but we are within the window ---
+    if (session.magic_token_claimed_at !== null) {
+      const ageMs = now.getTime() - session.magic_token_claimed_at.getTime();
+      if (ageMs <= MAGIC_CLAIM_GRACE_MS) {
+        // Duplicate claim within grace window — issue another session for the
+        // same user so both tabs/taps land in the app.
+        req.log.info(
+          { phone: session.phone, ageMs },
+          "WA magic-link duplicate claim within grace window — issuing extra session",
+        );
+      } else {
+        // Grace window expired — treat as an already-used token.
+        res.status(404).json({ error: "Token not found or expired" });
+        return;
+      }
+    } else {
+      // --- First claim: stamp claimed_at and schedule token invalidation ---
+      await db
+        .update(waOnboardingSessionsTable)
+        .set({ magic_token_claimed_at: now })
+        .where(eq(waOnboardingSessionsTable.id, session.id));
+
+      // Invalidate the token row after the grace window so subsequent attempts
+      // beyond the window get a 404. We run this in a non-blocking setTimeout
+      // so the current request completes immediately.
+      setTimeout(() => {
+        db.update(waOnboardingSessionsTable)
+          .set({ magic_token: null, magic_token_expires_at: null, magic_token_claimed_at: null })
+          .where(eq(waOnboardingSessionsTable.id, session.id))
+          .catch(() => {
+            // Best-effort: token row will eventually expire via magic_token_expires_at
+          });
+      }, MAGIC_CLAIM_GRACE_MS);
+    }
 
     // Load the user that was created during WA onboarding
     const [user] = await db

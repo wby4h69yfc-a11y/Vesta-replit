@@ -39,6 +39,13 @@ export const waOnboardingSessionsTable = pgTable(
     /** One-time token for the web magic-link claim */
     magic_token: text("magic_token"),
     magic_token_expires_at: timestamp("magic_token_expires_at", { withTimezone: true }),
+    /**
+     * Set to the timestamp of the first successful claim.
+     * Kept alive for a short grace window so a double-tap or two-tab open
+     * within that window returns 200 instead of 404.
+     * Token is nulled only after the grace window expires.
+     */
+    magic_token_claimed_at: timestamp("magic_token_claimed_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     /** Set when the ~23h re-engagement reminder has been sent to this phone. */

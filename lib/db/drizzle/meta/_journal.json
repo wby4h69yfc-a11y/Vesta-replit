@@ -57,6 +57,13 @@
       "when": 1749513600000,
       "tag": "0007_inbox_group_id",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781042600000,
+      "tag": "0008_magic_token_claimed_at",
+      "breakpoints": true
     }
   ]
 }
