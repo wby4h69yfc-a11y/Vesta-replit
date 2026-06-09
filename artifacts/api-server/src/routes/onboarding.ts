@@ -70,7 +70,7 @@ router.post("/onboarding/whatsapp-connect", async (req: Request, res: Response) 
   const rawFrom = process.env.TWILIO_WHATSAPP_FROM ?? "";
   const waNumber = rawFrom.replace(/^whatsapp:/i, "").replace(/\D/g, "");
 
-  req.log.info({ userId, token }, "WhatsApp onboarding token created");
+  req.log.info({ userId }, "WhatsApp onboarding token created");
 
   res.json({
     token,

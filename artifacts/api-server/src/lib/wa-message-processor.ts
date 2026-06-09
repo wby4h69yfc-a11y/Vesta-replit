@@ -276,10 +276,10 @@ export async function processInboundWAMessage(
     // that actually sent the token — used by /onboarding/complete.
     const userId = markTokenVerified(bodyText, phoneRaw);
     if (userId) {
-      log.info({ userId, token: bodyText, phone: phoneRaw }, "WhatsApp onboarding token verified");
+      log.info({ userId, phone: phoneRaw }, "WhatsApp onboarding token verified");
       return { kind: "token_verified", userId, phone: phoneRaw };
     }
-    log.warn({ token: bodyText }, "WhatsApp token not found or expired");
+    log.warn({ phone: phoneRaw }, "WhatsApp token not found or expired");
     return { kind: "token_expired", phone: phoneRaw };
   }
 
