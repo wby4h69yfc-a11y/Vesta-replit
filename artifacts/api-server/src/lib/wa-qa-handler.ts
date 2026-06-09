@@ -207,7 +207,11 @@ Tipos:
 - inbox_pending: o que está no inbox, mensagens para revisar, pendências
 Responda APENAS com o JSON, sem markdown.`;
 
-async function detectWithLLM(text: string, log: Logger): Promise<QuestionType | null> {
+type LLMClassification =
+  | { kind: "classified"; type: QuestionType | null }
+  | { kind: "error" };
+
+async function detectWithLLM(text: string, log: Logger): Promise<LLMClassification> {
   try {
     const resp = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -220,7 +224,9 @@ async function detectWithLLM(text: string, log: Logger): Promise<QuestionType | 
     const raw = (resp.choices[0]?.message?.content ?? "").trim();
     const json = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
     const parsed = JSON.parse(json) as { is_question?: boolean; type?: string };
-    if (!parsed.is_question || !parsed.type || parsed.type === "other") return null;
+    if (!parsed.is_question || !parsed.type || parsed.type === "other") {
+      return { kind: "classified", type: null };
+    }
     const valid: QuestionType[] = [
       "agenda_today",
       "agenda_tomorrow",
@@ -228,10 +234,13 @@ async function detectWithLLM(text: string, log: Logger): Promise<QuestionType | 
       "tasks_open",
       "inbox_pending",
     ];
-    return valid.includes(parsed.type as QuestionType) ? (parsed.type as QuestionType) : null;
+    const qType = valid.includes(parsed.type as QuestionType)
+      ? (parsed.type as QuestionType)
+      : null;
+    return { kind: "classified", type: qType };
   } catch (err) {
-    log.warn({ err }, "wa-qa: LLM classification failed — falling through to ingestion");
-    return null;
+    log.warn({ err }, "wa-qa: LLM call failed");
+    return { kind: "error" };
   }
 }
 
@@ -487,13 +496,24 @@ export async function handleQuestionIntent(
   // 1. Keyword fast-path — no network call
   let qType = detectQuestionKeyword(text);
 
-  // 2. LLM fallback — only when text has a question signal but keyword missed
+  // 2. LLM fallback — only when text carries a question signal but keyword missed
   if (!qType) {
-    const mightBeQuestion = /\?|^(o\s*(que|q)\b|qual\b|quai?s?\b|me\s*(diz|conta|mostra)\b|tenho\b|tem\b)/i.test(
-      text.trim(),
-    );
+    const mightBeQuestion =
+      /\?|^(o\s*(que|q)\b|qual\b|quai?s?\b|me\s*(diz|conta|mostra)\b|tenho\b|tem\b)/i.test(
+        text.trim(),
+      );
     if (!mightBeQuestion) return undefined;
-    qType = await detectWithLLM(text, log);
+
+    const llmResult = await detectWithLLM(text, log);
+
+    if (llmResult.kind === "error") {
+      // LLM was unavailable. The message looked like a question, so we owe the
+      // admin a response rather than silently creating a spurious inbox item.
+      log.warn({ householdId }, "wa-qa: LLM unavailable for likely-question — sending graceful error reply");
+      return { reply: "⚠️ Não consegui processar sua pergunta agora. Tente de novo em instantes." };
+    }
+
+    qType = llmResult.type; // null means LLM determined: not a question
   }
 
   if (!qType) return undefined;
