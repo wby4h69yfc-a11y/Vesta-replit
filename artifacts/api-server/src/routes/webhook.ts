@@ -389,6 +389,14 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
         break;
       }
 
+      case "question_answered":
+        void sendWhatsApp(outcome.phone, outcome.reply);
+        req.log.info(
+          { householdId: outcome.householdId, preview: outcome.reply.substring(0, 80) },
+          "Q&A reply sent to admin via WhatsApp",
+        );
+        break;
+
       case "unknown_sender":
       case "multi_household":
       case "duplicate":

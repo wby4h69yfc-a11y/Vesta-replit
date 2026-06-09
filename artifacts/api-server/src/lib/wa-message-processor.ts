@@ -31,6 +31,7 @@ import { handleApprovalResponse } from "./wa-approval-handler";
 import { recordPrompt } from "./wa-prompt-store";
 import { detectPatternsForHousehold } from "./pattern-detector";
 import { isConsentActive } from "./whatsapp";
+import { handleQuestionIntent } from "./wa-qa-handler";
 
 /** Payload shape normalised by the webhook handler before calling us. */
 export interface InboundWAMessage {
@@ -78,6 +79,7 @@ export type ProcessOutcome =
   | { kind: "avoid_cancelled"; contactId: number; contactName: string; householdId: number; phone: string }
   | { kind: "promoted_to_preferred"; contactId: number; contactName: string; householdId: number; phone: string }
   | { kind: "suggest_preferred_declined"; contactId: number; contactName: string; householdId: number; phone: string }
+  | { kind: "question_answered"; reply: string; householdId: number; phone: string }
   | {
       kind: "ingested";
       inboxItemId: number;
@@ -586,6 +588,21 @@ export async function processInboundWAMessage(
           }
         }
       }
+    }
+  }
+
+  // ── 4.57. Conversational Q&A — admin questions about household data ─────────
+  // Intercept recognised questions (agenda, tasks, inbox) from the household
+  // admin and reply with live data instead of routing to the ingestion pipeline.
+  // Non-question messages return undefined here and fall through normally.
+  if (bodyText && senderIsAdmin) {
+    const qaResult = await handleQuestionIntent(bodyText, householdId, log);
+    if (qaResult) {
+      log.info(
+        { householdId, phone: phoneRaw, preview: bodyText.substring(0, 60) },
+        "wa-qa: answered household question — skipping ingestion",
+      );
+      return { kind: "question_answered", reply: qaResult.reply, householdId, phone: phoneRaw };
     }
   }
 
