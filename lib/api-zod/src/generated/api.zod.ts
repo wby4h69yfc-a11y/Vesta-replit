@@ -421,6 +421,10 @@ export const ApproveActionBody = zod.object({
     .string()
     .nullish()
     .describe("Member ID to assign as task owner on approval"),
+  provider_contact_id: zod
+    .number()
+    .nullish()
+    .describe("Contact ID of the provider to attach to the created task"),
 });
 
 export const ApproveActionResponse = zod.object({
@@ -611,6 +615,15 @@ export const ListActionCascadesResponse = zod.array(
  */
 export const ApproveCascadeAllParams = zod.object({
   id: zod.coerce.number(),
+});
+
+export const ApproveCascadeAllBody = zod.object({
+  provider_contact_id: zod
+    .number()
+    .nullish()
+    .describe(
+      "Contact ID of the provider to attach to service tasks created by this cascade",
+    ),
 });
 
 export const ApproveCascadeAllResponse = zod.object({

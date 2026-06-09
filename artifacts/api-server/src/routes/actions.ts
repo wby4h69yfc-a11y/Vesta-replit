@@ -60,7 +60,8 @@ router.post("/actions/:id/approve", async (req, res) => {
     let insertedTaskId: number | null = null;
     if (action.type === "task" || action.type === "reminder" || action.type === "payment") {
       const pd = action.payment_data as { amount_cents?: number | null; payment_method?: string | null; due_date?: string | null } | null;
-      const suggestedOwner = (req.body as { suggested_owner?: string | null }).suggested_owner ?? null;
+      const suggestedOwner = (req.body as { suggested_owner?: string | null; provider_contact_id?: number | null }).suggested_owner ?? null;
+      const providerContactId = (req.body as { provider_contact_id?: number | null }).provider_contact_id ?? null;
       const ownerIdNum = suggestedOwner ? (parseInt(suggestedOwner, 10) || null) : null;
       const [insertedTask] = await db.insert(tasksTable).values({
         household_id:         hid,
@@ -74,6 +75,7 @@ router.post("/actions/:id/approve", async (req, res) => {
         payment_method:       pd?.payment_method ?? null,
         payment_due_date:     pd?.due_date ?? null,
         owner_id:             ownerIdNum,
+        provider_contact_id:  providerContactId,
       }).returning({ id: tasksTable.id });
       insertedTaskId = insertedTask?.id ?? null;
     }

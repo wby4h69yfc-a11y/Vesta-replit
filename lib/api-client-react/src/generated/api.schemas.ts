@@ -1066,10 +1066,17 @@ export interface CascadeBulkResult {
   dismissed?: number;
 }
 
+export interface CascadeApprovalBody {
+  /** Contact ID of the provider to attach to service tasks created by this cascade */
+  provider_contact_id?: number | null;
+}
+
 export interface ActionApproval {
   notes?: string;
   /** Member ID to assign as task owner on approval */
   suggested_owner?: string | null;
+  /** Contact ID of the provider to attach to the created task */
+  provider_contact_id?: number | null;
 }
 
 export interface ActionEdit {

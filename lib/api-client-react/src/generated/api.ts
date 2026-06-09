@@ -29,6 +29,7 @@ import type {
   CalendarEvent,
   CalendarEventInput,
   CalendarEventUpdate,
+  CascadeApprovalBody,
   CascadeBulkResult,
   CategoryCount,
   ComprovanteAttachResult,
@@ -2133,11 +2134,14 @@ export const getApproveCascadeAllUrl = (id: number) => {
 
 export const approveCascadeAll = async (
   id: number,
+  cascadeApprovalBody?: CascadeApprovalBody,
   options?: RequestInit,
 ): Promise<CascadeBulkResult> => {
   return customFetch<CascadeBulkResult>(getApproveCascadeAllUrl(id), {
     ...options,
     method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(cascadeApprovalBody),
   });
 };
 
@@ -2148,14 +2152,14 @@ export const getApproveCascadeAllMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof approveCascadeAll>>,
     TError,
-    { id: number },
+    { id: number; data: BodyType<CascadeApprovalBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof approveCascadeAll>>,
   TError,
-  { id: number },
+  { id: number; data: BodyType<CascadeApprovalBody> },
   TContext
 > => {
   const mutationKey = ["approveCascadeAll"];
@@ -2169,11 +2173,11 @@ export const getApproveCascadeAllMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof approveCascadeAll>>,
-    { id: number }
+    { id: number; data: BodyType<CascadeApprovalBody> }
   > = (props) => {
-    const { id } = props ?? {};
+    const { id, data } = props ?? {};
 
-    return approveCascadeAll(id, requestOptions);
+    return approveCascadeAll(id, data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -2182,7 +2186,7 @@ export const getApproveCascadeAllMutationOptions = <
 export type ApproveCascadeAllMutationResult = NonNullable<
   Awaited<ReturnType<typeof approveCascadeAll>>
 >;
-
+export type ApproveCascadeAllMutationBody = BodyType<CascadeApprovalBody>;
 export type ApproveCascadeAllMutationError = ErrorType<unknown>;
 
 /**
@@ -2195,14 +2199,14 @@ export const useApproveCascadeAll = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof approveCascadeAll>>,
     TError,
-    { id: number },
+    { id: number; data: BodyType<CascadeApprovalBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof approveCascadeAll>>,
   TError,
-  { id: number },
+  { id: number; data: BodyType<CascadeApprovalBody> },
   TContext
 > => {
   return useMutation(getApproveCascadeAllMutationOptions(options));

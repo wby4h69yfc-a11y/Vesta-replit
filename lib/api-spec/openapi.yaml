@@ -507,6 +507,12 @@ paths:
           required: true
           schema:
             type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CascadeApprovalBody"
       responses:
         "200":
           description: Approved
@@ -2678,6 +2684,14 @@ components:
           type: string
           format: date-time
 
+    CascadeApprovalBody:
+      type: object
+      properties:
+        provider_contact_id:
+          type: integer
+          nullable: true
+          description: Contact ID of the provider to attach to service tasks created by this cascade
+
     ActionApproval:
       type: object
       properties:
@@ -2687,6 +2701,10 @@ components:
           type: string
           nullable: true
           description: Member ID to assign as task owner on approval
+        provider_contact_id:
+          type: integer
+          nullable: true
+          description: Contact ID of the provider to attach to the created task
 
     ActionEdit:
       type: object

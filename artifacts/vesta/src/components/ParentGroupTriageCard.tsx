@@ -248,7 +248,7 @@ export default function ParentGroupTriageCard({ cascade }: { cascade: ActionCasc
               </button>
               <div className="w-px" style={{ background: "rgba(14,59,46,0.08)" }} />
               <button
-                onClick={() => approveAll.mutate({ id: cascade.id })}
+                onClick={() => approveAll.mutate({ id: cascade.id, data: {} })}
                 disabled={approveAll.isPending || dismissAll.isPending}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors hover:bg-green-50 disabled:opacity-50"
                 style={{ color: V.primary }}

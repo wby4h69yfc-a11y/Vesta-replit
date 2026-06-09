@@ -36,9 +36,10 @@ type SubItemProps = {
   action: ActionCascadeWithActions["actions"][number];
   cascadeId: number;
   onMutate: () => void;
+  selectedProviderId?: number | null;
 };
 
-function SubItem({ action, onMutate, index }: SubItemProps & { index: number }) {
+function SubItem({ action, onMutate, index, selectedProviderId }: SubItemProps & { index: number }) {
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -103,7 +104,7 @@ function SubItem({ action, onMutate, index }: SubItemProps & { index: number }) 
             <X className="w-3.5 h-3.5" style={{ color: V.muted }} />
           </button>
           <button
-            onClick={() => approve.mutate({ id: action.id, data: {} })}
+            onClick={() => approve.mutate({ id: action.id, data: { provider_contact_id: selectedProviderId ?? null } })}
             disabled={approve.isPending || dismiss.isPending}
             className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-green-50 disabled:opacity-50"
             style={{ background: V.brandSoft }}
@@ -122,6 +123,7 @@ export default function CascadeCard({ cascade }: { cascade: ActionCascadeWithAct
   const { toast } = useToast();
   const [showDismissConfirm, setShowDismissConfirm] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [selectedProviderId, setSelectedProviderId] = useState<number | null>(null);
 
   const pendingActions  = cascade.actions.filter((a) => a.status === "pending");
   const resolvedActions = cascade.actions.filter((a) => a.status !== "pending");
@@ -258,32 +260,46 @@ export default function CascadeCard({ cascade }: { cascade: ActionCascadeWithAct
       {/* Preferred / backup provider reminder — servicos cascade */}
       {!collapsed && hasServicos && preferredProviders && preferredProviders.length > 0 && (
         <div className="mx-3 mb-2 space-y-1.5">
-          {preferredProviders.slice(0, 2).map((p) => (
-            <div
-              key={p.id}
-              className="px-3 py-2 rounded-xl flex items-center gap-2"
-              style={{ background: "#F0FDF4", border: "1px solid #BBF7D0" }}
-            >
-              <Star className="w-3.5 h-3.5 shrink-0 text-green-600 fill-green-600" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold truncate" style={{ color: "#166534" }}>
-                  {p.name}
-                  {p.household_rating ? ` ${"⭐".repeat(Math.min(5, p.household_rating))}` : ""}
-                </p>
-                <p className="text-[10px] leading-tight" style={{ color: "#166534", opacity: 0.75 }}>
-                  {p.reliability_status === "preferred" ? "Preferido" : "Backup"}
-                  {p.service_category ? ` · ${p.service_category}` : ""}
-                  {p.last_price_range ? ` · ${p.last_price_range}` : ""}
-                </p>
-              </div>
-              <span
-                className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
-                style={{ background: "#DCFCE7", color: "#166534" }}
+          {preferredProviders.slice(0, 2).map((p) => {
+            const isSelected = selectedProviderId === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setSelectedProviderId(isSelected ? null : p.id)}
+                className="w-full text-left px-3 py-2 rounded-xl flex items-center gap-2 transition-all"
+                style={{
+                  background: isSelected ? "#DCFCE7" : "#F0FDF4",
+                  border: isSelected ? "1.5px solid #16A34A" : "1px solid #BBF7D0",
+                }}
               >
-                Chamar de novo?
-              </span>
-            </div>
-          ))}
+                <Star
+                  className="w-3.5 h-3.5 shrink-0"
+                  style={{ color: isSelected ? "#15803D" : "#16A34A", fill: isSelected ? "#15803D" : "#16A34A" }}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold truncate" style={{ color: "#166534" }}>
+                    {p.name}
+                    {p.household_rating ? ` ${"⭐".repeat(Math.min(5, p.household_rating))}` : ""}
+                  </p>
+                  <p className="text-[10px] leading-tight" style={{ color: "#166534", opacity: 0.75 }}>
+                    {p.reliability_status === "preferred" ? "Preferido" : "Backup"}
+                    {p.service_category ? ` · ${p.service_category}` : ""}
+                    {p.last_price_range ? ` · ${p.last_price_range}` : ""}
+                  </p>
+                </div>
+                <span
+                  className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 transition-colors"
+                  style={{
+                    background: isSelected ? "#15803D" : "#DCFCE7",
+                    color: isSelected ? "#fff" : "#166534",
+                  }}
+                >
+                  {isSelected ? "✓ Selecionado" : "Chamar de novo?"}
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -310,6 +326,7 @@ export default function CascadeCard({ cascade }: { cascade: ActionCascadeWithAct
               cascadeId={cascade.id}
               index={i + 1}
               onMutate={() => {}}
+              selectedProviderId={selectedProviderId}
             />
           ))}
         </div>
@@ -362,7 +379,7 @@ export default function CascadeCard({ cascade }: { cascade: ActionCascadeWithAct
               </button>
               <div className="w-px" style={{ background: V.border }} />
               <button
-                onClick={() => approveAll.mutate({ id: cascade.id })}
+                onClick={() => approveAll.mutate({ id: cascade.id, data: { provider_contact_id: selectedProviderId ?? null } })}
                 disabled={isBusy}
                 className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
                 style={{ color: V.brand }}

@@ -72,6 +72,7 @@ router.post("/actions/cascades/:id/approve-all", async (req, res) => {
   try {
     const hid = getHouseholdId(req);
     const cascadeId = parseInt(req.params.id, 10);
+    const providerContactId = (req.body as { provider_contact_id?: number | null })?.provider_contact_id ?? null;
 
     const [cascade] = await db
       .select()
@@ -145,6 +146,7 @@ router.post("/actions/cascades/:id/approve-all", async (req, res) => {
           payment_amount_cents: pd?.amount_cents ?? null,
           payment_method:       pd?.payment_method ?? null,
           payment_due_date:     pd?.due_date ?? null,
+          provider_contact_id:  providerContactId ?? null,
         }).returning({ id: tasksTable.id });
         insertedTaskId = insertedTask?.id ?? null;
       }
