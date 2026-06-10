@@ -547,7 +547,15 @@ async function handleInviteNameStep(
 
     await tx
       .update(membersTable)
-      .set({ phone: phoneNorm, user_id: user.id, name: finalName })
+      .set({
+        phone: phoneNorm,
+        user_id: user.id,
+        name: finalName,
+        // The invitee physically sent a WA message from this number — that is
+        // proof-of-control. Mark the phone as verified so it participates in
+        // inbound routing as a first-class identity.
+        phone_verified: true,
+      })
       .where(eq(membersTable.id, claimedInvite.member_id));
   });
 

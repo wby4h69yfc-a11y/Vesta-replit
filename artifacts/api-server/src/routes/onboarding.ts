@@ -209,38 +209,29 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
               sql`SELECT pg_advisory_xact_lock(hashtext('wa_phone'::text), hashtext(${phoneNorm}::text))`,
             );
 
-            // Check contacts in other households.
-            const [cc] = await tx
-              .select({ id: contactsTable.id })
-              .from(contactsTable)
+            // Check ONLY members in other households — contacts are intentionally
+            // excluded. A pre-existing contact record for this phone in another
+            // household must not block the victim's legitimate onboarding (that
+            // would be a DoS attack by a household admin who pre-claimed the
+            // number). Contacts are external parties (diaristas, providers); they
+            // do not carry the same verified-identity weight as member records.
+            const [cm] = await tx
+              .select({ id: membersTable.id })
+              .from(membersTable)
               .where(
                 and(
-                  sql`regexp_replace(${contactsTable.phone}, '\\D', '', 'g') = ${phoneNorm}`,
-                  ne(contactsTable.household_id, householdId),
+                  sql`regexp_replace(${membersTable.phone}, '\\D', '', 'g') = ${phoneNorm}`,
+                  ne(membersTable.household_id, householdId),
                 ),
               )
               .limit(1);
 
-            // Check members in other households.
-            const [cm] = !cc
-              ? await tx
-                  .select({ id: membersTable.id })
-                  .from(membersTable)
-                  .where(
-                    and(
-                      sql`regexp_replace(${membersTable.phone}, '\\D', '', 'g') = ${phoneNorm}`,
-                      ne(membersTable.household_id, householdId),
-                    ),
-                  )
-                  .limit(1)
-              : [undefined];
-
-            if (cc || cm) {
-              // Another household has already claimed this verified phone.
-              // Log for ops to investigate but don't block the user's onboarding.
+            if (cm) {
+              // Another household's verified member has already claimed this phone.
+              // Log for ops visibility but do not block the user's onboarding.
               req.log.warn(
                 { householdId },
-                "onboarding/complete: verified phone already claimed by another household — inserting member without phone",
+                "onboarding/complete: verified phone already claimed by another household member — inserting member without phone",
               );
               safePhone = null;
             } else {

@@ -597,19 +597,15 @@ async function resolveHousehold(
   log: Logger,
   phoneRaw: string,
 ): Promise<ResolvedHousehold> {
-  // Routing is based SOLELY on members whose phone was verified through the
-  // WhatsApp onboarding token flow (phone_verified = true).
+  // ── Tier 1: verified members (phone_verified = true) ──────────────────────
+  // Only members whose phone was proven through the WhatsApp onboarding token
+  // flow or WA-invite flow are authoritative. Admin-set phones default to
+  // false and are NOT used here.
   //
-  // contacts.phone is intentionally excluded from routing decisions:
-  // any household admin can write arbitrary unverified phones into contacts,
-  // so treating contacts.phone as a routing source would let an attacker
-  // pre-claim a victim's unclaimed number by adding it as a contact in their
-  // own household, hijacking inbound WA messages for that number.
-  //
-  // Contacts are looked up AFTER routing succeeds, scoped to the resolved
-  // household, so the sender can still be identified/matched to a known
-  // contact for consent flows, ratings, etc. — without the cross-household
-  // attack surface.
+  // Tier-1 routing ALWAYS takes priority over tier-2 contact routing. This
+  // ensures that once a user completes onboarding (earning phone_verified=true)
+  // their messages route to their own household even if an attacker had
+  // previously registered their number in a contact record elsewhere.
   const verifiedMembers = await db
     .select({
       name: membersTable.name,
@@ -625,34 +621,81 @@ async function resolveHousehold(
     (m) => m.phone && normalisePhone(m.phone) === phoneNorm,
   );
 
-  const allMatchingHouseholdIds = new Set(matchedMembers.map((m) => m.household_id));
+  if (matchedMembers.length > 0) {
+    const memberHouseholds = new Set(matchedMembers.map((m) => m.household_id));
 
-  if (allMatchingHouseholdIds.size === 0) {
+    if (memberHouseholds.size === 1) {
+      const householdId = [...memberHouseholds][0]!;
+      return { kind: "found", householdId, matchedMembers };
+    }
+
+    // Multiple verified-member households — should be prevented by the
+    // cross-household uniqueness constraint, but fail-closed if it occurs.
+    const householdIds = [...memberHouseholds];
+    log.warn(
+      { households: householdIds },
+      "Verified member phone matched multiple households — discarding to prevent cross-tenant misdelivery",
+    );
+    return { kind: "multi_household", householdIds };
+  }
+
+  // ── Tier 2: contacts (fallback for external senders such as diaristas) ────
+  // Contacts represent external parties (providers, service workers) who are
+  // not household members. Admin-set contact phones are inherently unverified
+  // by any ownership proof, so contact routing is weaker than member routing.
+  //
+  // However, removing contacts from routing would break the core diarista
+  // consent/rating/inbox flow. We keep contacts as a fallback tier ONLY when
+  // no verified member matches, which means once a victim completes onboarding
+  // (tier-1 identity), contact pre-claims can no longer override their routing.
+  //
+  // Contacts are protected by: (a) admin-only phone writes, (b) cross-household
+  // phone uniqueness enforcement, and (c) member-first priority here.
+  const allContacts = await db
+    .select({
+      id: contactsTable.id,
+      name: contactsTable.name,
+      phone: contactsTable.phone,
+      household_id: contactsTable.household_id,
+      consent_status: contactsTable.consent_status,
+      consent_check_in_due_at: contactsTable.consent_check_in_due_at,
+      created_at: contactsTable.created_at,
+    })
+    .from(contactsTable);
+
+  const matchedContacts: MatchedContact[] = allContacts.filter(
+    (c) => c.phone && normalisePhone(c.phone) === phoneNorm,
+  );
+
+  const contactHouseholds = new Set(matchedContacts.map((c) => c.household_id));
+
+  if (contactHouseholds.size === 0) {
     return { kind: "unknown" }; // truly unknown sender — route to onboarding
   }
 
-  if (allMatchingHouseholdIds.size === 1) {
-    const householdId = [...allMatchingHouseholdIds][0]!;
-    return { kind: "found", householdId, matchedMembers };
+  if (contactHouseholds.size === 1) {
+    const householdId = [...contactHouseholds][0]!;
+    // matchedContacts is intentionally NOT included in the return: enrichment
+    // (consent flows, ratings) is always done via resolveContactsForHousehold
+    // so the code path is uniform regardless of which tier produced the routing.
+    return { kind: "found", householdId, matchedMembers: [] };
   }
 
-  // Multiple households claim this verified phone — should not happen in
-  // practice (cross-household uniqueness is enforced at write time), but we
-  // fail-closed rather than guessing.
-  const householdIds = [...allMatchingHouseholdIds];
+  // Multiple contact households — fail-closed.
+  const householdIds = [...contactHouseholds];
   log.warn(
     { households: householdIds },
-    "Verified phone matched multiple households — discarding to prevent cross-tenant misdelivery",
+    "Contact phone matched multiple households — discarding to prevent cross-tenant misdelivery",
   );
   return { kind: "multi_household", householdIds };
 }
 
 /**
- * After household routing is resolved via verified members, look up any
- * contacts registered in that household whose stored phone matches the
- * inbound sender. This provides contact enrichment (name, consent state,
- * ratings) without exposing contacts.phone to the cross-household routing
- * attack surface.
+ * After household routing is resolved, look up any contacts registered in
+ * that specific household whose stored phone matches the inbound sender.
+ * Contacts are never used for routing (see resolveHousehold); this lookup
+ * is for enrichment only — inbox display name, consent flows, ratings, etc.
+ * Scoping to the resolved household prevents cross-tenant contact queries.
  */
 async function resolveContactsForHousehold(
   phoneNorm: string,
