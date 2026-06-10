@@ -9,7 +9,7 @@ import {
   membersTable,
 } from "@workspace/db";
 import { eq, and, sql, lte, isNotNull, inArray, ne } from "drizzle-orm";
-import { getHouseholdId } from "../lib/tenant";
+import { getHouseholdId, getCallerRole } from "../lib/tenant";
 import { sendWhatsApp, resolveHouseholdAdminPhone } from "../lib/whatsapp";
 import {
   replyConsentRequest,
@@ -126,6 +126,18 @@ router.post("/contacts", async (req, res) => {
 
     if (!name || !category) return res.status(400).json({ error: "name and category are required" });
 
+    // Phone numbers on contacts feed directly into WhatsApp routing. Restrict
+    // phone creation to admins to prevent non-admin household members from
+    // pre-claiming arbitrary phone numbers as contact identities.
+    if (phone) {
+      const callerRole = await getCallerRole(req);
+      if (callerRole !== "admin") {
+        return res.status(403).json({
+          error: "Apenas administradores podem cadastrar contatos com número de telefone",
+        });
+      }
+    }
+
     const insertValues = {
       household_id: hid,
       name,
@@ -204,10 +216,22 @@ router.patch("/contacts/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid reliability_status" });
     }
 
+    // Phone numbers on contacts feed directly into WhatsApp routing. Restrict
+    // phone updates to admins to prevent non-admin household members from
+    // pre-claiming arbitrary phone numbers as contact identities.
+    const phoneChanging = phone !== undefined && phone !== null && phone !== "";
+    if (phoneChanging) {
+      const callerRole = await getCallerRole(req);
+      if (callerRole !== "admin") {
+        return res.status(403).json({
+          error: "Apenas administradores podem alterar o número de telefone de um contato",
+        });
+      }
+    }
+
     // When the phone is changing to a new non-empty value, atomically lock
     // the new number, verify it is not claimed by another household, then
     // update.  When the phone is unchanged or cleared, update directly.
-    const phoneChanging = phone !== undefined && phone !== null && phone !== "";
     const existingForPhone = phoneChanging
       ? await db
           .select({ p: contactsTable.phone })
