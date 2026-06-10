@@ -144,6 +144,73 @@ test("parseInboundPayload: missing From returns null", () => {
   assert.equal(result, null);
 });
 
+// ── Quoted-body stripping ──────────────────────────────────────────────────────
+
+test("parseInboundPayload: quoted lines (> prefix) are stripped from Body", () => {
+  const adapter = new WaBspTwilioAdapter();
+  const result = adapter.parseInboundPayload({
+    From: "whatsapp:+5511999990000",
+    To: "whatsapp:+15000000000",
+    Body: "> Mensagem original aqui\n> Mais texto citado\n\nMinha nova mensagem",
+    NumMedia: "0",
+  });
+  assert.ok(result);
+  assert.equal(result.body, "Minha nova mensagem");
+});
+
+test("parseInboundPayload: body with only quoted lines becomes empty string", () => {
+  const adapter = new WaBspTwilioAdapter();
+  const result = adapter.parseInboundPayload({
+    From: "whatsapp:+5511999990000",
+    To: "whatsapp:+15000000000",
+    Body: "> Só citação aqui",
+    NumMedia: "0",
+  });
+  assert.ok(result);
+  assert.equal(result.body, "");
+});
+
+test("parseInboundPayload: non-quoted body is unchanged by strip logic", () => {
+  const adapter = new WaBspTwilioAdapter();
+  const result = adapter.parseInboundPayload({
+    From: "whatsapp:+5511999990000",
+    To: "whatsapp:+15000000000",
+    Body: "Texto normal sem citação",
+    NumMedia: "0",
+  });
+  assert.ok(result);
+  assert.equal(result.body, "Texto normal sem citação");
+});
+
+test("parseInboundPayload: ButtonPayload wins over quoted body — strip is bypassed", () => {
+  // When ButtonPayload is present, effectiveBody uses ButtonPayload, not Body.
+  // The body quoting logic should not interfere with button tap replies.
+  const adapter = new WaBspTwilioAdapter();
+  const result = adapter.parseInboundPayload({
+    From: "whatsapp:+5511999990000",
+    To: "whatsapp:+15000000000",
+    Body: "> sim\nsim",       // would be "sim" after stripping, but ButtonPayload wins
+    ButtonPayload: "approve",
+    NumMedia: "0",
+  });
+  assert.ok(result);
+  assert.equal(result.body, "approve");
+});
+
+test("parseInboundPayload: inline > not at line start is preserved", () => {
+  // Only lines that START with "> " are quoted-message indicators.
+  // A ">" mid-sentence must not be stripped.
+  const adapter = new WaBspTwilioAdapter();
+  const result = adapter.parseInboundPayload({
+    From: "whatsapp:+5511999990000",
+    To: "whatsapp:+15000000000",
+    Body: "Prefiro X > Y porque é melhor",
+    NumMedia: "0",
+  });
+  assert.ok(result);
+  assert.equal(result.body, "Prefiro X > Y porque é melhor");
+});
+
 // ── sendInteractive ────────────────────────────────────────────────────────────
 
 test("sendInteractive: returns error result when Twilio credentials are not configured", async () => {

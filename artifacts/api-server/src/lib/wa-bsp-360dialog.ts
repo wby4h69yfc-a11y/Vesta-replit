@@ -207,6 +207,13 @@ export class WaBsp360DialogAdapter implements WaBspAdapter {
            * (e.g. "120363XXXXXXXX@g.us").  Absent for direct messages.
            */
           group_id?: string;
+          /**
+           * Reply-to context set by WhatsApp when the sender replies to an
+           * earlier message.  We intentionally ignore this field — the actual
+           * new message text is always in the top-level type/text/audio/etc.
+           * fields.  Including it here only to document the deliberate choice.
+           */
+          context?: unknown;
           text?: { body?: string };
           audio?: { id?: string; mime_type?: string };
           image?: { id?: string; mime_type?: string; caption?: string };
@@ -217,6 +224,14 @@ export class WaBsp360DialogAdapter implements WaBspAdapter {
             button_reply?: { id?: string; title?: string };
             list_reply?: { id?: string; title?: string };
           };
+          /** Emoji reaction to a previous message — not processable, silenced. */
+          reaction?: { emoji?: string };
+          /** Sticker — not processable, silenced. */
+          sticker?: { id?: string; mime_type?: string };
+          /** Location share — not processable, silenced. */
+          location?: { latitude?: number; longitude?: number };
+          /** vCard contact share — not processable, silenced. */
+          contacts?: unknown[];
         }>
       | undefined;
 
@@ -277,8 +292,29 @@ export class WaBsp360DialogAdapter implements WaBspAdapter {
       case "document":
         textBody = msg.document?.filename ?? "(documento recebido)";
         break;
+
+      // ── Silenced types — recognised but not actionable ──────────────────────
+      // Each returns null so the webhook handler drops the event without error.
+      // Logged at debug so engineers can see the traffic volume without noise.
+      case "reaction":
+        logger.debug({ type: "reaction", from }, "360Dialog reaction message — silenced");
+        return null;
+      case "sticker":
+        logger.debug({ type: "sticker", from }, "360Dialog sticker message — silenced");
+        return null;
+      case "location":
+        logger.debug({ type: "location", from }, "360Dialog location message — silenced");
+        return null;
+      case "contacts":
+        logger.debug({ type: "contacts", from }, "360Dialog contact-card message — silenced");
+        return null;
+      case "unsupported":
+        logger.debug({ type: "unsupported", from }, "360Dialog unsupported message — silenced");
+        return null;
+
       default:
-        // Unknown type (e.g. location, contacts, reaction) — ignore
+        // Completely unknown type — log at debug (not warn/error) to avoid alert fatigue.
+        logger.debug({ type: msg.type, from }, "360Dialog unknown message type — silenced");
         return null;
     }
 

@@ -299,6 +299,88 @@ test("parseInboundPayload: direct message (no group_id) sets groupId to null", (
   assert.equal(result.groupId, null);
 });
 
+// ── parseInboundPayload — silenced message types ───────────────────────────────
+
+/** Helper: build a minimal 360Dialog message fixture for a given type. */
+function makeTypeFixture(type: string, extra: Record<string, unknown> = {}) {
+  return {
+    contacts: [],
+    messages: [
+      {
+        from: "5511999990000",
+        id: `wamid.${type}001`,
+        type,
+        ...extra,
+      },
+    ],
+  };
+}
+
+test("parseInboundPayload: reaction type returns null (silenced)", () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const result = adapter.parseInboundPayload(
+    makeTypeFixture("reaction", { reaction: { emoji: "👍" } }),
+  );
+  assert.equal(result, null);
+});
+
+test("parseInboundPayload: sticker type returns null (silenced)", () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const result = adapter.parseInboundPayload(
+    makeTypeFixture("sticker", { sticker: { id: "sticker-media-id", mime_type: "image/webp" } }),
+  );
+  assert.equal(result, null);
+});
+
+test("parseInboundPayload: location type returns null (silenced)", () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const result = adapter.parseInboundPayload(
+    makeTypeFixture("location", { location: { latitude: -23.5505, longitude: -46.6333 } }),
+  );
+  assert.equal(result, null);
+});
+
+test("parseInboundPayload: contacts (vCard) type returns null (silenced)", () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const result = adapter.parseInboundPayload(
+    makeTypeFixture("contacts", { contacts: [{ name: { formatted_name: "João" } }] }),
+  );
+  assert.equal(result, null);
+});
+
+test("parseInboundPayload: unsupported type returns null (silenced)", () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const result = adapter.parseInboundPayload(makeTypeFixture("unsupported"));
+  assert.equal(result, null);
+});
+
+test("parseInboundPayload: completely unknown type returns null (silenced)", () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const result = adapter.parseInboundPayload(makeTypeFixture("ephemeral_note"));
+  assert.equal(result, null);
+});
+
+test("parseInboundPayload: context field present — text body still returned correctly", () => {
+  // When a sender replies to a previous message, 360Dialog adds a `context`
+  // field with the original message ID.  We ignore context and use only
+  // msg.text.body as the new message content.
+  const adapter = new WaBsp360DialogAdapter();
+  const result = adapter.parseInboundPayload({
+    contacts: [{ profile: { name: "Ana" }, wa_id: "5511888880001" }],
+    messages: [
+      {
+        from: "5511888880001",
+        id: "wamid.reply001",
+        type: "text",
+        text: { body: "Sim, pode confirmar" },
+        context: { from: "5511000000000", id: "wamid.original001" },
+      },
+    ],
+  });
+  assert.ok(result, "Expected non-null result for reply message");
+  assert.equal(result.body, "Sim, pode confirmar");
+});
+
 test("parseInboundPayload: group_id without @g.us suffix is rejected (groupId null)", () => {
   // Defensive: an unexpected group_id format should not be treated as a group JID.
   const adapter = new WaBsp360DialogAdapter();

@@ -207,9 +207,18 @@ export class WaBspTwilioAdapter implements WaBspAdapter {
     // We normalise button taps to their reply ID so the existing Sim/Não
     // handler receives the machine-readable token, not the display label.
     const buttonPayload = b.ButtonPayload;
-    const effectiveBody = buttonPayload
-      ? buttonPayload.trim()
-      : (b.Body ?? "").trim();
+
+    // Twilio embeds quoted/replied-to message lines with a leading "> " prefix.
+    // Strip those lines so the classifier only sees the sender's new content
+    // and never accidentally triggers approval logic from quoted "Sim"/"Não".
+    const rawBody = b.Body ?? "";
+    const strippedBody = rawBody
+      .split("\n")
+      .filter((line) => !line.startsWith("> "))
+      .join("\n")
+      .trim();
+
+    const effectiveBody = buttonPayload ? buttonPayload.trim() : strippedBody;
 
     return {
       from,
