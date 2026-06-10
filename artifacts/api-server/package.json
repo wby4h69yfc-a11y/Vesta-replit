@@ -8,7 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:unit": "node --import tsx/esm --test src/lib/whatsapp.test.ts src/lib/wa-qa-handler.test.ts src/lib/wa-group-trigger.test.ts src/lib/wa-group-mutation-gate.test.ts src/lib/proactive-scheduler.test.ts src/lib/wa-qa-session-store.test.ts src/lib/wa-bsp-twilio.test.ts src/lib/wa-bsp-360dialog.test.ts src/lib/whatsapp-interactive.test.ts"
+    "test:unit": "node --import tsx/esm --test src/lib/whatsapp.test.ts src/lib/wa-qa-handler.test.ts src/lib/wa-group-trigger.test.ts src/lib/wa-group-mutation-gate.test.ts src/lib/proactive-scheduler.test.ts src/lib/wa-qa-session-store.test.ts src/lib/wa-bsp-twilio.test.ts src/lib/wa-bsp-360dialog.test.ts src/lib/whatsapp-interactive.test.ts src/lib/wa-reply-composer.multi-household.test.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",

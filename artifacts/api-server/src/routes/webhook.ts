@@ -12,6 +12,7 @@ import {
   waConversationsTable,
   contactsTable,
   membersTable,
+  waMediaRateLimitsTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import {
@@ -38,6 +39,7 @@ import {
   replyAvoidCancelled,
   replyPreferredPromoted,
   replyPreferredDeclined,
+  replyMultiHouseholdConflict,
   replyGroupNonAdmin,
   replyGroupMutationBlocked,
   replyMutationProposal,
@@ -84,6 +86,40 @@ async function isKnownSender(senderPhone: string): Promise<boolean> {
     .where(sql`regexp_replace(${membersTable.phone}, '\\D', '', 'g') = ${phoneNorm}`)
     .limit(1);
   return member !== undefined;
+}
+
+/**
+ * Atomically records that a conflict-reply was sent to a normalised phone.
+ * Returns true when this is the FIRST send within the 1-hour dedup window
+ * (i.e. a reply SHOULD be sent), false when one was already sent.
+ *
+ * Reuses `wa_media_rate_limits` with a `"conflict:"` key prefix to avoid
+ * semantic collision with real media rate-limit rows.  The upsert is atomic
+ * so it is safe across all autoscaled instances.
+ */
+async function shouldSendConflictReply(phoneNorm: string): Promise<boolean> {
+  const dedupKey = `conflict:${phoneNorm}`;
+  const [row] = await db
+    .insert(waMediaRateLimitsTable)
+    .values({ phone_norm: dedupKey, count: 1, window_start: new Date() })
+    .onConflictDoUpdate({
+      target: waMediaRateLimitsTable.phone_norm,
+      set: {
+        count: sql`CASE
+          WHEN NOW() - ${waMediaRateLimitsTable.window_start} > INTERVAL '1 hour'
+          THEN 1
+          ELSE ${waMediaRateLimitsTable.count} + 1
+        END`,
+        window_start: sql`CASE
+          WHEN NOW() - ${waMediaRateLimitsTable.window_start} > INTERVAL '1 hour'
+          THEN NOW()
+          ELSE ${waMediaRateLimitsTable.window_start}
+        END`,
+      },
+    })
+    .returning({ count: waMediaRateLimitsTable.count });
+  // count === 1 means fresh window (first event) → send reply
+  return (row?.count ?? 1) === 1;
 }
 
 /** Resolve the primary production domain for app deep-links. */
@@ -481,8 +517,26 @@ async function handleWaOutcome(
       break;
     }
 
+    case "multi_household": {
+      // Normalise for dedup key (digits only, same as media rate-limit convention).
+      const norm = outcome.phone.replace(/\D/g, "");
+      const send = await shouldSendConflictReply(norm);
+      if (send) {
+        void sendWhatsApp(outcome.phone, replyMultiHouseholdConflict());
+        req.log.warn(
+          { householdIds: outcome.householdIds },
+          "Multi-household conflict reply sent",
+        );
+      } else {
+        req.log.info(
+          { householdIds: outcome.householdIds },
+          "Multi-household conflict reply suppressed — dedup window active",
+        );
+      }
+      break;
+    }
+
     case "unknown_sender":
-    case "multi_household":
     case "duplicate":
     case "empty_message":
     case "media_rate_limited":

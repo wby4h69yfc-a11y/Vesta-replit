@@ -75,7 +75,12 @@ export type ProcessOutcome =
   | { kind: "empty_message" }
   | { kind: "duplicate"; messageSid: string }
   | { kind: "unknown_sender"; phone: string }
-  | { kind: "multi_household"; phone: string }
+  /**
+   * The sender's phone is registered under two or more households.
+   * householdIds contains the clashing IDs for logging (no PII).
+   * No household data is exposed in the reply.
+   */
+  | { kind: "multi_household"; phone: string; householdIds: number[] }
   /** New-user WhatsApp-native onboarding — reply contains the next prompt. */
   | { kind: "wa_onboarding"; phone: string; reply: string }
   | { kind: "media_rate_limited"; phone: string }
@@ -556,6 +561,8 @@ type ResolvedHousehold = {
   kind: "unknown";
 } | {
   kind: "multi_household";
+  /** IDs of clashing households — for WARN logging only, no PII. */
+  householdIds: number[];
 };
 
 /**
@@ -640,11 +647,13 @@ async function resolveHousehold(
 
   // Multiple households claim this phone via any combination of member/contact
   // records. Fail-closed: no routing guess, no tie-breaker.
+  // Log household IDs only — no phone number (PII policy).
+  const householdIds = [...allMatchingHouseholdIds];
   log.warn(
-    { phone: phoneRaw, households: [...allMatchingHouseholdIds] },
+    { households: householdIds },
     "Phone matched multiple households (members and/or contacts) — discarding to prevent cross-tenant misdelivery",
   );
-  return { kind: "multi_household" };
+  return { kind: "multi_household", householdIds };
 }
 
 /**
@@ -714,8 +723,12 @@ export async function processInboundWAMessage(
   }
 
   if (resolved.kind === "multi_household") {
-    log.warn({ phone: phoneRaw }, "Multi-household collision — discarding");
-    return { kind: "multi_household", phone: phoneRaw };
+    // Log IDs only — no phone (PII policy). Phone already logged in resolveHousehold.
+    log.warn(
+      { households: resolved.householdIds },
+      "Multi-household collision — routing rejected, conflict reply queued",
+    );
+    return { kind: "multi_household", phone: phoneRaw, householdIds: resolved.householdIds };
   }
 
   const { householdId, matchedMembers, matchedContacts } = resolved;

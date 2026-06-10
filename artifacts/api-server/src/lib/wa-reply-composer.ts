@@ -527,6 +527,20 @@ export function replyVoiceConfirmInteractive(preview: string): InteractivePayloa
 }
 
 /**
+ * Sent when an inbound message's phone number is registered in two or more
+ * households, making routing ambiguous and unsafe.
+ *
+ * The reply is intentionally vague — it does not name any household — so no
+ * cross-household data leaks to the sender.
+ */
+export function replyMultiHouseholdConflict(): string {
+  return (
+    "⚠️ Seu número está associado a mais de um lar no Vesta.\n\n" +
+    "Acesse o app para resolver esse conflito ou entre em contato com o suporte."
+  );
+}
+
+/**
  * Sent when a preferred provider is relevant to a new task or cascade.
  */
 export function replyPreferredProviderSuggestion(
