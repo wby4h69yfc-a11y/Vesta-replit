@@ -10,10 +10,17 @@
  *   3. NOT create any inbox_items (routing is rejected before ingestion).
  *
  * Scenarios:
- *   A. Phone is member in two households          → conflict reply sent
- *   B. Phone is member in one + contact in other  → conflict reply sent
+ *   A. Phone is verified member in two households → conflict reply sent
+ *   B. Phone is an active contact in two households → conflict reply sent
  *   C. Second message in dedup window             → reply suppressed
  *   D. Phone matched to exactly one household     → no conflict reply (control)
+ *
+ * NOTE on the security model (Task #252 phone identity trust boundary):
+ *   resolveHousehold uses strict tier priority — tier-1 VERIFIED members
+ *   (phone_verified = true) always beat tier-2 contacts. Therefore:
+ *     • Seeded members must be phone_verified = true to participate in routing.
+ *     • A member+contact pair can NEVER be a conflict (the verified member
+ *       always wins), so scenario B exercises a contact-tier conflict instead.
  *
  * Strategy: direct DB setup via pg + form-POST to /api/webhook/whatsapp.
  * The Twilio HMAC check is bypassed in NODE_ENV !== "production".
@@ -50,9 +57,11 @@ async function seedMember(
   phone: string,
   role: "admin" | "member" = "member",
 ): Promise<void> {
+  // phone_verified = true so the member participates in tier-1 routing.
+  // Admin-set phones default to false and are NOT routable (Task #252).
   await db.query(
-    `INSERT INTO members (household_id, name, phone, role, relationship_type)
-     VALUES ($1, $2, $3, $4, 'adult')`,
+    `INSERT INTO members (household_id, name, phone, role, relationship_type, phone_verified)
+     VALUES ($1, $2, $3, $4, 'adult', true)`,
     [householdId, "Membro Teste", phone, role],
   );
 }
@@ -198,19 +207,22 @@ test.describe("Multi-household conflict reply", () => {
     expect(await countInboxItems(db, hhB)).toBe(beforeB);
   });
 
-  // ── B. Member in one + contact in other → conflict reply sent ─────────────────
+  // ── B. Active contact in two households → conflict reply sent ──────────────────
   //
-  // Phone is a member in household A and a contact in household B.
-  // The merged pool still resolves to 2 households → multi_household.
-  // Conflict reply must be sent.
+  // Under the tier-priority model a verified member ALWAYS beats a contact, so a
+  // member+contact pair can never be a conflict (the member wins). The remaining
+  // multi-household conflict at the contact tier is two active (pending/consented)
+  // contacts that share a phone across households. Cross-household phone uniqueness
+  // prevents this at write time, but we seed it directly to validate the
+  // fail-closed tier-2 branch in resolveHousehold → multi_household → conflict reply.
 
-  test("member-plus-contact conflict: sends conflict reply to sender", async ({ request }) => {
+  test("contact-in-two-households: sends conflict reply to sender", async ({ request }) => {
     const phone = uniquePhone();
     const twilioNumber = uniqueTwilioNumber();
 
-    const hhA = await seedHousehold(db, "memcon-A");
-    const hhB = await seedHousehold(db, "memcon-B");
-    await seedMember(db, hhA, phone, "member");
+    const hhA = await seedHousehold(db, "con2hh-A");
+    const hhB = await seedHousehold(db, "con2hh-B");
+    await seedContact(db, hhA, phone);
     await seedContact(db, hhB, phone);
     await clearConflictDedup(db, phone);
 
@@ -220,7 +232,7 @@ test.describe("Multi-household conflict reply", () => {
       from: phone,
       to: twilioNumber,
       body: "Boa tarde!",
-      messageSid: uniqueSid("memcon"),
+      messageSid: uniqueSid("con2hh"),
     });
 
     expect(status).toBe(200);

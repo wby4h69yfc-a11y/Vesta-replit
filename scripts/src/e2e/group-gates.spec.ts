@@ -72,9 +72,11 @@ async function seedMember(
   phone: string,
   role: "admin" | "member",
 ): Promise<number> {
+  // phone_verified = true so the member participates in tier-1 routing.
+  // Admin-set phones default to false and are NOT routable (Task #252).
   const res = await db.query<{ id: number }>(
-    `INSERT INTO members (household_id, name, phone, role, relationship_type)
-     VALUES ($1, $2, $3, $4, 'adult') RETURNING id`,
+    `INSERT INTO members (household_id, name, phone, role, relationship_type, phone_verified)
+     VALUES ($1, $2, $3, $4, 'adult', true) RETURNING id`,
     [householdId, role === "admin" ? "Admin Teste" : "Membro Teste", phone, role],
   );
   const id = res.rows[0]?.id;
