@@ -1,10 +1,7 @@
 import { getLLMClient } from "@workspace/llm-client";
-import {
-  speechToText,
-  ensureCompatibleFormat,
-} from "@workspace/integrations-openai-ai-server/audio";
-import { logger } from "./logger";
 import { getBspAdapter } from "./wa-bsp";
+import { transcribeVoice } from "./voice-transcriber";
+import { logger } from "./logger";
 
 /**
  * Detect the broad media category from a MIME type.
@@ -16,24 +13,6 @@ function mediaCategoryFromMime(
   if (contentType.startsWith("image/")) return "image";
   if (contentType.startsWith("video/")) return "video";
   return "other";
-}
-
-/**
- * Transcribe a WhatsApp voice message using OpenAI's transcription model.
- * Supports OGG (WhatsApp's native format), MP3, WAV, MP4, M4A.
- *
- * Converts to a compatible format first, then sends to gpt-4o-mini-transcribe.
- * Returns the transcript text, or null if transcription fails.
- */
-async function transcribeAudio(buffer: Buffer): Promise<string | null> {
-  try {
-    const { buffer: compatBuffer, format } = await ensureCompatibleFormat(buffer);
-    const text = await speechToText(compatBuffer, format);
-    return text.trim() || null;
-  } catch (err) {
-    logger.error({ err }, "Audio transcription failed");
-    return null;
-  }
 }
 
 /**
@@ -69,6 +48,11 @@ export type MediaProcessingResult = {
   rawContent: string;
   source: "voice" | "photo" | "whatsapp";
   mediaCategory: "audio" | "image" | "video" | "other" | "none";
+  /**
+   * 0–1 confidence proxy for voice messages (from whisper-1 avg_logprob).
+   * Present only when source === "voice". Absent on fallback/failure paths.
+   */
+  transcriptionConfidence?: number;
 };
 
 /**
@@ -76,7 +60,8 @@ export type MediaProcessingResult = {
  *
  * Downloads the media via the active BSP adapter (Twilio URL with Basic Auth,
  * or 360Dialog media ID via their /v1/media/{id} endpoint), then:
- * - Audio (voice memos): transcribed with Whisper. rawContent = transcript; source = "voice".
+ * - Audio (voice memos): transcribed with whisper-1. rawContent = transcript;
+ *   source = "voice"; transcriptionConfidence = 0–1 proxy score.
  * - Images: described by GPT vision. rawContent = description; source = "photo".
  * - Video / other: stored with a placeholder so the item is still reviewable.
  *
@@ -92,20 +77,20 @@ export async function processWhatsAppMedia(
   const adapter = getBspAdapter();
 
   if (category === "audio") {
-    try {
-      const { buffer } = await adapter.downloadMedia(mediaUrl, contentTypeHeader);
-      const transcript = await transcribeAudio(buffer);
-      if (transcript) {
-        logger.info({ chars: transcript.length }, "Voice memo transcribed successfully");
-        return { rawContent: transcript, source: "voice", mediaCategory: "audio" };
-      }
-    } catch (err) {
-      logger.error({ err }, "Voice memo download/transcription failed");
+    const result = await transcribeVoice(mediaUrl, contentTypeHeader);
+    if (result) {
+      return {
+        rawContent: result.transcription,
+        source: "voice",
+        mediaCategory: "audio",
+        transcriptionConfidence: result.confidence,
+      };
     }
     return {
       rawContent: textBody?.trim() || "(áudio recebido — transcrição indisponível)",
       source: "voice",
       mediaCategory: "audio",
+      transcriptionConfidence: 0,
     };
   }
 

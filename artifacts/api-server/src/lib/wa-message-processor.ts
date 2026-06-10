@@ -106,6 +106,17 @@ export type ProcessOutcome =
   | { kind: "group_non_admin"; phone: string; groupId: string }
   /** A mutation command (cancela, cria, apaga…) arrived from a group chat. */
   | { kind: "group_mutation_blocked"; phone: string; groupId: string }
+  /**
+   * A voice message was transcribed but Whisper confidence was below 0.70.
+   * An interactive Sim/Não confirmation has been queued to the sender.
+   * preview = first 100 chars of the transcript shown to the user.
+   */
+  | { kind: "voice_confirm_pending"; inboxItemId: number; householdId: number; phone: string; preview: string }
+  /**
+   * The sender replied "não" to a voice transcript confirmation.
+   * The inbox item has been set to "dismissed".
+   */
+  | { kind: "voice_confirm_dismissed"; householdId: number; phone: string }
   | {
       kind: "ingested";
       inboxItemId: number;
@@ -282,6 +293,191 @@ async function checkMediaRateLimit(phoneNorm: string): Promise<boolean> {
     .returning({ count: waMediaRateLimitsTable.count });
 
   return (row?.count ?? 1) <= MEDIA_RATE_LIMIT;
+}
+
+// ── Voice transcript confirmation regexes ────────────────────────────────────
+// Kept intentionally short — we only confirm the two most unambiguous intents.
+// Any other message from a sender with an open voice_confirm conversation falls
+// through to normal ingestion, keeping the conversation open until it expires.
+const VOICE_CONFIRM_SIM_RE =
+  /^(sim|s|ok|pode|confirmar|aceito|vai|tá|ta|bom|beleza|feito|claro|combinado)[\s!.]*$/i;
+const VOICE_CONFIRM_NAO_RE =
+  /^(não|nao|n|não\s+quero|nao\s+quero)[\s!.]*$/i;
+
+const VOICE_CONFIRM_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Checks whether the inbound `bodyText` is a Sim/Não response to an open
+ * voice-transcript confirmation conversation.
+ *
+ * Called before the standard approval handler so that a "sim" from any
+ * verified sender is correctly routed even when the sender is not an admin.
+ *
+ * Returns:
+ *   - A full ProcessOutcome when the response is handled.
+ *   - undefined when there is no open voice_confirm conversation or the
+ *     body does not match sim/não (caller continues with normal flow).
+ */
+async function handleVoiceConfirmResponse(
+  bodyText: string,
+  householdId: number,
+  phoneRaw: string,
+  log: Logger,
+): Promise<ProcessOutcome | undefined> {
+  const trimmed = bodyText.trim();
+  const isSim = VOICE_CONFIRM_SIM_RE.test(trimmed);
+  const isNao = VOICE_CONFIRM_NAO_RE.test(trimmed);
+
+  if (!isSim && !isNao) return undefined;
+
+  const now = new Date();
+  const phoneNorm = normalisePhone(phoneRaw);
+
+  const [conv] = await db
+    .select()
+    .from(waConversationsTable)
+    .where(
+      and(
+        eq(waConversationsTable.household_id, householdId),
+        eq(waConversationsTable.sender_phone, phoneNorm),
+        eq(waConversationsTable.thread_context, "voice_confirm"),
+        eq(waConversationsTable.state, "awaiting_confirmation"),
+        sql`${waConversationsTable.expires_at} > NOW()`,
+      ),
+    )
+    .orderBy(desc(waConversationsTable.created_at))
+    .limit(1);
+
+  if (!conv) return undefined;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const payload = conv.proposed_payload as any;
+  const inboxItemId = payload?.inbox_item_id as number | undefined;
+
+  if (!inboxItemId) {
+    log.warn({ convId: conv.id }, "voice-confirm: missing inbox_item_id — skipping");
+    return undefined;
+  }
+
+  if (isNao) {
+    await db
+      .update(waConversationsTable)
+      .set({ state: "dismissed", last_message_at: now })
+      .where(eq(waConversationsTable.id, conv.id));
+
+    await db
+      .update(inboxItemsTable)
+      .set({ status: "dismissed", updated_at: now })
+      .where(
+        and(
+          eq(inboxItemsTable.id, inboxItemId),
+          eq(inboxItemsTable.household_id, householdId),
+        ),
+      );
+
+    log.info(
+      { inboxItemId, householdId },
+      "voice-confirm: sender dismissed transcript — inbox item abandoned",
+    );
+    return { kind: "voice_confirm_dismissed", householdId, phone: phoneRaw };
+  }
+
+  // "sim" — resume classification pipeline
+
+  // 1. Move inbox item to "classifying" so the classifier picks it up.
+  await db
+    .update(inboxItemsTable)
+    .set({ status: "classifying", updated_at: now })
+    .where(
+      and(
+        eq(inboxItemsTable.id, inboxItemId),
+        eq(inboxItemsTable.household_id, householdId),
+      ),
+    );
+
+  // 2. Classify and save the suggested action.
+  await classifyAndSaveAction(inboxItemId);
+  log.info({ inboxItemId }, "voice-confirm: classification resumed after sender confirmation");
+
+  // 3. Fire-and-forget pattern detection.
+  void detectPatternsForHousehold(householdId).catch((err) => {
+    log.warn({ err, householdId }, "voice-confirm: post-classification pattern detection failed (non-fatal)");
+  });
+
+  // 4. Close the voice_confirm conversation.
+  await db
+    .update(waConversationsTable)
+    .set({ state: "completed", last_message_at: now })
+    .where(eq(waConversationsTable.id, conv.id));
+
+  // 5. Read back the saved action.
+  const [savedAction] = await db
+    .select({
+      id: suggestedActionsTable.id,
+      approval_level: suggestedActionsTable.approval_level,
+      title: suggestedActionsTable.title,
+      type: suggestedActionsTable.type,
+      category: suggestedActionsTable.category,
+      datetime: suggestedActionsTable.datetime,
+      confidence: suggestedActionsTable.confidence,
+      cascade_check_needed: suggestedActionsTable.cascade_check_needed,
+      workflow_tags: suggestedActionsTable.workflow_tags,
+    })
+    .from(suggestedActionsTable)
+    .where(eq(suggestedActionsTable.inbox_item_id, inboxItemId))
+    .limit(1);
+
+  // 6. Read sender name from the stored inbox item.
+  const [storedItem] = await db
+    .select({ sender_name: inboxItemsTable.sender_name })
+    .from(inboxItemsTable)
+    .where(eq(inboxItemsTable.id, inboxItemId))
+    .limit(1);
+
+  // 7. WA-native eligibility (same criteria as normal ingestion).
+  const waEligible =
+    savedAction !== undefined &&
+    (savedAction.confidence ?? 0) >= 0.80 &&
+    !(savedAction.cascade_check_needed ?? false) &&
+    !(savedAction.workflow_tags ?? []).includes("payment_admin") &&
+    (savedAction.approval_level ?? "one_tap") !== "explicit";
+
+  if (waEligible && savedAction.id && savedAction.title) {
+    await recordPrompt(
+      phoneRaw,
+      savedAction.id,
+      householdId,
+      {
+        title: savedAction.title,
+        type: savedAction.type,
+        category: savedAction.category,
+        datetime: savedAction.datetime ?? null,
+      },
+    );
+    log.info(
+      { phone: phoneRaw, actionId: savedAction.id },
+      "voice-confirm: bound confirmed action to WA prompt — WA-native eligible",
+    );
+  }
+
+  return {
+    kind: "ingested",
+    inboxItemId,
+    householdId,
+    phone: phoneRaw,
+    approvalLevel: savedAction?.approval_level ?? "one_tap",
+    senderName: storedItem?.sender_name ?? null,
+    consentGranted: true,
+    actionId: savedAction?.id ?? null,
+    actionTitle: savedAction?.title ?? null,
+    actionType: savedAction?.type ?? null,
+    actionCategory: savedAction?.category ?? null,
+    actionDatetime: savedAction?.datetime ?? null,
+    confidence: savedAction?.confidence ?? 0.55,
+    cascadeCheckNeeded: savedAction?.cascade_check_needed ?? false,
+    workflowTags: savedAction?.workflow_tags ?? [],
+    waCanApproveViaWa: waEligible,
+  };
 }
 
 type MatchedMember = {
@@ -638,6 +834,17 @@ export async function processInboundWAMessage(
       void clearQaSession(phoneRaw, householdId);
       return { ...approvalOutcome, phone: phoneRaw };
     }
+  }
+
+  // ── 4.5c. Voice transcript confirmation (sim / não from any verified sender) ─
+  // Intercepts "sim"/"não" responses that belong to an open voice_confirm
+  // conversation created when a low-confidence voice message arrived.
+  // Runs after the mutation confirm (4.5a) and standard approval handler (4.5b)
+  // so that explicit action proposals take priority over pending voice confirms.
+  // Not gated on senderIsAdmin — voice messages can come from any household member.
+  if (bodyText) {
+    const voiceOutcome = await handleVoiceConfirmResponse(bodyText, householdId, phoneRaw, log);
+    if (voiceOutcome) return voiceOutcome;
   }
 
   // ── 4.55. Provider rating reply (BOM / OK / RUIM / NÃO APARECEU) ─────────
@@ -1069,6 +1276,64 @@ export async function processInboundWAMessage(
     );
     source = processed.source;
     rawContent = processed.rawContent;
+
+    // ── 5.5. Low-confidence voice gate ────────────────────────────────────────
+    // If Whisper confidence is below 0.70, hold the inbox item in "pending"
+    // status and send the user an interactive Sim/Não confirmation before
+    // running the classifier — avoids misclassifying garbled transcripts.
+    // Group voice messages skip this gate (group DMs are admin-reviewed anyway).
+    const confidence = processed.transcriptionConfidence;
+    if (
+      processed.source === "voice" &&
+      !payload.groupId &&
+      confidence !== undefined &&
+      confidence < 0.70
+    ) {
+      const preview = rawContent.length > 100 ? rawContent.substring(0, 97) + "…" : rawContent;
+      const phoneNorm = normalisePhone(phoneRaw);
+
+      // Create a pending inbox item so the transcript is preserved even if
+      // the user dismisses ("não") or the conversation expires.
+      const [pendingItem] = await db
+        .insert(inboxItemsTable)
+        .values({
+          household_id: householdId,
+          source: "voice",
+          raw_content: rawContent,
+          media_url: payload.mediaUrl ?? null,
+          media_type: payload.mediaContentType ?? null,
+          transcription: rawContent,
+          status: "pending",
+          sender_name: senderName,
+          twilio_message_sid: payload.messageSid ?? null,
+          group_id: null,
+        })
+        .returning();
+
+      // Open a voice_confirm conversation so the sim/não handler can find it.
+      await db.insert(waConversationsTable).values({
+        household_id: householdId,
+        sender_phone: phoneNorm,
+        state: "awaiting_confirmation",
+        thread_context: "voice_confirm",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        proposed_payload: { inbox_item_id: pendingItem.id, preview } as any,
+        expires_at: new Date(Date.now() + VOICE_CONFIRM_TTL_MS),
+      });
+
+      log.info(
+        { inboxItemId: pendingItem.id, householdId, confidence, preview: preview.substring(0, 60) },
+        "Voice transcript confidence below 0.70 — awaiting sender confirmation",
+      );
+
+      return {
+        kind: "voice_confirm_pending",
+        inboxItemId: pendingItem.id,
+        householdId,
+        phone: phoneRaw,
+        preview,
+      };
+    }
   } else if (!rawContent) {
     rawContent = "(mídia recebida)";
   }

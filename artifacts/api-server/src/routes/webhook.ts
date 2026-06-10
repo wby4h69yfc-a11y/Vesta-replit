@@ -38,6 +38,7 @@ import {
   replyMutationDismissed,
   replyMutationError,
   replyVoiceProcessingAck,
+  replyVoiceConfirmInteractive,
   composeApprovalInteractive,
   composeMutationConfirmInteractive,
 } from "../lib/wa-reply-composer";
@@ -332,6 +333,36 @@ async function handleWaOutcome(
         "WA onboarding reply sent",
       );
       break;
+
+    case "voice_confirm_pending": {
+      // A voice transcript was created but Whisper confidence was < 0.70.
+      // Send an interactive Sim/Não card so the sender can confirm or dismiss.
+      const interactive = replyVoiceConfirmInteractive(outcome.preview);
+      void sendWhatsAppInteractive(outcome.phone, interactive);
+      req.log.info(
+        {
+          inboxItemId: outcome.inboxItemId,
+          householdId: outcome.householdId,
+          phone: outcome.phone,
+        },
+        "Low-confidence voice transcript — sent Sim/Não confirmation to sender",
+      );
+      break;
+    }
+
+    case "voice_confirm_dismissed": {
+      // The sender replied "não" — transcript was dismissed.
+      // Send a brief acknowledgement so the UX feels complete.
+      void sendWhatsApp(
+        outcome.phone,
+        "Tudo bem! 🎤 Desconsiderei o áudio.",
+      );
+      req.log.info(
+        { householdId: outcome.householdId, phone: outcome.phone },
+        "Sender dismissed voice transcript — item abandoned",
+      );
+      break;
+    }
 
     case "unknown_sender":
     case "multi_household":

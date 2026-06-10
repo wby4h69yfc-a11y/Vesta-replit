@@ -216,6 +216,51 @@ export async function textToSpeechStream(
   })();
 }
 
+// ── Whisper-1 verbose transcription ───────────────────────────────────────────
+
+export interface WhisperSegment {
+  avg_logprob: number;
+  text: string;
+}
+
+export interface WhisperVerboseResult {
+  text: string;
+  segments: WhisperSegment[];
+}
+
+/**
+ * Transcribe audio using whisper-1 with verbose_json response format.
+ *
+ * The verbose_json format exposes per-segment avg_logprob values which are
+ * averaged to compute a proxy confidence score in the caller.
+ *
+ * Pass an already-compatible buffer + format (use ensureCompatibleFormat first).
+ */
+export async function whisperVerboseTranscribe(
+  audioBuffer: Buffer,
+  format: "wav" | "mp3",
+  language = "pt",
+): Promise<WhisperVerboseResult> {
+  const file = await toFile(audioBuffer, `audio.${format}`);
+
+  // verbose_json is not in the SDK's typed overloads — use any cast.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const response: any = await (openai.audio.transcriptions.create as any)({
+    file,
+    model: "whisper-1",
+    language,
+    response_format: "verbose_json",
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const segments: WhisperSegment[] = ((response.segments ?? []) as any[]).map((s) => ({
+    avg_logprob: typeof s.avg_logprob === "number" ? s.avg_logprob : -0.5,
+    text: typeof s.text === "string" ? s.text : "",
+  }));
+
+  return { text: typeof response.text === "string" ? response.text : "", segments };
+}
+
 /** Speech-to-Text using gpt-4o-mini-transcribe. */
 export async function speechToText(
   audioBuffer: Buffer,

@@ -43,6 +43,7 @@ export async function setStateToAwaitingEdit(
       and(
         eq(waConversationsTable.household_id, householdId),
         eq(waConversationsTable.sender_phone, phoneNorm),
+        eq(waConversationsTable.thread_context, "approval"),
         eq(waConversationsTable.state, "awaiting_confirmation"),
       ),
     );
@@ -72,12 +73,15 @@ export async function recordPrompt(
 
   // Dismiss any existing awaiting_confirmation rows for this sender so
   // the lookup always returns only the freshest proposal.
+  // Scoped to thread_context="approval" so voice_confirm or other
+  // non-approval conversations are never inadvertently closed.
   await db
     .update(waConversationsTable)
     .set({ state: "dismissed" })
     .where(
       and(
         eq(waConversationsTable.household_id, householdId),
+        eq(waConversationsTable.thread_context, "approval"),
         eq(waConversationsTable.sender_phone, phoneNorm),
         eq(waConversationsTable.state, "awaiting_confirmation"),
       ),
@@ -145,6 +149,7 @@ export async function completePrompt(phone: string, householdId: number): Promis
       and(
         eq(waConversationsTable.household_id, householdId),
         eq(waConversationsTable.sender_phone, phoneNorm),
+        eq(waConversationsTable.thread_context, "approval"),
         eq(waConversationsTable.state, "awaiting_confirmation"),
       ),
     );
@@ -165,6 +170,7 @@ export async function dismissPrompt(phone: string, householdId: number): Promise
       and(
         eq(waConversationsTable.household_id, householdId),
         eq(waConversationsTable.sender_phone, phoneNorm),
+        eq(waConversationsTable.thread_context, "approval"),
         eq(waConversationsTable.state, "awaiting_confirmation"),
       ),
     );

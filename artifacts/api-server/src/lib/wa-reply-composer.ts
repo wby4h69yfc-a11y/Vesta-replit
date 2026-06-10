@@ -495,6 +495,26 @@ export function replyGroupMutationBlocked(): string {
 }
 
 /**
+ * Sent when a low-confidence voice transcript requires user confirmation
+ * before classification. Shows an interactive Sim/Não choice so the admin
+ * can confirm the transcript is correct or dismiss the audio note.
+ *
+ * Button IDs are "sim" and "não" — the same tokens the voice-confirm handler
+ * in wa-message-processor watches for.
+ */
+export function replyVoiceConfirmInteractive(preview: string): InteractivePayload {
+  const truncated = preview.length > 100 ? preview.substring(0, 97) + "…" : preview;
+  return {
+    kind: "buttons",
+    body: `🎙️ Entendi: _"${truncated}"_\n\nÉ isso?`,
+    buttons: [
+      { id: "sim", title: "✅ Sim" },
+      { id: "não", title: "❌ Não" },
+    ],
+  };
+}
+
+/**
  * Sent when a preferred provider is relevant to a new task or cascade.
  */
 export function replyPreferredProviderSuggestion(
