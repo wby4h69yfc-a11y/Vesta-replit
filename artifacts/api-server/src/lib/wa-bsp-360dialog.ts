@@ -51,6 +51,36 @@ export class WaBsp360DialogAdapter implements WaBspAdapter {
         }),
       });
 
+      // 429 rate-limit: wait 2 s and retry once before giving up.
+      if (res.status === 429) {
+        logger.warn({ to: toNorm, attempt: 2 }, "360Dialog send rate-limited (429) — retrying in 2 s");
+        await new Promise((r) => setTimeout(r, 2000));
+        const retry = await fetch(`${DIALOG360_API_BASE}/messages`, {
+          method: "POST",
+          headers: {
+            "D360-API-KEY": apiKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            recipient_type: "individual",
+            to: toNorm,
+            type: "text",
+            text: { body },
+          }),
+        });
+        if (!retry.ok) {
+          const errText = await retry.text().catch(() => "");
+          throw new Error(
+            `360Dialog send failed after retry: ${retry.status} ${retry.statusText} — ${errText}`,
+          );
+        }
+        const retryData = (await retry.json()) as { messages?: Array<{ id?: string }> };
+        const retrySid = retryData.messages?.[0]?.id ?? "360dialog-unknown";
+        logger.info({ to: toNorm, sid: retrySid }, "WhatsApp sent via 360Dialog (retry)");
+        return { ok: true, sid: retrySid };
+      }
+
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
         throw new Error(
@@ -179,11 +209,15 @@ export class WaBsp360DialogAdapter implements WaBspAdapter {
 
     const expectedHex = createHmac("sha256", hubSecret).update(rawBody).digest("hex");
 
+    // Reject mismatched lengths before timingSafeEqual — avoids the padEnd footgun
+    // where a short attacker-supplied hex string gets padded to the right length with
+    // zeros, making the comparison undefined rather than safely false.
+    if (sigHex.length !== expectedHex.length) {
+      return false;
+    }
+
     try {
-      return timingSafeEqual(
-        Buffer.from(sigHex.padEnd(expectedHex.length, "0"), "hex"),
-        Buffer.from(expectedHex, "hex"),
-      );
+      return timingSafeEqual(Buffer.from(sigHex, "hex"), Buffer.from(expectedHex, "hex"));
     } catch {
       return false;
     }

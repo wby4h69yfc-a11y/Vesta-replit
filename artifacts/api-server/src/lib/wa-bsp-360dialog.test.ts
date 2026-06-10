@@ -525,3 +525,153 @@ test("sendInteractive: button titles are truncated to 20 chars in the request pa
     );
   });
 });
+
+// ── validateWebhookRequest — HMAC hardening ─────────────────────────────────────
+
+import { createHmac } from "node:crypto";
+
+/** Build a minimal fake Express Request for validateWebhookRequest tests. */
+function makeRequest(headers: Record<string, string>): import("express").Request {
+  return {
+    headers,
+    log: {
+      warn: () => {},
+      error: () => {},
+      info: () => {},
+      debug: () => {},
+    },
+  } as unknown as import("express").Request;
+}
+
+const HMAC_ENV = {
+  NODE_ENV: "production",
+  DIALOG360_HUB_SECRET: "test-hub-secret",
+};
+
+function makeValidSig(secret: string, payload: Buffer): string {
+  return "sha256=" + createHmac("sha256", secret).update(payload).digest("hex");
+}
+
+test("validateWebhookRequest: correct HMAC signature returns true (production)", async () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const payload = Buffer.from('{"test":"payload"}');
+  const sig = makeValidSig("test-hub-secret", payload);
+  await withEnv(HMAC_ENV, async () => {
+    const result = await adapter.validateWebhookRequest(makeRequest({ "x-hub-signature-256": sig }), payload);
+    assert.equal(result, true);
+  });
+});
+
+test("validateWebhookRequest: wrong HMAC signature returns false (production)", async () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const payload = Buffer.from('{"test":"payload"}');
+  await withEnv(HMAC_ENV, async () => {
+    const result = await adapter.validateWebhookRequest(
+      makeRequest({ "x-hub-signature-256": "sha256=" + "a".repeat(64) }),
+      payload,
+    );
+    assert.equal(result, false);
+  });
+});
+
+test("validateWebhookRequest: short (mismatched-length) signature returns false without throwing", async () => {
+  // Regression test for the padEnd footgun: a truncated hex string must NOT be
+  // padded to the correct length and compared — it must be rejected outright.
+  const adapter = new WaBsp360DialogAdapter();
+  const payload = Buffer.from('{"test":"payload"}');
+  await withEnv(HMAC_ENV, async () => {
+    const result = await adapter.validateWebhookRequest(
+      makeRequest({ "x-hub-signature-256": "sha256=deadbeef" }),
+      payload,
+    );
+    assert.equal(result, false);
+  });
+});
+
+test("validateWebhookRequest: missing signature header returns false (production)", async () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const payload = Buffer.from('{"test":"payload"}');
+  await withEnv(HMAC_ENV, async () => {
+    const result = await adapter.validateWebhookRequest(makeRequest({}), payload);
+    assert.equal(result, false);
+  });
+});
+
+test("validateWebhookRequest: missing DIALOG360_HUB_SECRET in production returns false", async () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const payload = Buffer.from('{"test":"payload"}');
+  await withEnv({ NODE_ENV: "production", DIALOG360_HUB_SECRET: undefined }, async () => {
+    const result = await adapter.validateWebhookRequest(
+      makeRequest({ "x-hub-signature-256": "sha256=" + "a".repeat(64) }),
+      payload,
+    );
+    assert.equal(result, false);
+  });
+});
+
+test("validateWebhookRequest: non-production with no secret returns true (dev bypass)", async () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const payload = Buffer.from('{"test":"payload"}');
+  await withEnv({ NODE_ENV: "development", DIALOG360_HUB_SECRET: undefined }, async () => {
+    const result = await adapter.validateWebhookRequest(
+      makeRequest({ "x-hub-signature-256": "sha256=invalidsignature" }),
+      payload,
+    );
+    assert.equal(result, true);
+  });
+});
+
+// ── send() — 429 retry ─────────────────────────────────────────────────────────
+
+test("send: 429 response triggers one retry that succeeds — returns ok:true", async () => {
+  const adapter = new WaBsp360DialogAdapter();
+  let callCount = 0;
+  await withEnv(D360_ENV, async () => {
+    await withFetch(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return new Response("Too Many Requests", { status: 429 });
+      }
+      return new Response(
+        JSON.stringify({ messages: [{ id: "wamid.retry001" }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }, async () => {
+      const result = await adapter.send("+5511999990000", "Olá");
+      assert.equal(result.ok, true);
+      if (result.ok) assert.equal(result.sid, "wamid.retry001");
+      assert.equal(callCount, 2, "Expected exactly 2 fetch calls (original + 1 retry)");
+    });
+  });
+});
+
+test("send: 429 on both attempts returns ok:false with error", async () => {
+  const adapter = new WaBsp360DialogAdapter();
+  let callCount = 0;
+  await withEnv(D360_ENV, async () => {
+    await withFetch(async () => {
+      callCount++;
+      return new Response("Too Many Requests", { status: 429, statusText: "Too Many Requests" });
+    }, async () => {
+      const result = await adapter.send("+5511999990000", "Olá");
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.match(result.error, /429|retry/i);
+      assert.equal(callCount, 2, "Expected exactly 2 fetch calls (original + 1 retry)");
+    });
+  });
+});
+
+test("send: non-429 error on first attempt returns ok:false immediately (no retry)", async () => {
+  const adapter = new WaBsp360DialogAdapter();
+  let callCount = 0;
+  await withEnv(D360_ENV, async () => {
+    await withFetch(async () => {
+      callCount++;
+      return new Response("Internal Server Error", { status: 500, statusText: "Internal Server Error" });
+    }, async () => {
+      const result = await adapter.send("+5511999990000", "Olá");
+      assert.equal(result.ok, false);
+      assert.equal(callCount, 1, "Expected exactly 1 fetch call — no retry for 500");
+    });
+  });
+});
