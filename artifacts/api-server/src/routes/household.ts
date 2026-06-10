@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { db } from "@workspace/db";
-import { householdsTable, membersTable, rulesTable, contactsTable, memberInvitesTable, usersTable, onboardingStateTable } from "@workspace/db";
+import { householdsTable, membersTable, rulesTable, contactsTable, memberInvitesTable, usersTable, sessionsTable, onboardingStateTable } from "@workspace/db";
 import { eq, and, count, sql, ne, isNull } from "drizzle-orm";
 import { getHouseholdId, getCallerRole } from "../lib/tenant";
 import { getPlanLimits } from "../lib/freemium";
@@ -449,6 +449,30 @@ router.delete("/household/members/:id", async (req, res) => {
     await db
       .delete(membersTable)
       .where(and(eq(membersTable.id, id), eq(membersTable.household_id, hid)));
+
+    // Revoke the removed user's access immediately so stale sessions cannot
+    // be used to continue reading or mutating this household's data.
+    if (existing.user_id) {
+      // 1. Clear household_id on the users row — future logins will land in
+      //    the onboarding flow rather than the removed household.
+      await db
+        .update(usersTable)
+        .set({ household_id: null })
+        .where(eq(usersTable.id, existing.user_id));
+
+      // 2. Delete all active sessions for the removed user.  Sessions store
+      //    the user payload as JSONB, so we match via the user.id path.
+      //    This prevents a removed member from continuing to use an existing
+      //    cookie or Bearer token until natural session expiry.
+      await db
+        .delete(sessionsTable)
+        .where(sql`sess -> 'user' ->> 'id' = ${existing.user_id}`);
+
+      req.log.info(
+        { memberId: id, householdId: hid },
+        "Removed member access revoked — household_id cleared and sessions deleted",
+      );
+    }
 
     res.status(204).send();
   } catch (err) {
