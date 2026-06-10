@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, varchar, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -11,6 +11,13 @@ export const membersTable = pgTable("members", {
   role: text("role").notNull().default("member"),
   relationship_type: text("relationship_type").notNull().default("adult"),
   phone: text("phone"),
+  /**
+   * True only when `phone` was set through the WhatsApp onboarding token flow,
+   * meaning the member physically sent a message from that number to prove
+   * ownership. Admin-set phones default to false and are NOT used for inbound
+   * WhatsApp routing — only for display and outbound messaging.
+   */
+  phone_verified: boolean("phone_verified").notNull().default(false),
   avatar_url: text("avatar_url"),
   colour: text("colour"),
   birth_year: integer("birth_year"),

@@ -255,6 +255,9 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
               role: "admin",
               relationship_type: "adult",
               phone: safePhone,
+              // Mark phone as verified only when we could store it;
+              // null means a conflict was detected, so nothing to verify.
+              phone_verified: safePhone !== null,
             });
           });
         } else {
@@ -266,6 +269,7 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
             role: "admin",
             relationship_type: "adult",
             phone: null,
+            phone_verified: false,
           });
         }
       } else {
@@ -277,6 +281,7 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
           role: "admin",
           relationship_type: "adult",
           phone: null,
+          phone_verified: false,
         });
       }
     } else if (!existing.user_id) {

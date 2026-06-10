@@ -610,6 +610,10 @@ async function resolveHousehold(
     })
     .from(contactsTable);
 
+  // Only members whose phone was verified through the onboarding token flow
+  // (phone_verified = true) are authoritative for inbound routing. Admin-set
+  // member phones (phone_verified = false) are stored for display and outbound
+  // messaging only — they must not be used to route inbound WhatsApp identity.
   const allMembers = await db
     .select({
       name: membersTable.name,
@@ -618,7 +622,8 @@ async function resolveHousehold(
       role: membersTable.role,
       created_at: membersTable.created_at,
     })
-    .from(membersTable);
+    .from(membersTable)
+    .where(eq(membersTable.phone_verified, true));
 
   const matchedContacts: MatchedContact[] = allContacts.filter(
     (c) => c.phone && normalisePhone(c.phone) === phoneNorm,

@@ -263,7 +263,9 @@ async function createAccountFromSession(
     .set({ household_id: householdId })
     .where(eq(usersTable.id, userId));
 
-  // 4. Create admin member record with verified phone
+  // 4. Create admin member record with verified phone.
+  // phone comes from the inbound WA sender — proof-of-control is implicit
+  // (the sender physically sent the message from this number).
   await db.insert(membersTable).values({
     household_id: householdId,
     user_id: userId,
@@ -272,6 +274,7 @@ async function createAccountFromSession(
     role: "admin",
     relationship_type: "adult",
     phone,
+    phone_verified: true,
   });
 
   // 5. Create composition members (children)
