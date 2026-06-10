@@ -540,7 +540,11 @@ async function handleWaOutcome(
     case "duplicate":
     case "empty_message":
     case "media_rate_limited":
-      // No reply — do not confirm to unknown/spam senders that the number is active.
+    case "contact_unconsented_ignored":
+      // No reply — do not confirm to unknown/spam/pre-claimed senders that the
+      // number is active. contact_unconsented_ignored covers a tier-2 contact
+      // phone that has not proven control (consent_status !== 'consented'); the
+      // message was dropped without ingestion to prevent cross-household hijack.
       break;
   }
 }

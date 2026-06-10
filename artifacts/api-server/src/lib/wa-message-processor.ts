@@ -76,6 +76,14 @@ export type ProcessOutcome =
   | { kind: "duplicate"; messageSid: string }
   | { kind: "unknown_sender"; phone: string }
   /**
+   * Routing resolved to a household via a TIER-2 contact match, but that
+   * contact has NOT proven control of the phone (consent_status !== 'consented').
+   * The message is dropped without ingestion and without any reply, so a
+   * pre-claimed/unverified contact phone can never leak a real owner's messages
+   * into the claiming household's inbox. See the section 4.05 gate.
+   */
+  | { kind: "contact_unconsented_ignored"; phone: string }
+  /**
    * The sender's phone is registered under two or more households.
    * householdIds contains the clashing IDs for logging (no PII).
    * No household data is exposed in the reply.
@@ -174,7 +182,12 @@ export function normalisePhone(p: string): string {
  * Given the pre-fetched verified members and all contacts, applies the
  * two-tier priority model:
  *   Tier 1 — verified members win unconditionally (phone_verified = true).
- *   Tier 2 — contacts are used only when no verified member matched.
+ *   Tier 2 — contacts are used only when no verified member matched, AND only
+ *            when the contact has an active consent relationship
+ *            (consent_status 'pending' or 'consented'). A NULL/'revoked'
+ *            contact — e.g. an admin pre-claiming a victim's number — never
+ *            drives routing, so the victim's messages fall through to the
+ *            unknown-sender/onboarding path instead of into another household.
  *
  * Exported so security regression tests can exercise routing logic without
  * a real database connection.
@@ -182,7 +195,7 @@ export function normalisePhone(p: string): string {
 export function computePhoneRouting(
   phoneNorm: string,
   verifiedMembers: Array<{ phone: string | null; household_id: number }>,
-  contacts: Array<{ phone: string | null; household_id: number }>,
+  contacts: Array<{ phone: string | null; household_id: number; consent_status: string | null }>,
 ): { kind: "found"; householdId: number } | { kind: "unknown" } | { kind: "multi_household"; householdIds: number[] } {
   const matchedMembers = verifiedMembers.filter(
     (m) => m.phone && normalisePhone(m.phone) === phoneNorm,
@@ -197,7 +210,10 @@ export function computePhoneRouting(
   }
 
   const matchedContacts = contacts.filter(
-    (c) => c.phone && normalisePhone(c.phone) === phoneNorm,
+    (c) =>
+      c.phone &&
+      normalisePhone(c.phone) === phoneNorm &&
+      (c.consent_status === "pending" || c.consent_status === "consented"),
   );
   const contactHouseholds = new Set(matchedContacts.map((c) => c.household_id));
 
@@ -688,7 +704,10 @@ async function resolveHousehold(
   // (tier-1 identity), contact pre-claims can no longer override their routing.
   //
   // Contacts are protected by: (a) admin-only phone writes, (b) cross-household
-  // phone uniqueness enforcement, and (c) member-first priority here.
+  // phone uniqueness enforcement, (c) member-first priority here, (d) the
+  // active-consent filter below (NULL/'revoked' contacts never route), and
+  // (e) the section 4.05 gate that blocks ingestion for any contact that has
+  // not proven phone control via a 'consented' SIM reply.
   const allContacts = await db
     .select({
       id: contactsTable.id,
@@ -702,7 +721,16 @@ async function resolveHousehold(
     .from(contactsTable);
 
   const matchedContacts: MatchedContact[] = allContacts.filter(
-    (c) => c.phone && normalisePhone(c.phone) === phoneNorm,
+    (c) =>
+      c.phone &&
+      normalisePhone(c.phone) === phoneNorm &&
+      // SECURITY (phone identity trust boundary): only contacts with an active
+      // consent relationship may drive routing. A NULL/'revoked' contact — e.g.
+      // an admin pre-claiming a victim's external number — is ignored here so the
+      // victim's messages are not hijacked into the claiming household. 'pending'
+      // is allowed so a diarista can still send their consent reply; the section
+      // 4.05 gate then blocks ingestion for anything other than 'consented'.
+      (c.consent_status === "pending" || c.consent_status === "consented"),
   );
 
   const contactHouseholds = new Set(matchedContacts.map((c) => c.household_id));
@@ -755,6 +783,114 @@ async function resolveContactsForHousehold(
   return householdContacts.filter(
     (c) => c.phone && normalisePhone(c.phone) === phoneNorm,
   );
+}
+
+/** True when the message body is a consent keyword (SIM / NÃO / REVOGAR). */
+export function isConsentKeyword(bodyText: string | null | undefined): boolean {
+  if (!bodyText) return false;
+  const upper = bodyText.trim().toUpperCase();
+  return upper === "SIM" || upper === "NÃO" || upper === "NAO" || upper === "REVOGAR";
+}
+
+/** Decision returned for a tier-2 (contact-routed) inbound sender. */
+export type ContactGateDecision = "ingest" | "consent_reply" | "ignore";
+
+/**
+ * Pure decision for an inbound sender that resolved to a household via a TIER-2
+ * contact match (i.e. no VERIFIED member matched the phone).
+ *
+ * Proof-of-control for a contact phone is a 'consented' SIM reply physically
+ * sent from the device in response to a household-named consent prompt. Until
+ * that exists, an admin-asserted contact phone is untrusted identity:
+ *   - 'consented'        → full processing ("ingest")
+ *   - 'pending' + keyword → consent mutation only ("consent_reply")
+ *   - anything else      → drop, no ingestion and no reply ("ignore")
+ *
+ * Exported so security regression tests can exercise the gate without a DB.
+ */
+export function decideContactGate(
+  consentStatus: string | null,
+  bodyIsConsentKeyword: boolean,
+): ContactGateDecision {
+  if (consentStatus === "consented") return "ingest";
+  if (consentStatus === "pending" && bodyIsConsentKeyword) return "consent_reply";
+  return "ignore";
+}
+
+/**
+ * Apply a diarista consent reply (SIM / NÃO / REVOGAR) to a contact, returning
+ * a `consent_updated` outcome when the status actually changed, or null when the
+ * body is not a consent keyword or the keyword does not apply to the current
+ * status. The DB update is guarded by the expected current status so concurrent
+ * replies cannot double-apply. This is the single source of truth for consent
+ * mutation, called from both the tier-2 gate (section 4.05) and section 4.6.
+ */
+async function applyConsentReply(
+  contact: MatchedContact,
+  householdId: number,
+  bodyText: string,
+  phoneRaw: string,
+  log: Logger,
+): Promise<Extract<ProcessOutcome, { kind: "consent_updated" }> | null> {
+  const upper = bodyText.trim().toUpperCase();
+  if (upper !== "SIM" && upper !== "NÃO" && upper !== "NAO" && upper !== "REVOGAR") {
+    return null;
+  }
+
+  const currentStatus = contact.consent_status;
+  let newStatus: "consented" | "revoked" | null = null;
+
+  if (upper === "SIM" && currentStatus === "pending") {
+    newStatus = "consented";
+  } else if ((upper === "NÃO" || upper === "NAO") && currentStatus === "pending") {
+    newStatus = "revoked";
+  } else if (upper === "REVOGAR" && (currentStatus === "pending" || currentStatus === "consented")) {
+    newStatus = "revoked";
+  }
+
+  if (newStatus === null) return null;
+
+  const now = new Date();
+  const twelveMonthsFromNow = new Date(now);
+  twelveMonthsFromNow.setFullYear(twelveMonthsFromNow.getFullYear() + 1);
+
+  const statusGuard =
+    upper === "REVOGAR"
+      ? or(
+          eq(contactsTable.consent_status, "pending"),
+          eq(contactsTable.consent_status, "consented"),
+        )
+      : eq(contactsTable.consent_status, currentStatus!);
+
+  await db
+    .update(contactsTable)
+    .set({
+      consent_status: newStatus,
+      ...(newStatus === "consented"
+        ? { consent_granted_at: now, consent_check_in_due_at: twelveMonthsFromNow }
+        : { consent_withdrawn_at: now, consent_check_in_due_at: null }),
+    })
+    .where(
+      and(
+        eq(contactsTable.id, contact.id),
+        eq(contactsTable.household_id, householdId),
+        statusGuard,
+      ),
+    );
+
+  log.info(
+    { contactId: contact.id, householdId, oldStatus: currentStatus, newStatus },
+    "Contact consent status updated via WhatsApp reply",
+  );
+
+  return {
+    kind: "consent_updated",
+    contactId: contact.id,
+    newStatus,
+    phone: phoneRaw,
+    householdId,
+    contactName: contact.name,
+  };
 }
 
 /**
@@ -837,6 +973,50 @@ export async function processInboundWAMessage(
   // used for routing (see resolveHousehold); they are fetched here to enrich
   // inbox items, drive consent flows, and support provider ratings.
   const matchedContacts = await resolveContactsForHousehold(phoneNorm, householdId);
+
+  // ── 4.05. Tier-2 (contact-routed) sender gate ─────────────────────────────
+  // SECURITY (phone identity trust boundary): when routing was produced by a
+  // contact match rather than a VERIFIED member (matchedMembers is empty), the
+  // sender's phone is only weak, admin-asserted identity. A malicious admin can
+  // pre-claim a victim's external number as a contact; the active-consent filter
+  // in resolveHousehold already stops NULL/'revoked' pre-claims from routing at
+  // all, but a 'pending' contact (an admin who clicked "send consent request"
+  // at the victim) would still route here. We therefore refuse to ingest or act
+  // on a tier-2 sender's messages unless the contact has PROVEN control of the
+  // number by replying SIM to a consent request (consent_status === 'consented').
+  //
+  // The ONLY thing a non-'consented' contact may do is answer their own consent
+  // prompt (SIM / NÃO / REVOGAR) — the existing diarista consent flow, narrowed,
+  // not a new user flow. Everything else is dropped silently (no ingestion, no
+  // reply), so a victim's general messages can never land in another household's
+  // inbox and we never confirm to a pre-claimed number that it is "active".
+  //
+  // Placed BEFORE sections 4.5–4.60 so unconsented contacts can never reach
+  // approval commands, Q&A, reminders, media processing, or ingestion.
+  if (matchedMembers.length === 0) {
+    const routedContact = matchedContacts.find((c) => c.household_id === householdId);
+    const gate = decideContactGate(
+      routedContact?.consent_status ?? null,
+      isConsentKeyword(bodyText),
+    );
+    if (gate !== "ingest") {
+      if (gate === "consent_reply" && routedContact && bodyText) {
+        const consentOutcome = await applyConsentReply(
+          routedContact,
+          householdId,
+          bodyText,
+          phoneRaw,
+          log,
+        );
+        if (consentOutcome) return consentOutcome;
+      }
+      log.info(
+        { householdId, consentStatus: routedContact?.consent_status ?? null, gate },
+        "Tier-2 contact sender without proven phone control — message ignored (no ingestion, no reply)",
+      );
+      return { kind: "contact_unconsented_ignored", phone: phoneRaw };
+    }
+  }
 
   // ── 4.5. WhatsApp-native approval / dismiss / edit / undo ─────────────────
   // Security: only household ADMINS (role === "admin") may trigger approval
@@ -1386,73 +1566,28 @@ export async function processInboundWAMessage(
   }
 
   // ── 4.6. Consent reply handling (SIM / NÃO / REVOGAR from diaristas) ────────
-  // This runs for all senders — members who are also contacts are rare, and the
-  // approval handler above already short-circuits for admin commands.
-  //
-  // Security invariants:
-  //   • We only update the contact row for the household that was resolved from
-  //     this sender's phone, preventing cross-tenant consent mutations.
-  //   • "SIM" / "NÃO" only apply when consent_status is "pending" — we do not
-  //     let a stale "SIM" flip a "revoked" contact back to consented.
-  //   • "REVOGAR" applies to both "pending" and "consented" contacts so a
-  //     diarista can always withdraw at any time (LGPD requirement).
+  // By this point a tier-2 sender is necessarily 'consented' (pending/null/
+  // revoked were handled or dropped by the 4.05 gate above), so this primarily
+  // serves a 'consented' diarista withdrawing via REVOGAR, plus the rare member
+  // who is also a contact. Delegates to applyConsentReply — the single source of
+  // truth for consent mutation, shared with the 4.05 gate — which enforces:
+  //   • only the contact row for the resolved household is updated (no cross-
+  //     tenant consent mutation);
+  //   • SIM / NÃO only apply when consent_status is "pending" (a stale SIM cannot
+  //     flip a "revoked" contact back to consented);
+  //   • REVOGAR applies to both "pending" and "consented" so a diarista can
+  //     always withdraw (LGPD), guarded against double-apply on Twilio retries.
   if (bodyText) {
-    const upper = bodyText.trim().toUpperCase();
     const contactForConsent = matchedContacts.find((c) => c.household_id === householdId);
-
-    if (contactForConsent && (upper === "SIM" || upper === "NÃO" || upper === "NAO" || upper === "REVOGAR")) {
-      const currentStatus = contactForConsent.consent_status;
-      let newStatus: "consented" | "revoked" | null = null;
-
-      if (upper === "SIM" && currentStatus === "pending") {
-        newStatus = "consented";
-      } else if ((upper === "NÃO" || upper === "NAO") && currentStatus === "pending") {
-        newStatus = "revoked";
-      } else if (upper === "REVOGAR" && (currentStatus === "pending" || currentStatus === "consented")) {
-        newStatus = "revoked";
-      }
-
-      if (newStatus !== null) {
-        const now = new Date();
-        const twelveMonthsFromNow = new Date(now);
-        twelveMonthsFromNow.setFullYear(twelveMonthsFromNow.getFullYear() + 1);
-
-        // Idempotency guard: include the expected current status in the WHERE
-        // clause so that a Twilio retry (or a SIM+REVOGAR race) that arrives
-        // after the first update has already changed the status becomes a no-op
-        // at the DB level rather than re-writing or flipping the value.
-        // REVOGAR is valid from both "pending" and "consented", so we use OR.
-        const statusGuard =
-          upper === "REVOGAR"
-            ? or(
-                eq(contactsTable.consent_status, "pending"),
-                eq(contactsTable.consent_status, "consented"),
-              )
-            : eq(contactsTable.consent_status, currentStatus!);
-
-        await db
-          .update(contactsTable)
-          .set({
-            consent_status: newStatus,
-            ...(newStatus === "consented"
-              ? { consent_granted_at: now, consent_check_in_due_at: twelveMonthsFromNow }
-              : { consent_withdrawn_at: now, consent_check_in_due_at: null }),
-          })
-          .where(
-            and(
-              eq(contactsTable.id, contactForConsent.id),
-              eq(contactsTable.household_id, householdId),
-              statusGuard,
-            ),
-          );
-
-        log.info(
-          { contactId: contactForConsent.id, householdId, oldStatus: currentStatus, newStatus },
-          "Contact consent status updated via WhatsApp reply",
-        );
-
-        return { kind: "consent_updated", contactId: contactForConsent.id, newStatus, phone: phoneRaw, householdId, contactName: contactForConsent.name };
-      }
+    if (contactForConsent) {
+      const consentOutcome = await applyConsentReply(
+        contactForConsent,
+        householdId,
+        bodyText,
+        phoneRaw,
+        log,
+      );
+      if (consentOutcome) return consentOutcome;
     }
   }
 
