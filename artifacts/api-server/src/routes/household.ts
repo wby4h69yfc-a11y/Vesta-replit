@@ -406,6 +406,12 @@ router.patch("/household/members/:id", async (req, res) => {
           role: body.role ?? existing.role,
           relationship_type: body.relationship_type ?? existing.relationship_type,
           phone: body.phone !== undefined ? body.phone : existing.phone,
+          // Any admin phone change resets verification. The only path that
+          // sets phone_verified = true is the WhatsApp onboarding token flow,
+          // which requires the member to physically send a message from the
+          // number. An admin who overrides the phone must not inherit the
+          // prior member's verified status; routing trust must be re-earned.
+          phone_verified: isNewPhone ? false : existing.phone_verified,
           avatar_url: body.avatar_url !== undefined ? body.avatar_url : existing.avatar_url,
           colour: body.colour !== undefined ? body.colour : existing.colour,
           birth_year: body.birth_year !== undefined ? body.birth_year : existing.birth_year,

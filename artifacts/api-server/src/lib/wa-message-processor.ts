@@ -556,7 +556,6 @@ type ResolvedHousehold = {
   kind: "found";
   householdId: number;
   matchedMembers: MatchedMember[];
-  matchedContacts: MatchedContact[];
 } | {
   kind: "unknown";
 } | {
@@ -598,23 +597,20 @@ async function resolveHousehold(
   log: Logger,
   phoneRaw: string,
 ): Promise<ResolvedHousehold> {
-  const allContacts = await db
-    .select({
-      id: contactsTable.id,
-      name: contactsTable.name,
-      phone: contactsTable.phone,
-      household_id: contactsTable.household_id,
-      consent_status: contactsTable.consent_status,
-      consent_check_in_due_at: contactsTable.consent_check_in_due_at,
-      created_at: contactsTable.created_at,
-    })
-    .from(contactsTable);
-
-  // Only members whose phone was verified through the onboarding token flow
-  // (phone_verified = true) are authoritative for inbound routing. Admin-set
-  // member phones (phone_verified = false) are stored for display and outbound
-  // messaging only — they must not be used to route inbound WhatsApp identity.
-  const allMembers = await db
+  // Routing is based SOLELY on members whose phone was verified through the
+  // WhatsApp onboarding token flow (phone_verified = true).
+  //
+  // contacts.phone is intentionally excluded from routing decisions:
+  // any household admin can write arbitrary unverified phones into contacts,
+  // so treating contacts.phone as a routing source would let an attacker
+  // pre-claim a victim's unclaimed number by adding it as a contact in their
+  // own household, hijacking inbound WA messages for that number.
+  //
+  // Contacts are looked up AFTER routing succeeds, scoped to the resolved
+  // household, so the sender can still be identified/matched to a known
+  // contact for consent flows, ratings, etc. — without the cross-household
+  // attack surface.
+  const verifiedMembers = await db
     .select({
       name: membersTable.name,
       phone: membersTable.phone,
@@ -625,21 +621,11 @@ async function resolveHousehold(
     .from(membersTable)
     .where(eq(membersTable.phone_verified, true));
 
-  const matchedContacts: MatchedContact[] = allContacts.filter(
-    (c) => c.phone && normalisePhone(c.phone) === phoneNorm,
-  );
-  const matchedMembers: MatchedMember[] = allMembers.filter(
+  const matchedMembers: MatchedMember[] = verifiedMembers.filter(
     (m) => m.phone && normalisePhone(m.phone) === phoneNorm,
   );
 
-  // ── Merge member and contact households into one pool ─────────────────────
-  // Both sources have equal weight. A phone registered as a member in
-  // household A and a contact in household B produces a collision just as
-  // two contact registrations would.
-  const allMatchingHouseholdIds = new Set([
-    ...matchedMembers.map((m) => m.household_id),
-    ...matchedContacts.map((c) => c.household_id),
-  ]);
+  const allMatchingHouseholdIds = new Set(matchedMembers.map((m) => m.household_id));
 
   if (allMatchingHouseholdIds.size === 0) {
     return { kind: "unknown" }; // truly unknown sender — route to onboarding
@@ -647,18 +633,47 @@ async function resolveHousehold(
 
   if (allMatchingHouseholdIds.size === 1) {
     const householdId = [...allMatchingHouseholdIds][0]!;
-    return { kind: "found", householdId, matchedMembers, matchedContacts };
+    return { kind: "found", householdId, matchedMembers };
   }
 
-  // Multiple households claim this phone via any combination of member/contact
-  // records. Fail-closed: no routing guess, no tie-breaker.
-  // Log household IDs only — no phone number (PII policy).
+  // Multiple households claim this verified phone — should not happen in
+  // practice (cross-household uniqueness is enforced at write time), but we
+  // fail-closed rather than guessing.
   const householdIds = [...allMatchingHouseholdIds];
   log.warn(
     { households: householdIds },
-    "Phone matched multiple households (members and/or contacts) — discarding to prevent cross-tenant misdelivery",
+    "Verified phone matched multiple households — discarding to prevent cross-tenant misdelivery",
   );
   return { kind: "multi_household", householdIds };
+}
+
+/**
+ * After household routing is resolved via verified members, look up any
+ * contacts registered in that household whose stored phone matches the
+ * inbound sender. This provides contact enrichment (name, consent state,
+ * ratings) without exposing contacts.phone to the cross-household routing
+ * attack surface.
+ */
+async function resolveContactsForHousehold(
+  phoneNorm: string,
+  householdId: number,
+): Promise<MatchedContact[]> {
+  const householdContacts = await db
+    .select({
+      id: contactsTable.id,
+      name: contactsTable.name,
+      phone: contactsTable.phone,
+      household_id: contactsTable.household_id,
+      consent_status: contactsTable.consent_status,
+      consent_check_in_due_at: contactsTable.consent_check_in_due_at,
+      created_at: contactsTable.created_at,
+    })
+    .from(contactsTable)
+    .where(eq(contactsTable.household_id, householdId));
+
+  return householdContacts.filter(
+    (c) => c.phone && normalisePhone(c.phone) === phoneNorm,
+  );
 }
 
 /**
@@ -736,7 +751,11 @@ export async function processInboundWAMessage(
     return { kind: "multi_household", phone: phoneRaw, householdIds: resolved.householdIds };
   }
 
-  const { householdId, matchedMembers, matchedContacts } = resolved;
+  const { householdId, matchedMembers } = resolved;
+  // Look up contacts scoped to the resolved household only. Contacts are NOT
+  // used for routing (see resolveHousehold); they are fetched here to enrich
+  // inbox items, drive consent flows, and support provider ratings.
+  const matchedContacts = await resolveContactsForHousehold(phoneNorm, householdId);
 
   // ── 4.5. WhatsApp-native approval / dismiss / edit / undo ─────────────────
   // Security: only household ADMINS (role === "admin") may trigger approval
