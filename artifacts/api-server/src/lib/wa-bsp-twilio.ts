@@ -6,6 +6,51 @@ import { logger } from "./logger";
 const MAX_MEDIA_BYTES = 20 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 30_000;
 
+/**
+ * Validates a Twilio HMAC signature for an inbound webhook request against
+ * a caller-supplied URL path (e.g. "/api/webhook/whatsapp" or
+ * "/api/webhook/whatsapp/status").
+ *
+ * Exported so the status-callback route (a Twilio-specific surface) can
+ * reuse the same verification logic with its own path without duplicating code.
+ *
+ * Always returns true outside of production so dev/test environments work
+ * without real Twilio credentials.
+ */
+export async function validateTwilioRequest(req: Request, urlPath: string): Promise<boolean> {
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+  if (process.env.NODE_ENV !== "production") {
+    req.log.warn(`NODE_ENV !== production — skipping Twilio signature check for ${urlPath} (development mode)`);
+    return true;
+  }
+
+  if (!authToken) {
+    req.log.error("TWILIO_AUTH_TOKEN not set in production — rejecting webhook request");
+    return false;
+  }
+
+  const signature = (req.headers["x-twilio-signature"] ?? "") as string;
+  if (!signature) {
+    req.log.warn("Webhook: missing X-Twilio-Signature header");
+    return false;
+  }
+
+  const proto =
+    (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0]?.trim() ?? "https";
+  const host =
+    (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim() ??
+    (req.headers["host"] as string | undefined) ??
+    process.env.REPLIT_DEV_DOMAIN ??
+    process.env.REPLIT_DOMAINS?.split(",")[0] ??
+    "localhost";
+  const webhookUrl = `${proto}://${host}${urlPath}`;
+
+  const { validateRequest } = await import("twilio");
+  const params = (req.body ?? {}) as Record<string, string>;
+  return validateRequest(authToken, signature, webhookUrl, params);
+}
+
 export class WaBspTwilioAdapter implements WaBspAdapter {
   isConfigured(): boolean {
     return !!(
@@ -31,7 +76,20 @@ export class WaBspTwilioAdapter implements WaBspAdapter {
     try {
       const twilio = await import("twilio");
       const client = twilio.default(accountSid, authToken);
-      const msg = await client.messages.create({ from: fromAddr, to: toAddr, body });
+      const statusCbDomain =
+        process.env.REPLIT_DOMAINS?.split(",")[0]?.trim() ??
+        process.env.REPLIT_DEV_DOMAIN ??
+        null;
+      const statusCallback = statusCbDomain
+        ? `https://${statusCbDomain}/api/webhook/whatsapp/status`
+        : undefined;
+
+      const msg = await client.messages.create({
+        from: fromAddr,
+        to: toAddr,
+        body,
+        ...(statusCallback ? { statusCallback } : {}),
+      });
       logger.info({ to, sid: msg.sid }, "WhatsApp sent via Twilio");
       return { ok: true, sid: msg.sid };
     } catch (err) {
@@ -129,37 +187,7 @@ export class WaBspTwilioAdapter implements WaBspAdapter {
   }
 
   async validateWebhookRequest(req: Request): Promise<boolean> {
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-
-    if (process.env.NODE_ENV !== "production") {
-      req.log.warn("NODE_ENV !== production — skipping Twilio signature check (development mode)");
-      return true;
-    }
-
-    if (!authToken) {
-      req.log.error("TWILIO_AUTH_TOKEN not set in production — rejecting webhook request");
-      return false;
-    }
-
-    const signature = (req.headers["x-twilio-signature"] ?? "") as string;
-    if (!signature) {
-      req.log.warn("Webhook: missing X-Twilio-Signature header");
-      return false;
-    }
-
-    const proto =
-      (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0]?.trim() ?? "https";
-    const host =
-      (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim() ??
-      (req.headers["host"] as string | undefined) ??
-      process.env.REPLIT_DEV_DOMAIN ??
-      process.env.REPLIT_DOMAINS?.split(",")[0] ??
-      "localhost";
-    const webhookUrl = `${proto}://${host}/api/webhook/whatsapp`;
-
-    const { validateRequest } = await import("twilio");
-    const params = (req.body ?? {}) as Record<string, string>;
-    return validateRequest(authToken, signature, webhookUrl, params);
+    return validateTwilioRequest(req, "/api/webhook/whatsapp");
   }
 
   parseInboundPayload(body: unknown): InboundWAMessage | null {

@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import { getBspAdapter } from "../lib/wa-bsp";
 import type { ProcessOutcome } from "../lib/wa-message-processor";
-import { isTwilioConfigured, sendWhatsApp, sendWhatsAppInteractive, resolveHouseholdAdminPhone } from "../lib/whatsapp";
+import { isTwilioConfigured, sendWhatsApp, sendWhatsAppInteractive, resolveHouseholdAdminPhone, classifyWhatsAppError } from "../lib/whatsapp";
+import { validateTwilioRequest } from "../lib/wa-bsp-twilio";
 import { processInboundWAMessage } from "../lib/wa-message-processor";
 import { isGroupMessage, extractVestaTrigger } from "../lib/wa-group-trigger";
 import { db } from "@workspace/db";
@@ -89,6 +90,65 @@ async function isKnownSender(senderPhone: string): Promise<boolean> {
 function primaryDomain(): string | null {
   const domains = (process.env.REPLIT_DOMAINS ?? "").split(",").filter(Boolean);
   return domains[0] ?? process.env.REPLIT_DEV_DOMAIN ?? null;
+}
+
+/**
+ * Processes a WhatsApp delivery status update from either BSP.
+ *
+ * Looks up the household whose verified phone matches `phone`, then:
+ *   - `delivered` / `read`         → resets whatsapp_consecutive_failures to 0
+ *   - `failed` / `undelivered`     → increments counter, stores reason
+ *
+ * Unknown phones (not matched to any household) are silently ignored.
+ *
+ * @param phone     Recipient phone — digits only or with whatsapp: / + prefix
+ * @param status    BSP status string (delivered | read | failed | undelivered | sent)
+ * @param errorCode Optional BSP error descriptor (Twilio numeric code or 360Dialog error title)
+ * @param req       Express request used for structured logging
+ */
+async function handleDeliveryStatus(
+  phone: string,
+  status: string,
+  errorCode: string | undefined,
+  req: Request,
+): Promise<void> {
+  const phoneNorm = phone.replace(/^whatsapp:/i, "").replace(/^\+/, "");
+
+  const [row] = await db
+    .select({ household_id: onboardingStateTable.household_id })
+    .from(onboardingStateTable)
+    .where(eq(onboardingStateTable.whatsapp_verified_phone, phoneNorm))
+    .limit(1);
+
+  if (!row) {
+    req.log.info({ status }, "delivery-status: no matching household for phone — ignoring");
+    return;
+  }
+
+  const hid = row.household_id;
+
+  if (status === "delivered" || status === "read") {
+    await db
+      .update(householdsTable)
+      .set({ whatsapp_consecutive_failures: 0, whatsapp_last_failure_at: null })
+      .where(eq(householdsTable.id, hid));
+    req.log.info({ householdId: hid, status }, "delivery-status: delivered — failure counters reset");
+  } else if (status === "failed" || status === "undelivered") {
+    const errorMsg = errorCode ? `Error code: ${errorCode}` : status;
+    const reason = classifyWhatsAppError(errorMsg);
+    await db
+      .update(householdsTable)
+      .set({
+        whatsapp_consecutive_failures: sql`${householdsTable.whatsapp_consecutive_failures} + 1`,
+        whatsapp_last_failure_at: new Date(),
+        whatsapp_last_failure_reason: reason,
+      })
+      .where(eq(householdsTable.id, hid));
+    req.log.warn(
+      { householdId: hid, status, errorCode, reason },
+      "delivery-status: carrier failure — counter incremented",
+    );
+  }
 }
 
 /**
@@ -586,6 +646,51 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/webhook/whatsapp/status
+ *
+ * Twilio WhatsApp delivery status callback.
+ * Twilio POSTs here automatically for every outgoing message when a
+ * StatusCallback URL is included — set by WaBspTwilioAdapter.send().
+ *
+ * Validates the Twilio HMAC signature, then updates household-level delivery
+ * counters based on MessageStatus:
+ *   delivered / read       → reset whatsapp_consecutive_failures to 0
+ *   failed / undelivered   → increment counter, classify error, store reason
+ */
+router.post("/webhook/whatsapp/status", async (req: Request, res: Response) => {
+  const isValid = await validateTwilioRequest(req, "/api/webhook/whatsapp/status");
+  if (!isValid) {
+    req.log.warn({ ip: req.ip }, "WA status webhook: invalid Twilio signature — rejected");
+    res.status(403).send("Forbidden");
+    return;
+  }
+
+  // ACK immediately — Twilio expects a 200 on status callbacks
+  res.set("Content-Type", "text/xml");
+  res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+
+  try {
+    const body = req.body as Record<string, string | undefined>;
+    const messageStatus = (body.MessageStatus ?? "").toLowerCase();
+    const toField = body.To ?? "";
+    const errorCode = body.ErrorCode;
+
+    if (!messageStatus || !toField) {
+      req.log.info("WA status webhook: missing MessageStatus or To — ignoring");
+      return;
+    }
+
+    req.log.info(
+      { messageStatus, hasErrorCode: !!errorCode },
+      "WA status webhook received",
+    );
+    await handleDeliveryStatus(toField, messageStatus, errorCode, req);
+  } catch (err) {
+    req.log.error({ err }, "WA status webhook processing failed");
+  }
+});
+
+/**
  * POST /api/webhook/whatsapp/360dialog
  *
  * 360Dialog WhatsApp inbound webhook.
@@ -619,6 +724,31 @@ router.post(
 
     // ── 3–7. Process asynchronously (response already sent) ─────────────────
     try {
+      // Process delivery status updates first — these arrive in the same payload
+      // as inbound messages or as status-only payloads (no messages[] array).
+      // 360Dialog Cloud API format: statuses[] entries have recipient_id (the
+      // destination phone) and status ("sent" | "delivered" | "read" | "failed").
+      const bodyObj = req.body as Record<string, unknown>;
+      const statuses = bodyObj.statuses as
+        | Array<{
+            recipient_id?: string;
+            status?: string;
+            errors?: Array<{ title?: string; code?: number }>;
+          }>
+        | undefined;
+
+      if (statuses && statuses.length > 0) {
+        for (const s of statuses) {
+          if (!s.recipient_id || !s.status) continue;
+          const errorTitle = s.errors?.[0]?.title;
+          await handleDeliveryStatus(s.recipient_id, s.status, errorTitle, req).catch(
+            (err: unknown) => {
+              req.log.error({ err, status: s.status }, "360Dialog status processing failed");
+            },
+          );
+        }
+      }
+
       // req.body is already parsed by global express.json() middleware.
       // rawBody was preserved by the verify callback solely for HMAC above.
       const message = adapter.parseInboundPayload(req.body);
