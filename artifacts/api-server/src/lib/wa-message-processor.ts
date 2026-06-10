@@ -38,6 +38,7 @@ import { handleQuestionIntent, isMutationCommand } from "./wa-qa-handler";
 import { clearQaSession } from "./wa-qa-session-store";
 import { handleMutationIntent, executeConfirmedMutation } from "./wa-mutation-handler";
 import type { MutationProposedPayload } from "./wa-mutation-handler";
+import { isCalendarQuery, handleCalendarQueryIntent } from "./wa-calendar-query-handler";
 
 /** Payload shape normalised by the webhook handler before calling us. */
 export interface InboundWAMessage {
@@ -1111,6 +1112,31 @@ export async function processInboundWAMessage(
     );
     const reply = await handleAddMemberInviteCommand(bodyText, householdId, log);
     return { kind: "question_answered", reply, householdId, phone: phoneRaw };
+  }
+
+  // ── 4.58c. Calendar query intent (DM + group, admin only) ──────────────────
+  // Intercepts questions about the calendar with arbitrary date references:
+  //   "O que tenho amanhã?", "Minha agenda de quinta", "Tem algo no sábado?",
+  //   "Que horas é a reunião do colégio?"
+  //
+  // A lightweight regex pre-filter avoids an LLM call for every unrelated
+  // message.  The handler uses a focused LLM prompt to resolve the date range,
+  // queries calendar_events, and returns a formatted reply without creating an
+  // inbox item.
+  //
+  // Works in both DM and group chat; group messages arrive here with the
+  // /vesta prefix already stripped.  Mutation commands (cancela, cria, …) do
+  // not pass the regex filter and flow on to step 4.59 as before.
+  if (bodyText && senderIsAdmin && isCalendarQuery(bodyText)) {
+    const calResult = await handleCalendarQueryIntent(bodyText, householdId, log);
+    if (calResult) {
+      log.info(
+        { householdId, phone: phoneRaw, preview: bodyText.substring(0, 60) },
+        "wa-calendar-query: answered calendar query — skipping ingestion",
+      );
+      return { kind: "question_answered", reply: calResult.reply, householdId, phone: phoneRaw };
+    }
+    // handler returned null → not a calendar query after deeper inspection, fall through
   }
 
   // ── 4.59. Mutation intent proposal (DM only, admin only) ─────────────────

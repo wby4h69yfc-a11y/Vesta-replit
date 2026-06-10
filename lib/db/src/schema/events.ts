@@ -15,6 +15,7 @@ export const calendarEventsTable = pgTable("calendar_events", {
   sync_status: text("sync_status").notNull().default("local"),
   gcal_event_id: text("gcal_event_id"),
   notes: text("notes"),
+  location: text("location"),
   workflow_tags: text("workflow_tags").array().notNull().default([]),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

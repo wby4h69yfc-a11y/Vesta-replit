@@ -64,6 +64,13 @@
       "when": 1781042600000,
       "tag": "0008_magic_token_claimed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781056800000,
+      "tag": "0009_calendar_event_location",
+      "breakpoints": true
     }
   ]
 }

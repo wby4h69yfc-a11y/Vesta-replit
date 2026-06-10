@@ -15,6 +15,7 @@ import {
   type SessionData,
 } from "../lib/auth";
 import { getHouseholdId } from "../lib/tenant";
+import { syncHouseholdGoogleCalendar } from "../lib/google-calendar-sync";
 
 const router: IRouter = Router();
 
@@ -255,12 +256,6 @@ router.post("/google/calendar/sync", async (req: Request, res: Response) => {
 
   const hid = getHouseholdId(req);
 
-  const oauth2 = await getAuthedOAuth2(req.user.id);
-  if (!oauth2) {
-    res.status(400).json({ error: "Google not connected" });
-    return;
-  }
-
   // Configurable window — clamp to safe maximums to avoid hammering the API
   const daysBack = Math.min(
     parseInt(String(req.query.days_back ?? "7"), 10) || 7,
@@ -271,79 +266,26 @@ router.post("/google/calendar/sync", async (req: Request, res: Response) => {
     365,
   );
 
-  const now = new Date();
-  const timeMin = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000);
-  const timeMax = new Date(now.getTime() + daysForward * 24 * 60 * 60 * 1000);
-
-  const cal = google.calendar({ version: "v3", auth: oauth2 });
-
-  let gcalEvents: calendar_v3.Schema$Event[] = [];
+  let result: { synced: number; total: number };
   try {
-    const resp = await cal.events.list({
-      calendarId: "primary",
-      timeMin: timeMin.toISOString(),
-      timeMax: timeMax.toISOString(),
-      singleEvents: true,
-      orderBy: "startTime",
-      maxResults: 500,
+    const r = await syncHouseholdGoogleCalendar(req.user.id, hid, req.log, {
+      daysBack,
+      daysForward,
     });
-    gcalEvents = resp.data.items ?? [];
+    if (!r) {
+      res.status(400).json({ error: "Google not connected" });
+      return;
+    }
+    result = r;
   } catch (err) {
     req.log.error({ err }, "Google Calendar sync failed");
     res.status(500).json({ error: "Calendar sync failed" });
     return;
   }
 
-  let synced = 0;
-  for (const ev of gcalEvents) {
-    if (!ev.id || !ev.summary) continue;
-
-    const startAt = ev.start?.dateTime
-      ? new Date(ev.start.dateTime)
-      : ev.start?.date
-        ? new Date(ev.start.date)
-        : null;
-    if (!startAt) continue;
-
-    const endAt = ev.end?.dateTime
-      ? new Date(ev.end.dateTime)
-      : ev.end?.date
-        ? new Date(ev.end.date)
-        : null;
-
-    const isAllDay = !ev.start?.dateTime;
-
-    await db
-      .insert(calendarEventsTable)
-      .values({
-        household_id: hid,
-        title: ev.summary,
-        start_at: startAt,
-        end_at: endAt ?? undefined,
-        all_day: isAllDay,
-        source: "google",
-        sync_status: "synced",
-        gcal_event_id: ev.id,
-        notes: ev.description ?? null,
-      })
-      .onConflictDoUpdate({
-        target: [calendarEventsTable.household_id, calendarEventsTable.gcal_event_id],
-        set: {
-          title: ev.summary,
-          start_at: startAt,
-          end_at: endAt ?? undefined,
-          all_day: isAllDay,
-          sync_status: "synced",
-          notes: ev.description ?? null,
-          updated_at: new Date(),
-        },
-      });
-    synced++;
-  }
-
   res.json({
-    synced,
-    total: gcalEvents.length,
+    synced: result.synced,
+    total: result.total,
     window: { days_back: daysBack, days_forward: daysForward },
   });
 });

@@ -929,6 +929,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "location": {
+          "name": "location",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "workflow_tags": {
           "name": "workflow_tags",
           "type": "text[]",
