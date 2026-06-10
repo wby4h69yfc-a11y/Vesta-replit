@@ -112,6 +112,21 @@ export interface WaBspAdapter {
 let _adapter: WaBspAdapter | null = null;
 
 /**
+ * Overrides the singleton BSP adapter with a caller-supplied instance.
+ *
+ * FOR TESTING ONLY — allows unit tests running under the ESM test runner
+ * (where require() is unavailable) to inject a pre-constructed adapter
+ * directly, bypassing the require()-based lazy-load in getBspAdapter().
+ *
+ * Call before any test that exercises code going through getBspAdapter()
+ * (e.g. sendWhatsApp, sendWhatsAppInteractive).  Reset between test
+ * files by calling with null or by setting a different adapter.
+ */
+export function _setBspAdapterForTest(adapter: WaBspAdapter | null): void {
+  _adapter = adapter;
+}
+
+/**
  * Returns the singleton BSP adapter selected by the WA_BSP env var.
  * Defaults to "twilio" for backward compatibility.
  * Valid values: "twilio" | "360dialog"
