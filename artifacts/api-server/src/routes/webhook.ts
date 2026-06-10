@@ -5,8 +5,14 @@ import { isTwilioConfigured, sendWhatsApp, sendWhatsAppInteractive, resolveHouse
 import { processInboundWAMessage } from "../lib/wa-message-processor";
 import { isGroupMessage, extractVestaTrigger } from "../lib/wa-group-trigger";
 import { db } from "@workspace/db";
-import { householdsTable, onboardingStateTable, waConversationsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  householdsTable,
+  onboardingStateTable,
+  waConversationsTable,
+  contactsTable,
+  membersTable,
+} from "@workspace/db";
+import { eq, sql } from "drizzle-orm";
 import {
   replyVerificationSuccess,
   replyTokenExpired,
@@ -44,6 +50,39 @@ import {
 } from "../lib/wa-reply-composer";
 
 const router = Router();
+
+/**
+ * Returns true when `senderPhone` (E.164 string) belongs to a known
+ * household participant: verified admin, household member, or external contact.
+ *
+ * Used to gate the voice-processing ACK so it is never sent to unknown/spam
+ * senders who could use a reply as an endpoint-enumeration signal.
+ * Checks admin first (most common path) then contacts, then members.
+ */
+async function isKnownSender(senderPhone: string): Promise<boolean> {
+  const phoneNorm = senderPhone.replace(/\D/g, "");
+
+  const [admin] = await db
+    .select({ id: onboardingStateTable.household_id })
+    .from(onboardingStateTable)
+    .where(eq(onboardingStateTable.whatsapp_verified_phone, senderPhone))
+    .limit(1);
+  if (admin) return true;
+
+  const [contact] = await db
+    .select({ id: contactsTable.id })
+    .from(contactsTable)
+    .where(sql`regexp_replace(${contactsTable.phone}, '\\D', '', 'g') = ${phoneNorm}`)
+    .limit(1);
+  if (contact) return true;
+
+  const [member] = await db
+    .select({ id: membersTable.id })
+    .from(membersTable)
+    .where(sql`regexp_replace(${membersTable.phone}, '\\D', '', 'g') = ${phoneNorm}`)
+    .limit(1);
+  return member !== undefined;
+}
 
 /** Resolve the primary production domain for app deep-links. */
 function primaryDomain(): string | null {
@@ -492,22 +531,18 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     }
 
     // Send an immediate audio ACK to known senders before the slow Whisper
-    // transcription runs.  We verify the sender is a known household admin first
-    // so unknown/spam senders never receive a reply (which would leak that the
-    // endpoint is active).  Group voice messages are excluded — they use the
-    // group JID as destination and have different UX expectations.
+    // transcription runs.  "Known" means: verified admin, household member, or
+    // external contact — any participant we'd normally process a message from.
+    // Unknown/spam senders receive no reply so the endpoint is not enumerable.
+    // Group voice messages are excluded — they use the group JID as destination
+    // and have different UX expectations.
     if (
       !groupSourced &&
       parseInt(parsed.numMedia ?? "0", 10) > 0 &&
       (parsed.mediaContentType ?? "").startsWith("audio/")
     ) {
       const senderPhone = parsed.from.replace(/^whatsapp:/i, "");
-      const [knownSender] = await db
-        .select({ household_id: onboardingStateTable.household_id })
-        .from(onboardingStateTable)
-        .where(eq(onboardingStateTable.whatsapp_verified_phone, senderPhone))
-        .limit(1);
-      if (knownSender) {
+      if (await isKnownSender(senderPhone)) {
         void sendWhatsApp(senderPhone, replyVoiceProcessingAck());
       }
     }
@@ -627,18 +662,14 @@ router.post(
         return;
       }
 
-      // Same sender-verified audio ACK as the Twilio path above.
+      // Same sender-verified audio ACK as the Twilio path — admin, member, or
+      // contact qualifies; truly unknown senders receive no reply.
       if (
         parseInt(message.numMedia ?? "0", 10) > 0 &&
         (message.mediaContentType ?? "").startsWith("audio/")
       ) {
         const senderPhone = message.from.replace(/^whatsapp:/i, "");
-        const [knownSender] = await db
-          .select({ household_id: onboardingStateTable.household_id })
-          .from(onboardingStateTable)
-          .where(eq(onboardingStateTable.whatsapp_verified_phone, senderPhone))
-          .limit(1);
-        if (knownSender) {
+        if (await isKnownSender(senderPhone)) {
           void sendWhatsApp(senderPhone, replyVoiceProcessingAck());
         }
       }

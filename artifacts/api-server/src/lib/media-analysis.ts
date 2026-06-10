@@ -50,7 +50,8 @@ export type MediaProcessingResult = {
   mediaCategory: "audio" | "image" | "video" | "other" | "none";
   /**
    * 0–1 confidence proxy for voice messages (from whisper-1 avg_logprob).
-   * Present only when source === "voice". Absent on fallback/failure paths.
+   * Present only when source === "voice" and transcription succeeded.
+   * Absent on the error fallback path so the low-confidence gate is bypassed.
    */
   transcriptionConfidence?: number;
 };
@@ -62,11 +63,10 @@ export type MediaProcessingResult = {
  * or 360Dialog media ID via their /v1/media/{id} endpoint), then:
  * - Audio (voice memos): transcribed with whisper-1. rawContent = transcript;
  *   source = "voice"; transcriptionConfidence = 0–1 proxy score.
+ *   On transcription failure, falls back to a placeholder with no confidence
+ *   score so the low-confidence gate is transparently skipped.
  * - Images: described by GPT vision. rawContent = description; source = "photo".
  * - Video / other: stored with a placeholder so the item is still reviewable.
- *
- * If processing fails for any reason the function returns a safe placeholder
- * so the inbox item is still created and can be reviewed manually.
  */
 export async function processWhatsAppMedia(
   mediaUrl: string,
@@ -77,24 +77,26 @@ export async function processWhatsAppMedia(
   const adapter = getBspAdapter();
 
   if (category === "audio") {
-    const result = await transcribeVoice(mediaUrl, contentTypeHeader);
-    if (result) {
+    try {
+      const result = await transcribeVoice(mediaUrl, contentTypeHeader);
       return {
         rawContent: result.transcription,
         source: "voice",
         mediaCategory: "audio",
         transcriptionConfidence: result.confidence,
       };
+    } catch (err) {
+      // transcribeVoice already logged + rethrew; we catch here to provide a
+      // placeholder inbox item so the user's audio is never silently lost.
+      // transcriptionConfidence is omitted so the low-confidence Sim/Não gate
+      // is skipped — we must not prompt the user to confirm placeholder text.
+      logger.warn({ err }, "media-analysis: voice transcription failed — using placeholder");
+      return {
+        rawContent: textBody?.trim() || "(áudio recebido — transcrição indisponível)",
+        source: "voice",
+        mediaCategory: "audio",
+      };
     }
-    // Whisper failed — no confidence score. Omit transcriptionConfidence so the
-    // low-confidence gate in the processor is skipped and the item is classified
-    // immediately (or reviewed manually) rather than prompting the sender to
-    // confirm placeholder text.
-    return {
-      rawContent: textBody?.trim() || "(áudio recebido — transcrição indisponível)",
-      source: "voice",
-      mediaCategory: "audio",
-    };
   }
 
   if (category === "image") {

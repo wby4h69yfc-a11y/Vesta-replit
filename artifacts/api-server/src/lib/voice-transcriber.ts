@@ -9,6 +9,11 @@
  * Confidence mapping: avgLogProb is typically in the range [−0.7, 0].
  *   confidence = clamp((avgLogProb + 0.7) / 0.7, 0, 1)
  * At the 0.70 gate: avgLogProb ≈ −0.21.
+ *
+ * Error policy: download or transcription failures are logged then rethrown
+ * so the caller can decide on fallback behaviour and the webhook's catch block
+ * has visibility into the failure.  The null-return fallback lives in
+ * media-analysis.ts, not here.
  */
 
 import {
@@ -35,13 +40,14 @@ function avgLogProbToConfidence(avgLogProb: number): number {
 /**
  * Download and transcribe a WhatsApp voice message using whisper-1.
  *
- * Returns a { transcription, confidence } result on success, or null if
- * download or transcription fails (so the caller can fall back gracefully).
+ * Throws on download or transcription failure (see module docstring).
+ * The returned confidence is a 0–1 proxy computed from whisper-1 segment
+ * avg_logprob values; the caller should gate on < 0.70 for user confirmation.
  */
 export async function transcribeVoice(
   mediaUrl: string,
   contentTypeHeader: string,
-): Promise<VoiceTranscriptionResult | null> {
+): Promise<VoiceTranscriptionResult> {
   const adapter = getBspAdapter();
 
   try {
@@ -51,7 +57,6 @@ export async function transcribeVoice(
     const { text, segments } = await whisperVerboseTranscribe(compatBuffer, format);
 
     const transcription = text.trim();
-    if (!transcription) return null;
 
     const logProbs = segments
       .map((s) => s.avg_logprob)
@@ -71,13 +76,7 @@ export async function transcribeVoice(
 
     return { transcription, confidence };
   } catch (err) {
-    // Deliberate null-return on failure: the caller (media-analysis.ts) converts
-    // null into a placeholder inbox item with status "classifying" so the user's
-    // audio is never silently discarded.  Returning null (rather than rethrowing)
-    // keeps the webhook alive and lets manual review happen via the inbox UI.
-    // transcriptionConfidence is intentionally omitted on the null return path so
-    // the low-confidence Sim/Não gate is skipped for placeholder messages.
     logger.error({ err }, "voice-transcriber: download or transcription failed");
-    return null;
+    throw err;
   }
 }
