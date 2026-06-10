@@ -68,6 +68,8 @@ Required guarantees:
 
 Vesta stores sensitive household schedules, children and family member data, school/medical context, contact lists, Gmail snippets, and WhatsApp messages. Because the product is multi-user and family-oriented, exposure of one household’s data to another user is a severe privacy breach.
 
+Current product-scoping note for repeated scans: the existing `/inbox` and `/events` surfaces are modeled as household-shared operational views. Imported Gmail snippets and calendar events that are written into those household tables are therefore treated as shared household data unless and until the product introduces per-user/private visibility semantics for those records. Mere intra-household visibility of records already stored in those shared tables should not be re-reported as a vulnerability by itself; focus instead on cross-household exposure, missing role gates, or routes that let one user act on behalf of another without authorization.
+
 Required guarantees:
 - Every read of household data MUST be scoped to the authenticated user’s authorized household(s).
 - Household-wide exports and other bulk disclosures MUST be restricted to authorized administrators when the product defines member sub-roles.
