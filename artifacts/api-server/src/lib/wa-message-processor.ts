@@ -31,7 +31,7 @@ import { processWhatsAppMedia } from "./media-analysis";
 import { looksLikeToken, markTokenVerified } from "./wa-token-store";
 import { handleWaOnboarding } from "./wa-onboarding-handler";
 import { handleApprovalResponse } from "./wa-approval-handler";
-import { recordPrompt } from "./wa-prompt-store";
+import { recordPrompt, hasOpenApprovalPrompt } from "./wa-prompt-store";
 import { detectPatternsForHousehold } from "./pattern-detector";
 import { isConsentActive } from "./whatsapp";
 import { handleQuestionIntent, isMutationCommand } from "./wa-qa-handler";
@@ -149,6 +149,13 @@ export type ProcessOutcome =
        * This is authoritative — do not re-compute in webhook.ts.
        */
       waCanApproveViaWa: boolean;
+      /**
+       * True when a WA-eligible action arrived but an interactive approval prompt
+       * was already open for this sender. In this case the new action was NOT
+       * bound via recordPrompt (the existing prompt is preserved), and webhook.ts
+       * must send a plain-text "novo item" notice instead of a duplicate button set.
+       */
+      hadExistingOpenPrompt: boolean;
     };
 
 /** Strip all non-digit chars for exact phone matching. */
@@ -472,22 +479,35 @@ async function handleVoiceConfirmResponse(
     !(savedAction.workflow_tags ?? []).includes("payment_admin") &&
     (savedAction.approval_level ?? "one_tap") !== "explicit";
 
+  let hadExistingOpenPrompt = false;
   if (waEligible && savedAction.id && savedAction.title) {
-    await recordPrompt(
-      phoneRaw,
-      savedAction.id,
-      householdId,
-      {
-        title: savedAction.title,
-        type: savedAction.type,
-        category: savedAction.category,
-        datetime: savedAction.datetime ?? null,
-      },
-    );
-    log.info(
-      { phone: phoneRaw, actionId: savedAction.id },
-      "voice-confirm: bound confirmed action to WA prompt — WA-native eligible",
-    );
+    // Guard against duplicate button sets: if the sender already has an open
+    // approval prompt, preserve it (don't overwrite with new action) and flag
+    // the caller to send a plain-text notice instead of another interactive set.
+    const existingOpen = await hasOpenApprovalPrompt(phoneRaw, householdId);
+    if (existingOpen) {
+      hadExistingOpenPrompt = true;
+      log.info(
+        { phone: phoneRaw, actionId: savedAction.id },
+        "voice-confirm: open approval prompt exists — skipping recordPrompt; plain-text notice will be sent",
+      );
+    } else {
+      await recordPrompt(
+        phoneRaw,
+        savedAction.id,
+        householdId,
+        {
+          title: savedAction.title,
+          type: savedAction.type,
+          category: savedAction.category,
+          datetime: savedAction.datetime ?? null,
+        },
+      );
+      log.info(
+        { phone: phoneRaw, actionId: savedAction.id },
+        "voice-confirm: bound confirmed action to WA prompt — WA-native eligible",
+      );
+    }
   }
 
   return {
@@ -507,6 +527,7 @@ async function handleVoiceConfirmResponse(
     cascadeCheckNeeded: savedAction?.cascade_check_needed ?? false,
     workflowTags: savedAction?.workflow_tags ?? [],
     waCanApproveViaWa: waEligible,
+    hadExistingOpenPrompt,
   };
 }
 
@@ -1508,23 +1529,36 @@ export async function processInboundWAMessage(
     !(savedAction.workflow_tags ?? []).includes("payment_admin") &&
     (savedAction.approval_level ?? "one_tap") !== "explicit";
 
+  let hadExistingOpenPrompt = false;
   if (waEligible && savedAction.id && savedAction.title) {
-    await recordPrompt(
-      phoneRaw,
-      savedAction.id,
-      householdId,
-      {
-        title: savedAction.title,
-        type: savedAction.type,
-        category: savedAction.category,
-        datetime: savedAction.datetime ?? null,
-      },
-      payload.messageSid ?? undefined,
-    );
-    log.info(
-      { phone: phoneRaw, actionId: savedAction.id },
-      "Bound proposed action to sender phone — WA-native eligible",
-    );
+    // Guard against duplicate button sets: if the sender already has an open
+    // approval prompt, preserve it (don't overwrite with new action) and flag
+    // the caller to send a plain-text notice instead of another interactive set.
+    const existingOpen = await hasOpenApprovalPrompt(phoneRaw, householdId);
+    if (existingOpen) {
+      hadExistingOpenPrompt = true;
+      log.info(
+        { phone: phoneRaw, actionId: savedAction.id },
+        "Open approval prompt exists — skipping recordPrompt; plain-text notice will be sent instead of duplicate buttons",
+      );
+    } else {
+      await recordPrompt(
+        phoneRaw,
+        savedAction.id,
+        householdId,
+        {
+          title: savedAction.title,
+          type: savedAction.type,
+          category: savedAction.category,
+          datetime: savedAction.datetime ?? null,
+        },
+        payload.messageSid ?? undefined,
+      );
+      log.info(
+        { phone: phoneRaw, actionId: savedAction.id },
+        "Bound proposed action to sender phone — WA-native eligible",
+      );
+    }
   } else if (savedAction?.id) {
     log.info(
       {
@@ -1555,5 +1589,6 @@ export async function processInboundWAMessage(
     cascadeCheckNeeded: savedAction?.cascade_check_needed ?? false,
     workflowTags: savedAction?.workflow_tags ?? [],
     waCanApproveViaWa: waEligible,
+    hadExistingOpenPrompt,
   };
 }

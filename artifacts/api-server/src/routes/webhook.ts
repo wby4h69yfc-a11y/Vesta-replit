@@ -45,6 +45,7 @@ import {
   replyMutationError,
   replyVoiceProcessingAck,
   replyVoiceConfirmInteractive,
+  replyPendingItemsNotice,
   composeApprovalInteractive,
   composeMutationConfirmInteractive,
 } from "../lib/wa-reply-composer";
@@ -198,7 +199,7 @@ async function handleWaOutcome(
 
       const domain = primaryDomain();
 
-      if (outcome.waCanApproveViaWa) {
+      if (outcome.waCanApproveViaWa && !outcome.hadExistingOpenPrompt) {
         req.log.info(
           { actionId: outcome.actionId, confidence: outcome.confidence },
           "WA-native flow: sending interactive action proposal",
@@ -220,6 +221,14 @@ async function handleWaOutcome(
             );
           }
         });
+      } else if (outcome.waCanApproveViaWa && outcome.hadExistingOpenPrompt) {
+        // A prompt is already open for this sender — send a plain-text notice
+        // instead of a second set of buttons to avoid duplicate button sets in chat.
+        req.log.info(
+          { actionId: outcome.actionId },
+          "Existing approval prompt open — suppressing duplicate buttons, sending plain-text notice",
+        );
+        void sendWhatsApp(replyDest(outcome.phone), replyPendingItemsNotice());
       } else {
         req.log.info(
           {

@@ -45,6 +45,18 @@ export function replyIngestAck(): string {
 }
 
 /**
+ * Sent when a new classification arrives while an interactive approval prompt
+ * is already open for this sender. A second set of buttons is not sent;
+ * instead this plain-text notice tells the admin a new item is waiting.
+ */
+export function replyPendingItemsNotice(): string {
+  return (
+    "📬 Novo item adicionado à sua caixa de entrada.\n\n" +
+    "Você ainda tem itens aguardando revisão — responda ao botão anterior ou revise no app."
+  );
+}
+
+/**
  * Sent immediately when an audio/voice message arrives, before transcription
  * begins. Gives the user instant feedback that the message was received.
  */

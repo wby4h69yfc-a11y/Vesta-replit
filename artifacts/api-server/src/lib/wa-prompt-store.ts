@@ -101,6 +101,38 @@ export async function recordPrompt(
 }
 
 /**
+ * Returns true when the sender already has an active `awaiting_confirmation`
+ * approval conversation that has not yet expired.
+ *
+ * Used before sending a new interactive button set to avoid duplicate prompts
+ * in the WhatsApp chat when multiple messages arrive in quick succession.
+ * Scoped to thread_context="approval" so voice_confirm rows are unaffected.
+ */
+export async function hasOpenApprovalPrompt(
+  phone: string,
+  householdId: number,
+): Promise<boolean> {
+  const phoneNorm = normalisePhone(phone);
+  const now = new Date();
+
+  const [row] = await db
+    .select({ id: waConversationsTable.id })
+    .from(waConversationsTable)
+    .where(
+      and(
+        eq(waConversationsTable.household_id, householdId),
+        eq(waConversationsTable.sender_phone, phoneNorm),
+        eq(waConversationsTable.thread_context, "approval"),
+        eq(waConversationsTable.state, "awaiting_confirmation"),
+        gt(waConversationsTable.expires_at, now),
+      ),
+    )
+    .limit(1);
+
+  return row !== undefined;
+}
+
+/**
  * Return the action ID that was most recently proposed to `phone` in `householdId`,
  * or null if no valid binding exists or the conversation has expired.
  */
