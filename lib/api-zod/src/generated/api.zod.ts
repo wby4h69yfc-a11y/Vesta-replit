@@ -355,6 +355,12 @@ export const GetInboxItemResponse = zod.object({
       notes: zod.string().nullish(),
       cascade_check_needed: zod.boolean().optional(),
       workflow_tags: zod.array(zod.string()).optional(),
+      wa_can_approve_via_wa: zod
+        .boolean()
+        .optional()
+        .describe(
+          "True when this action can be approved directly from WhatsApp (interactive buttons were sent or would be sent to the household admin). False for payment actions and actions that require explicit in-app review.\n",
+        ),
       payment_data: zod
         .object({
           amount_cents: zod.number().nullish(),
@@ -444,6 +450,12 @@ export const ListActionsResponseItem = zod.object({
   notes: zod.string().nullish(),
   cascade_check_needed: zod.boolean().optional(),
   workflow_tags: zod.array(zod.string()).optional(),
+  wa_can_approve_via_wa: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when this action can be approved directly from WhatsApp (interactive buttons were sent or would be sent to the household admin). False for payment actions and actions that require explicit in-app review.\n",
+    ),
   payment_data: zod
     .object({
       amount_cents: zod.number().nullish(),
@@ -499,6 +511,12 @@ export const ApproveActionResponse = zod.object({
   notes: zod.string().nullish(),
   cascade_check_needed: zod.boolean().optional(),
   workflow_tags: zod.array(zod.string()).optional(),
+  wa_can_approve_via_wa: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when this action can be approved directly from WhatsApp (interactive buttons were sent or would be sent to the household admin). False for payment actions and actions that require explicit in-app review.\n",
+    ),
   payment_data: zod
     .object({
       amount_cents: zod.number().nullish(),
@@ -541,6 +559,12 @@ export const DismissActionResponse = zod.object({
   notes: zod.string().nullish(),
   cascade_check_needed: zod.boolean().optional(),
   workflow_tags: zod.array(zod.string()).optional(),
+  wa_can_approve_via_wa: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when this action can be approved directly from WhatsApp (interactive buttons were sent or would be sent to the household admin). False for payment actions and actions that require explicit in-app review.\n",
+    ),
   payment_data: zod
     .object({
       amount_cents: zod.number().nullish(),
@@ -592,6 +616,12 @@ export const EditActionResponse = zod.object({
   notes: zod.string().nullish(),
   cascade_check_needed: zod.boolean().optional(),
   workflow_tags: zod.array(zod.string()).optional(),
+  wa_can_approve_via_wa: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when this action can be approved directly from WhatsApp (interactive buttons were sent or would be sent to the household admin). False for payment actions and actions that require explicit in-app review.\n",
+    ),
   payment_data: zod
     .object({
       amount_cents: zod.number().nullish(),
@@ -642,6 +672,12 @@ export const ListActionCascadesResponseItem = zod.object({
       notes: zod.string().nullish(),
       cascade_check_needed: zod.boolean().optional(),
       workflow_tags: zod.array(zod.string()).optional(),
+      wa_can_approve_via_wa: zod
+        .boolean()
+        .optional()
+        .describe(
+          "True when this action can be approved directly from WhatsApp (interactive buttons were sent or would be sent to the household admin). False for payment actions and actions that require explicit in-app review.\n",
+        ),
       payment_data: zod
         .object({
           amount_cents: zod.number().nullish(),
@@ -1900,6 +1936,12 @@ export const ExportPrivacyDataResponse = zod.object({
         notes: zod.string().nullish(),
         cascade_check_needed: zod.boolean().optional(),
         workflow_tags: zod.array(zod.string()).optional(),
+        wa_can_approve_via_wa: zod
+          .boolean()
+          .optional()
+          .describe(
+            "True when this action can be approved directly from WhatsApp (interactive buttons were sent or would be sent to the household admin). False for payment actions and actions that require explicit in-app review.\n",
+          ),
         payment_data: zod
           .object({
             amount_cents: zod.number().nullish(),

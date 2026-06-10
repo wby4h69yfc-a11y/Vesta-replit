@@ -23,7 +23,12 @@ router.get("/actions", async (req, res) => {
       .where(and(...conditions))
       .orderBy(suggestedActionsTable.created_at);
 
-    res.json(actions);
+    res.json(
+      actions.map((a) => ({
+        ...a,
+        wa_can_approve_via_wa: a.type !== "payment" && a.approval_level !== "explicit",
+      })),
+    );
   } catch (err) {
     req.log.error({ err }, "Failed to list actions");
     res.status(500).json({ error: "Internal server error" });

@@ -672,6 +672,9 @@ export interface SuggestedAction {
   notes?: string | null;
   cascade_check_needed?: boolean;
   workflow_tags?: string[];
+  /** True when this action can be approved directly from WhatsApp (interactive buttons were sent or would be sent to the household admin). False for payment actions and actions that require explicit in-app review.
+   */
+  wa_can_approve_via_wa?: boolean;
   payment_data?: SuggestedActionPaymentData;
   created_at?: string;
 }

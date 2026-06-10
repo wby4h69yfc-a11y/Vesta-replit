@@ -7,6 +7,7 @@ import CategoryBadge from "@/components/CategoryBadge";
 import { formatDateTime } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import PaymentSafetyChecklist from "@/components/PaymentSafetyChecklist";
+import WaButtonPreview from "@/components/WaButtonPreview";
 
 type PaymentData = {
   amount_cents?: number | null;
@@ -29,6 +30,7 @@ type Action = {
   cascade_check_needed?: boolean;
   workflow_tags?: string[];
   payment_data?: PaymentData | null;
+  wa_can_approve_via_wa?: boolean;
 };
 
 export default function ApprovalCard({ action, compact = false }: { action: Action; compact?: boolean }) {
@@ -115,6 +117,20 @@ export default function ApprovalCard({ action, compact = false }: { action: Acti
           )}
           {action.suggested_owner && (
             <p className="text-xs text-muted-foreground mt-0.5">Responsável: {action.suggested_owner}</p>
+          )}
+
+          {action.wa_can_approve_via_wa && (
+            <div className="mt-3">
+              <WaButtonPreview
+                body={action.title}
+                buttons={[
+                  { title: "✅ Aprovar" },
+                  { title: "❌ Recusar" },
+                  { title: "✏️ Editar" },
+                ]}
+                footer="Toque para responder"
+              />
+            </div>
           )}
         </div>
 

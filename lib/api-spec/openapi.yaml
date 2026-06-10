@@ -2781,6 +2781,12 @@ components:
           type: array
           items:
             type: string
+        wa_can_approve_via_wa:
+          type: boolean
+          description: >
+            True when this action can be approved directly from WhatsApp (interactive buttons
+            were sent or would be sent to the household admin). False for payment actions and
+            actions that require explicit in-app review.
         payment_data:
           nullable: true
           type: object
