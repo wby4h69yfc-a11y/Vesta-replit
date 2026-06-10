@@ -112,12 +112,19 @@ async function handleDeliveryStatus(
   errorCode: string | undefined,
   req: Request,
 ): Promise<void> {
-  const phoneNorm = phone.replace(/^whatsapp:/i, "").replace(/^\+/, "");
+  // Strip all non-digits so the lookup is format-agnostic.
+  // whatsapp_verified_phone is stored in mixed formats across onboarding paths
+  // ("+5511...", "5511...", "whatsapp:+5511..."), so both sides must be normalized.
+  const phoneNorm = phone.replace(/\D/g, "");
+  if (!phoneNorm) {
+    req.log.info({ status }, "delivery-status: empty phone after normalization — ignoring");
+    return;
+  }
 
   const [row] = await db
     .select({ household_id: onboardingStateTable.household_id })
     .from(onboardingStateTable)
-    .where(eq(onboardingStateTable.whatsapp_verified_phone, phoneNorm))
+    .where(sql`regexp_replace(${onboardingStateTable.whatsapp_verified_phone}, '\\D', '', 'g') = ${phoneNorm}`)
     .limit(1);
 
   if (!row) {
