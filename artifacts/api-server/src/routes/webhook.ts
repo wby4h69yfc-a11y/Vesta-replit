@@ -764,15 +764,37 @@ router.post(
         return;
       }
 
-      // 360Dialog DM-only: group message detection to be refined once the
-      // exact group-JID payload format is confirmed. For now all messages
-      // are treated as direct messages.
-      const replyDest = (phone: string): string => phone;
+      // ── Group detection & /vesta trigger filter ──────────────────────────
+      // parseInboundPayload sets groupId to the Cloud API group_id field
+      // (e.g. "120363XXXXXXXX@g.us") when the message arrived in a WA group.
+      const groupSourced = !!message.groupId;
+      const groupId = message.groupId ?? null;
+
+      let effectiveBody = message.body;
+      if (groupSourced) {
+        const stripped = extractVestaTrigger(effectiveBody);
+        if (stripped === null) {
+          req.log.info(
+            { group_id: groupId, from: message.from, source: "group" },
+            "Group message without /vesta trigger — silently ignored",
+          );
+          return;
+        }
+        effectiveBody = stripped;
+        req.log.info(
+          { group_id: groupId, from: message.from, preview: effectiveBody.substring(0, 60), source: "group" },
+          "Group /vesta command received",
+        );
+      }
+
+      // Replies go to the group JID (all members see them) for group messages,
+      // or directly to the sender's phone for DMs.
+      const replyDest = (phone: string): string => groupId ?? phone;
 
       // ── Tier-0: PAUSAR / PARAR / RETOMAR + BSP opt-out aliases ──────────
       // STOP, CANCELAR, UNSUBSCRIBE, QUIT are BSP-standard opt-out keywords
       // that map to digest_stopped = true, same as PARAR.
-      const normalizedBody = message.body.toUpperCase();
+      const normalizedBody = effectiveBody.toUpperCase();
       const BSP_STOP_KEYWORDS_360 = new Set(["STOP", "CANCELAR", "UNSUBSCRIBE", "QUIT"]);
       if (
         normalizedBody === "PAUSAR" ||
@@ -780,6 +802,16 @@ router.post(
         normalizedBody === "RETOMAR" ||
         BSP_STOP_KEYWORDS_360.has(normalizedBody)
       ) {
+        // Tier-0 commands are DM-only — redirect group senders to their DM
+        if (groupSourced) {
+          void sendWhatsApp(groupId!, replyGroupMutationBlocked());
+          req.log.info(
+            { from: message.from, group_id: groupId, command: normalizedBody, source: "group" },
+            "Group Tier-0 command rejected — DM-only",
+          );
+          return;
+        }
+
         const senderPhone = message.from.replace(/^whatsapp:/i, "");
 
         const [onboarding] = await db
@@ -820,9 +852,9 @@ router.post(
         return;
       }
 
-      // Same sender-verified audio ACK as the Twilio path — admin, member, or
-      // contact qualifies; truly unknown senders receive no reply.
+      // Group voice messages are excluded from the audio ACK — different UX expectations.
       if (
+        !groupSourced &&
         parseInt(message.numMedia ?? "0", 10) > 0 &&
         (message.mediaContentType ?? "").startsWith("audio/")
       ) {
@@ -832,10 +864,14 @@ router.post(
         }
       }
 
-      const outcome = await processInboundWAMessage(message, req.log);
+      const outcome = await processInboundWAMessage({ ...message, body: effectiveBody }, req.log);
 
       req.log.info(
-        { outcomeKind: outcome.kind, source: "dm" },
+        {
+          outcomeKind: outcome.kind,
+          source: groupSourced ? "group" : "dm",
+          ...(groupId ? { group_id: groupId } : {}),
+        },
         "360Dialog webhook outcome",
       );
 

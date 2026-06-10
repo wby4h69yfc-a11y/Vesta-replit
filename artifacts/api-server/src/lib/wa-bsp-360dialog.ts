@@ -201,6 +201,12 @@ export class WaBsp360DialogAdapter implements WaBspAdapter {
           from?: string;
           id?: string;
           type?: string;
+          /**
+           * WhatsApp Cloud API group JID.
+           * Present when the message was sent in a WhatsApp group chat
+           * (e.g. "120363XXXXXXXX@g.us").  Absent for direct messages.
+           */
+          group_id?: string;
           text?: { body?: string };
           audio?: { id?: string; mime_type?: string };
           image?: { id?: string; mime_type?: string; caption?: string };
@@ -276,6 +282,11 @@ export class WaBsp360DialogAdapter implements WaBspAdapter {
         return null;
     }
 
+    // A group JID ends with "@g.us" (e.g. "120363XXXXXXXX@g.us").
+    // When present, the message originated from a WhatsApp group chat.
+    const groupId =
+      msg.group_id && msg.group_id.endsWith("@g.us") ? msg.group_id : null;
+
     return {
       from,
       body: textBody,
@@ -286,9 +297,7 @@ export class WaBsp360DialogAdapter implements WaBspAdapter {
       mediaContentType: mimeType,
       numMedia: hasMedia ? "1" : "0",
       messageSid: msg.id ?? null,
-      // Group message detection for 360Dialog requires confirming the exact
-      // payload format for group JIDs — set to null until confirmed.
-      groupId: null,
+      groupId,
     };
   }
 

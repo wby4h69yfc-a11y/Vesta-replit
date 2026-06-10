@@ -243,6 +243,81 @@ test("parseInboundPayload: messageSid is the Cloud API message id", () => {
   assert.equal(result.messageSid, "wamid.HBgLNTUxMTk5Mjk5NjcVAgASGBQzQUY2MDQ");
 });
 
+// ── parseInboundPayload — group message detection ─────────────────────────────
+
+test("parseInboundPayload: group message sets groupId to the group JID", () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const result = adapter.parseInboundPayload({
+    contacts: [{ profile: { name: "João" }, wa_id: "5511999990000" }],
+    messages: [
+      {
+        from: "5511999990000",
+        id: "wamid.group001",
+        type: "text",
+        text: { body: "/vesta reunião quinta 19h" },
+        group_id: "120363099999999999@g.us",
+      },
+    ],
+  });
+  assert.ok(result, "Expected non-null result");
+  assert.equal(result.groupId, "120363099999999999@g.us");
+});
+
+test("parseInboundPayload: group message still sets from to the individual sender (whatsapp:+ prefixed)", () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const result = adapter.parseInboundPayload({
+    contacts: [],
+    messages: [
+      {
+        from: "5511999990000",
+        id: "wamid.group002",
+        type: "text",
+        text: { body: "/vesta pausar" },
+        group_id: "120363099999999999@g.us",
+      },
+    ],
+  });
+  assert.ok(result);
+  assert.equal(result.from, "whatsapp:+5511999990000");
+  assert.equal(result.groupId, "120363099999999999@g.us");
+});
+
+test("parseInboundPayload: direct message (no group_id) sets groupId to null", () => {
+  const adapter = new WaBsp360DialogAdapter();
+  const result = adapter.parseInboundPayload({
+    contacts: [],
+    messages: [
+      {
+        from: "5511999990000",
+        id: "wamid.dm001",
+        type: "text",
+        text: { body: "Comprar leite" },
+      },
+    ],
+  });
+  assert.ok(result);
+  assert.equal(result.groupId, null);
+});
+
+test("parseInboundPayload: group_id without @g.us suffix is rejected (groupId null)", () => {
+  // Defensive: an unexpected group_id format should not be treated as a group JID.
+  const adapter = new WaBsp360DialogAdapter();
+  const result = adapter.parseInboundPayload({
+    contacts: [],
+    messages: [
+      {
+        from: "5511999990000",
+        id: "wamid.bogus001",
+        type: "text",
+        text: { body: "Oi" },
+        group_id: "not-a-real-group-id",
+      },
+    ],
+  });
+  assert.ok(result);
+  assert.equal(result.groupId, null);
+});
+
 // ── sendInteractive ────────────────────────────────────────────────────────────
 
 test("sendInteractive: success path returns ok:true with sid from response", async () => {
