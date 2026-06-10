@@ -559,6 +559,17 @@ router.post("/contacts/bulk", async (req, res) => {
       return res.status(400).json({ error: "contacts array is required" });
     }
 
+    // Phone writes require admin role — same constraint as POST /contacts and
+    // PATCH /contacts/:id. Any authenticated member could otherwise register
+    // arbitrary phone numbers and influence inbound WA identity routing.
+    const hasPhone = contacts.some((c) => c.phone && c.phone.trim() !== "");
+    if (hasPhone) {
+      const callerRole = await getCallerRole(req);
+      if (callerRole !== "admin") {
+        return res.status(403).json({ error: "Somente administradores podem cadastrar telefones" });
+      }
+    }
+
     // Atomically lock each new phone number, verify cross-household uniqueness,
     // and insert all rows in a single transaction so no concurrent request can
     // claim the same number between our check and the insert.

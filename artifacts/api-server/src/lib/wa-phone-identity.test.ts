@@ -1,8 +1,11 @@
 /**
- * Security regression tests for WhatsApp phone identity routing.
+ * Security regression tests for WhatsApp phone identity routing and
+ * contact phone-write access control.
  *
  * Exercises the pure `computePhoneRouting` helper that implements the
- * two-tier priority model used by resolveHousehold().
+ * two-tier priority model used by resolveHousehold(), plus the admin-gate
+ * predicate that guards all contact phone-write endpoints (POST /contacts,
+ * PATCH /contacts/:id, POST /contacts/bulk).
  *
  * NO database connection required — all data is supplied inline.
  *
@@ -18,6 +21,7 @@
  *   6. Multi-household collision on contacts — fail-closed
  *   7. Unknown sender — no member or contact match → onboarding flow
  *   8. normalisePhone strips non-digits for canonical matching
+ *   9. Admin gate trigger predicate — POST /contacts/bulk phone detection
  *
  * Run with:  pnpm --filter @workspace/api-server run test:unit
  */
@@ -202,4 +206,88 @@ test("routing: null phone on contact is skipped safely", () => {
     [{ phone: null, household_id: 1 }],
   );
   assert.deepEqual(result, { kind: "unknown" });
+});
+
+// ── Admin gate predicate: POST /contacts/bulk ─────────────────────────────────
+//
+// The route handler runs:
+//   const hasPhone = contacts.some(c => c.phone && c.phone.trim() !== "");
+//   if (hasPhone) { requireAdmin() }
+//
+// These tests document the exact cases that MUST trigger the admin check,
+// ensuring non-admins cannot register phone numbers via the bulk path and
+// influence inbound WA identity routing.
+
+/** Mirrors the admin-gate trigger predicate in POST /contacts/bulk. */
+function bulkHasPhone(contacts: Array<{ phone?: string | null }>): boolean {
+  return contacts.some((c) => c.phone != null && c.phone.trim() !== "");
+}
+
+test("admin gate: single contact with phone triggers gate", () => {
+  assert.equal(bulkHasPhone([{ phone: "+5511999990000" }]), true);
+});
+
+test("admin gate: phone-only contact in mixed array triggers gate", () => {
+  assert.equal(
+    bulkHasPhone([{ phone: undefined }, { phone: "+5511888880000" }, { phone: null }]),
+    true,
+    "gate must fire even when only one contact in the batch has a phone",
+  );
+});
+
+test("admin gate: contacts without phone do NOT trigger gate (non-admin can create phone-less contacts)", () => {
+  assert.equal(
+    bulkHasPhone([{ phone: undefined }, { phone: null }, {}]),
+    false,
+    "phone-less contacts must not require admin — non-admins can add names/categories",
+  );
+});
+
+test("admin gate: empty-string phone does NOT trigger gate (treated as absent)", () => {
+  assert.equal(bulkHasPhone([{ phone: "" }]), false);
+});
+
+test("admin gate: whitespace-only phone does NOT trigger gate", () => {
+  assert.equal(bulkHasPhone([{ phone: "   " }]), false);
+});
+
+test("admin gate: empty contacts array does NOT trigger gate", () => {
+  assert.equal(bulkHasPhone([]), false);
+});
+
+// ── End-to-end pre-claim attack chain (documentation test) ───────────────────
+//
+// This test narrates the full attack that the admin gate + routing priority
+// collectively prevent, ensuring the defence-in-depth is understood and stable.
+//
+// Attack: non-admin member in household A tries to register victim's phone via
+// POST /contacts/bulk so victim's inbound WA messages route to household A.
+//
+// Defence:
+//   Step 1 — bulkHasPhone returns true → admin gate fires → 403 (write blocked).
+//   Step 2 — Even if a rogue admin in household A somehow registers the phone,
+//             once the victim completes WA onboarding (phone_verified=true in
+//             household B), computePhoneRouting returns household B because
+//             tier-1 (verified members) always beats tier-2 (contacts).
+
+test("attack chain: routing resolves to victim's household once onboarded (tier-1 beats attacker contact)", () => {
+  const victimPhone = "5511777770001";
+
+  // Before onboarding: only attacker contact exists → attacker's household.
+  const beforeOnboarding = computePhoneRouting(
+    victimPhone,
+    [],
+    [{ phone: victimPhone, household_id: 99 }],
+  );
+  assert.deepEqual(beforeOnboarding, { kind: "found", householdId: 99 },
+    "contact routing used before victim onboards (expected interim state)");
+
+  // After onboarding: victim has phone_verified=true → their household wins.
+  const afterOnboarding = computePhoneRouting(
+    victimPhone,
+    [{ phone: victimPhone, household_id: 1 }], // victim's verified member
+    [{ phone: victimPhone, household_id: 99 }], // attacker's contact (still present)
+  );
+  assert.deepEqual(afterOnboarding, { kind: "found", householdId: 1 },
+    "verified member must override attacker contact after victim onboards");
 });

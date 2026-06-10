@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and, ne, sql } from "drizzle-orm";
-import { db, onboardingStateTable, membersTable, householdsTable, contactsTable } from "@workspace/db";
+import { db, onboardingStateTable, membersTable, householdsTable } from "@workspace/db";
 import { CompleteOnboardingBody } from "@workspace/api-zod";
 import { getHouseholdId } from "../lib/tenant";
 import { createToken, isTokenVerified, getVerifiedPhone } from "../lib/wa-token-store";
