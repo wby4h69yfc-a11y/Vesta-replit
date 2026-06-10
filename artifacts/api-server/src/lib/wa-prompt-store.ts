@@ -15,6 +15,12 @@
  *   4. After approval/dismissal → clearPrompt(phone)
  *
  * TTL: 24 hours.
+ *
+ * Concurrency guarantee: the DB table carries a partial unique index on
+ * (household_id, sender_phone) WHERE thread_context='approval' AND
+ * state='awaiting_confirmation'. recordPrompt() uses INSERT … ON CONFLICT
+ * DO NOTHING so the check-and-insert is atomic — two concurrent ingests for
+ * the same sender can never both succeed and send duplicate button sets.
  */
 
 import { db } from "@workspace/db";
@@ -50,8 +56,14 @@ export async function setStateToAwaitingEdit(
 }
 
 /**
- * Record that `phone` was just shown a proposal for `actionId` in `householdId`.
- * Dismisses any previous open conversation for that sender first.
+ * Atomically record that `phone` was shown a proposal for `actionId` in
+ * `householdId`, provided no active approval prompt already exists for that
+ * sender. Uses INSERT … ON CONFLICT DO NOTHING backed by a DB partial unique
+ * index so the guard is safe under concurrent requests.
+ *
+ * Returns `{ recorded: true }` when the row was inserted (buttons should be
+ * sent), or `{ recorded: false }` when an existing prompt is still active
+ * (caller should send a plain-text notice instead of a second button set).
  */
 export async function recordPrompt(
   phone: string,
@@ -66,70 +78,33 @@ export async function recordPrompt(
   },
   /** Twilio MessageSid — stored for thread-level traceability */
   threadId?: string,
-): Promise<void> {
+): Promise<{ recorded: boolean }> {
   const phoneNorm = normalisePhone(phone);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + TTL_MS);
 
-  // Dismiss any existing awaiting_confirmation rows for this sender so
-  // the lookup always returns only the freshest proposal.
-  // Scoped to thread_context="approval" so voice_confirm or other
-  // non-approval conversations are never inadvertently closed.
-  await db
-    .update(waConversationsTable)
-    .set({ state: "dismissed" })
-    .where(
-      and(
-        eq(waConversationsTable.household_id, householdId),
-        eq(waConversationsTable.thread_context, "approval"),
-        eq(waConversationsTable.sender_phone, phoneNorm),
-        eq(waConversationsTable.state, "awaiting_confirmation"),
-      ),
-    );
+  // INSERT … ON CONFLICT DO NOTHING: the partial unique index on
+  // (household_id, sender_phone) WHERE thread_context='approval' AND
+  // state='awaiting_confirmation' ensures that if an active prompt row
+  // already exists the INSERT is silently skipped (rowCount = 0).
+  const result = await db
+    .insert(waConversationsTable)
+    .values({
+      household_id: householdId,
+      sender_phone: phoneNorm,
+      thread_id: threadId ?? null,
+      state: "awaiting_confirmation",
+      pending_action_id: actionId,
+      proposed_payload: proposedPayload ?? null,
+      thread_context: "approval",
+      last_message_at: now,
+      expires_at: expiresAt,
+    })
+    .onConflictDoNothing();
 
-  await db.insert(waConversationsTable).values({
-    household_id: householdId,
-    sender_phone: phoneNorm,
-    thread_id: threadId ?? null,
-    state: "awaiting_confirmation",
-    pending_action_id: actionId,
-    proposed_payload: proposedPayload ?? null,
-    thread_context: "approval",
-    last_message_at: now,
-    expires_at: expiresAt,
-  });
-}
-
-/**
- * Returns true when the sender already has an active `awaiting_confirmation`
- * approval conversation that has not yet expired.
- *
- * Used before sending a new interactive button set to avoid duplicate prompts
- * in the WhatsApp chat when multiple messages arrive in quick succession.
- * Scoped to thread_context="approval" so voice_confirm rows are unaffected.
- */
-export async function hasOpenApprovalPrompt(
-  phone: string,
-  householdId: number,
-): Promise<boolean> {
-  const phoneNorm = normalisePhone(phone);
-  const now = new Date();
-
-  const [row] = await db
-    .select({ id: waConversationsTable.id })
-    .from(waConversationsTable)
-    .where(
-      and(
-        eq(waConversationsTable.household_id, householdId),
-        eq(waConversationsTable.sender_phone, phoneNorm),
-        eq(waConversationsTable.thread_context, "approval"),
-        eq(waConversationsTable.state, "awaiting_confirmation"),
-        gt(waConversationsTable.expires_at, now),
-      ),
-    )
-    .limit(1);
-
-  return row !== undefined;
+  return {
+    recorded: ((result as unknown as { rowCount?: number }).rowCount ?? 0) > 0,
+  };
 }
 
 /**

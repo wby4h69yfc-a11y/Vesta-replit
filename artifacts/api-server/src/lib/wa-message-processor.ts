@@ -31,7 +31,7 @@ import { processWhatsAppMedia } from "./media-analysis";
 import { looksLikeToken, markTokenVerified } from "./wa-token-store";
 import { handleWaOnboarding } from "./wa-onboarding-handler";
 import { handleApprovalResponse } from "./wa-approval-handler";
-import { recordPrompt, hasOpenApprovalPrompt } from "./wa-prompt-store";
+import { recordPrompt } from "./wa-prompt-store";
 import { detectPatternsForHousehold } from "./pattern-detector";
 import { isConsentActive } from "./whatsapp";
 import { handleQuestionIntent, isMutationCommand } from "./wa-qa-handler";
@@ -481,28 +481,27 @@ async function handleVoiceConfirmResponse(
 
   let hadExistingOpenPrompt = false;
   if (waEligible && savedAction.id && savedAction.title) {
-    // Guard against duplicate button sets: if the sender already has an open
-    // approval prompt, preserve it (don't overwrite with new action) and flag
-    // the caller to send a plain-text notice instead of another interactive set.
-    const existingOpen = await hasOpenApprovalPrompt(phoneRaw, householdId);
-    if (existingOpen) {
+    // recordPrompt() uses INSERT … ON CONFLICT DO NOTHING backed by a partial
+    // unique index, so the guard is atomic under concurrent requests.
+    // recorded=false means an existing prompt is still active.
+    const { recorded } = await recordPrompt(
+      phoneRaw,
+      savedAction.id,
+      householdId,
+      {
+        title: savedAction.title,
+        type: savedAction.type,
+        category: savedAction.category,
+        datetime: savedAction.datetime ?? null,
+      },
+    );
+    if (!recorded) {
       hadExistingOpenPrompt = true;
       log.info(
         { phone: phoneRaw, actionId: savedAction.id },
-        "voice-confirm: open approval prompt exists — skipping recordPrompt; plain-text notice will be sent",
+        "voice-confirm: open approval prompt exists — suppressing duplicate; plain-text notice will be sent",
       );
     } else {
-      await recordPrompt(
-        phoneRaw,
-        savedAction.id,
-        householdId,
-        {
-          title: savedAction.title,
-          type: savedAction.type,
-          category: savedAction.category,
-          datetime: savedAction.datetime ?? null,
-        },
-      );
       log.info(
         { phone: phoneRaw, actionId: savedAction.id },
         "voice-confirm: bound confirmed action to WA prompt — WA-native eligible",
@@ -1531,29 +1530,28 @@ export async function processInboundWAMessage(
 
   let hadExistingOpenPrompt = false;
   if (waEligible && savedAction.id && savedAction.title) {
-    // Guard against duplicate button sets: if the sender already has an open
-    // approval prompt, preserve it (don't overwrite with new action) and flag
-    // the caller to send a plain-text notice instead of another interactive set.
-    const existingOpen = await hasOpenApprovalPrompt(phoneRaw, householdId);
-    if (existingOpen) {
+    // recordPrompt() uses INSERT … ON CONFLICT DO NOTHING backed by a partial
+    // unique index — atomically safe under concurrent requests.
+    // recorded=false means an existing prompt is still active; send plain-text notice.
+    const { recorded } = await recordPrompt(
+      phoneRaw,
+      savedAction.id,
+      householdId,
+      {
+        title: savedAction.title,
+        type: savedAction.type,
+        category: savedAction.category,
+        datetime: savedAction.datetime ?? null,
+      },
+      payload.messageSid ?? undefined,
+    );
+    if (!recorded) {
       hadExistingOpenPrompt = true;
       log.info(
         { phone: phoneRaw, actionId: savedAction.id },
-        "Open approval prompt exists — skipping recordPrompt; plain-text notice will be sent instead of duplicate buttons",
+        "Open approval prompt exists — suppressing duplicate buttons; plain-text notice will be sent",
       );
     } else {
-      await recordPrompt(
-        phoneRaw,
-        savedAction.id,
-        householdId,
-        {
-          title: savedAction.title,
-          type: savedAction.type,
-          category: savedAction.category,
-          datetime: savedAction.datetime ?? null,
-        },
-        payload.messageSid ?? undefined,
-      );
       log.info(
         { phone: phoneRaw, actionId: savedAction.id },
         "Bound proposed action to sender phone — WA-native eligible",

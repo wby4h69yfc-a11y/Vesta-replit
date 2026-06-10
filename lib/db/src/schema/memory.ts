@@ -1,4 +1,5 @@
-import { pgTable, text, serial, timestamp, integer, jsonb, date, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, jsonb, date, boolean, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { suggestedActionsTable } from "./actions";
@@ -133,6 +134,9 @@ export const waConversationsTable = pgTable(
       table.state,
       table.expires_at,
     ),
+    uniqueIndex("wa_conversations_approval_unique_idx")
+      .on(table.household_id, table.sender_phone)
+      .where(sql`thread_context = 'approval' AND state = 'awaiting_confirmation'`),
   ],
 );
 
