@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq } from "drizzle-orm";
-import { db, onboardingStateTable, membersTable, householdsTable } from "@workspace/db";
+import { eq, and, ne, sql } from "drizzle-orm";
+import { db, onboardingStateTable, membersTable, householdsTable, contactsTable } from "@workspace/db";
 import { CompleteOnboardingBody } from "@workspace/api-zod";
 import { getHouseholdId } from "../lib/tenant";
 import { createToken, isTokenVerified, getVerifiedPhone } from "../lib/wa-token-store";
@@ -194,16 +194,91 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
       .limit(1);
 
     if (!existing) {
-      await db.insert(membersTable).values({
-        household_id: householdId,
-        user_id: userId,
-        name: memberName,
-        display_name: memberName,
-        role: "admin",
-        relationship_type: "adult",
-        // Only store the phone if the token flow confirmed ownership of the number.
-        phone: serverPhone ?? null,
-      });
+      // Determine the phone to store.  Even though serverPhone was confirmed via
+      // the WhatsApp token flow, an attacker in another household could have
+      // pre-registered the same number as a contact or member.  We re-run the
+      // cross-household uniqueness check inside an advisory-locked transaction
+      // before writing it.  On conflict we insert with phone = null so the
+      // victim's onboarding succeeds rather than being blocked (DoS-resilient).
+      let safePhone: string | null = null;
+      if (serverPhone) {
+        const phoneNorm = serverPhone.replace(/\D/g, "");
+        if (phoneNorm) {
+          await db.transaction(async (tx) => {
+            await tx.execute(
+              sql`SELECT pg_advisory_xact_lock(hashtext('wa_phone'::text), hashtext(${phoneNorm}::text))`,
+            );
+
+            // Check contacts in other households.
+            const [cc] = await tx
+              .select({ id: contactsTable.id })
+              .from(contactsTable)
+              .where(
+                and(
+                  sql`regexp_replace(${contactsTable.phone}, '\\D', '', 'g') = ${phoneNorm}`,
+                  ne(contactsTable.household_id, householdId),
+                ),
+              )
+              .limit(1);
+
+            // Check members in other households.
+            const [cm] = !cc
+              ? await tx
+                  .select({ id: membersTable.id })
+                  .from(membersTable)
+                  .where(
+                    and(
+                      sql`regexp_replace(${membersTable.phone}, '\\D', '', 'g') = ${phoneNorm}`,
+                      ne(membersTable.household_id, householdId),
+                    ),
+                  )
+                  .limit(1)
+              : [undefined];
+
+            if (cc || cm) {
+              // Another household has already claimed this verified phone.
+              // Log for ops to investigate but don't block the user's onboarding.
+              req.log.warn(
+                { householdId },
+                "onboarding/complete: verified phone already claimed by another household — inserting member without phone",
+              );
+              safePhone = null;
+            } else {
+              safePhone = serverPhone;
+            }
+
+            await tx.insert(membersTable).values({
+              household_id: householdId,
+              user_id: userId,
+              name: memberName,
+              display_name: memberName,
+              role: "admin",
+              relationship_type: "adult",
+              phone: safePhone,
+            });
+          });
+        } else {
+          await db.insert(membersTable).values({
+            household_id: householdId,
+            user_id: userId,
+            name: memberName,
+            display_name: memberName,
+            role: "admin",
+            relationship_type: "adult",
+            phone: null,
+          });
+        }
+      } else {
+        await db.insert(membersTable).values({
+          household_id: householdId,
+          user_id: userId,
+          name: memberName,
+          display_name: memberName,
+          role: "admin",
+          relationship_type: "adult",
+          phone: null,
+        });
+      }
     } else if (!existing.user_id) {
       await db
         .update(membersTable)

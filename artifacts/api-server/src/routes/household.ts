@@ -375,11 +375,18 @@ router.patch("/household/members/:id", async (req, res) => {
       if (!existing) { notFound = true; return null; }
 
       // Admins may edit any member. Non-admins may only edit their own profile
-      // and may not change role.
+      // and may not change role or phone.
+      //
+      // Phone changes for non-admins are blocked entirely: the only trusted
+      // proof-of-ownership path is the onboarding WhatsApp token flow.
+      // Allowing arbitrary phone updates via a self-edit endpoint would let any
+      // authenticated user pre-claim another person's phone number as their own
+      // member identity, hijacking inbound WhatsApp routing for that number.
       const isOwnRecord = existing.user_id != null && existing.user_id === req.user?.id;
       if (callerRole !== "admin") {
         if (!isOwnRecord) { forbidden = "Apenas administradores podem editar o perfil de outros membros"; return null; }
         if (body.role !== undefined) { forbidden = "Apenas administradores podem alterar funções de membros"; return null; }
+        if (body.phone !== undefined) { forbidden = "Número de telefone só pode ser alterado pelo administrador do domicílio"; return null; }
       }
 
       const isNewPhone = body.phone !== undefined && body.phone !== null && body.phone !== "" && body.phone !== existing.phone;
