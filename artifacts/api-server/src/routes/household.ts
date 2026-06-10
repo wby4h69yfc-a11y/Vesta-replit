@@ -1,7 +1,8 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { db } from "@workspace/db";
-import { householdsTable, membersTable, rulesTable, contactsTable } from "@workspace/db";
-import { eq, and, count, sql, ne } from "drizzle-orm";
+import { householdsTable, membersTable, rulesTable, contactsTable, memberInvitesTable, usersTable } from "@workspace/db";
+import { eq, and, count, sql, ne, isNull } from "drizzle-orm";
 import { getHouseholdId, getCallerRole } from "../lib/tenant";
 import { getPlanLimits } from "../lib/freemium";
 
@@ -451,6 +452,148 @@ router.delete("/household/members/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete member");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── WA invite / unlink ────────────────────────────────────────────────────────
+
+/** Generates a 6-char alphanumeric token that always contains at least one letter. */
+function generateMemberInviteToken(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const bytes = crypto.randomBytes(6);
+  const suffix = Array.from(bytes, b => chars[b % chars.length]);
+  // Enforce at least one letter — if all chars happened to be digits, replace index 0.
+  if (!suffix.some(c => letters.includes(c))) {
+    const lb = crypto.randomBytes(1)[0];
+    suffix[0] = letters[lb % letters.length];
+  }
+  return `VESTA-${suffix.join("")}`;
+}
+
+router.post("/household/members/:id/wa-invite", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const role = await getCallerRole(req);
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Apenas administradores podem criar convites" });
+    }
+
+    const hid = getHouseholdId(req);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid member id" });
+
+    const [member] = await db
+      .select()
+      .from(membersTable)
+      .where(and(eq(membersTable.id, id), eq(membersTable.household_id, hid)));
+    if (!member) return res.status(404).json({ error: "Membro não encontrado" });
+
+    if (member.relationship_type === "child") {
+      return res.status(400).json({ error: "Convites WhatsApp são apenas para adultos" });
+    }
+
+    const domain = (process.env.REPLIT_DOMAINS ?? "").split(",").filter(Boolean)[0]
+      ?? process.env.REPLIT_DEV_DOMAIN
+      ?? null;
+
+    const waNumber = process.env.TWILIO_WHATSAPP_FROM
+      ?? process.env.DIALOG360_WHATSAPP_NUMBER
+      ?? null;
+
+    const token = generateMemberInviteToken();
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+    await db
+      .delete(memberInvitesTable)
+      .where(and(
+        eq(memberInvitesTable.member_id, id),
+        isNull(memberInvitesTable.used_at),
+      ));
+
+    await db.insert(memberInvitesTable).values({
+      household_id: hid,
+      member_id: id,
+      token,
+      expires_at: expiresAt,
+    });
+
+    const appUrl = domain ? `https://${domain}/app` : null;
+    const waDisplay = waNumber ? `+${waNumber.replace(/\D/g, "")}` : "o número do Vesta";
+
+    const inviteText =
+      `Olá, *${member.name}*! Você foi convidado(a) para o Vesta — assistente de logística da família.\n\n` +
+      `Para vincular seu WhatsApp, envie a mensagem abaixo para ${waDisplay}:\n\n` +
+      `*${token}*\n\n` +
+      `_(Este código expira em 48 horas)_` +
+      (appUrl ? `\n\nAcesse também pelo app: ${appUrl}` : "");
+
+    req.log.info({ memberId: id, householdId: hid, tokenPrefix: token.slice(0, 9) }, "wa-invite: token generated");
+
+    res.json({ token, invite_text: inviteText, expires_at: expiresAt.toISOString() });
+  } catch (err) {
+    req.log.error({ err }, "Failed to create member WA invite");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/household/members/:id/wa-link", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const role = await getCallerRole(req);
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Apenas administradores podem desvincular WhatsApp de membros" });
+    }
+
+    const hid = getHouseholdId(req);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid member id" });
+
+    const [member] = await db
+      .select()
+      .from(membersTable)
+      .where(and(eq(membersTable.id, id), eq(membersTable.household_id, hid)));
+    if (!member) return res.status(404).json({ error: "Membro não encontrado" });
+
+    if (!member.phone) {
+      return res.status(400).json({ error: "Este membro não tem WhatsApp vinculado" });
+    }
+
+    if (member.user_id && member.user_id === req.user?.id) {
+      return res.status(403).json({ error: "Você não pode desvincular seu próprio WhatsApp" });
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(membersTable)
+        .set({ phone: null })
+        .where(and(eq(membersTable.id, id), eq(membersTable.household_id, hid)));
+
+      if (member.user_id) {
+        await tx
+          .update(usersTable)
+          .set({ phone: null })
+          .where(eq(usersTable.id, member.user_id));
+      }
+
+      await tx
+        .delete(memberInvitesTable)
+        .where(and(
+          eq(memberInvitesTable.member_id, id),
+          isNull(memberInvitesTable.used_at),
+        ));
+    });
+
+    const [updated] = await db
+      .select()
+      .from(membersTable)
+      .where(eq(membersTable.id, id));
+
+    req.log.info({ memberId: id, householdId: hid }, "wa-link: unlinked");
+    res.json(updated);
+  } catch (err) {
+    req.log.error({ err }, "Failed to unlink member WA");
     res.status(500).json({ error: "Internal server error" });
   }
 });

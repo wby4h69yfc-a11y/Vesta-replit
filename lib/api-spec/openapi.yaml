@@ -1344,6 +1344,68 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /household/members/{id}/wa-invite:
+    post:
+      operationId: createMemberWaInvite
+      tags: [household]
+      summary: Generate a WhatsApp invite token for an adult member (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invite text generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberWaInviteResult"
+        "403":
+          description: Admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Member not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /household/members/{id}/wa-link:
+    delete:
+      operationId: unlinkMemberWa
+      tags: [household]
+      summary: Unlink a member's WhatsApp number (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Unlinked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "403":
+          description: Admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Member not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /household/invite:
     post:
       operationId: createHouseholdInvite
@@ -2218,6 +2280,20 @@ components:
           type: string
         medical_plan:
           type: string
+
+    MemberWaInviteResult:
+      type: object
+      required: [token, invite_text, expires_at]
+      properties:
+        token:
+          type: string
+          description: The VESTA-XXXXXX token the invitee must send to the Vesta WhatsApp number
+        invite_text:
+          type: string
+          description: Ready-to-share invite message text (for copy/share)
+        expires_at:
+          type: string
+          format: date-time
 
     HouseholdInviteInput:
       type: object

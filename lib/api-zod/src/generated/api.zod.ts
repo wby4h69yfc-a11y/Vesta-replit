@@ -2560,6 +2560,52 @@ export const DeleteMemberParams = zod.object({
 });
 
 /**
+ * @summary Generate a WhatsApp invite token for an adult member (admin only)
+ */
+export const CreateMemberWaInviteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateMemberWaInviteResponse = zod.object({
+  token: zod
+    .string()
+    .describe(
+      "The VESTA-XXXXXX token the invitee must send to the Vesta WhatsApp number",
+    ),
+  invite_text: zod
+    .string()
+    .describe("Ready-to-share invite message text (for copy\/share)"),
+  expires_at: zod.coerce.date(),
+});
+
+/**
+ * @summary Unlink a member's WhatsApp number (admin only)
+ */
+export const UnlinkMemberWaParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UnlinkMemberWaResponse = zod.object({
+  id: zod.number(),
+  household_id: zod.number().optional(),
+  user_id: zod.string().nullish(),
+  name: zod.string(),
+  display_name: zod.string().nullish(),
+  role: zod.enum(["admin", "member", "restricted"]),
+  relationship_type: zod.enum(["adult", "child", "other"]).optional(),
+  phone: zod.string().nullish(),
+  avatar_url: zod.string().nullish(),
+  colour: zod.string().nullish(),
+  birth_year: zod.number().nullish(),
+  school: zod.string().nullish(),
+  grade: zod.string().nullish(),
+  primary_doctor: zod.string().nullish(),
+  schedule: zod.string().nullish(),
+  medical_plan: zod.string().nullish(),
+  created_at: zod.coerce.date().optional(),
+});
+
+/**
  * @summary Generate a household invite and send it via WhatsApp
  */
 export const createHouseholdInviteBodyPhoneMin = 8;

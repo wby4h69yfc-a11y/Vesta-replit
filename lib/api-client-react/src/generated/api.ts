@@ -69,6 +69,7 @@ import type {
   Member,
   MemberInput,
   MemberUpdate,
+  MemberWaInviteResult,
   MemoryStagingItem,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
@@ -5484,6 +5485,174 @@ export const useDeleteMember = <
   TContext
 > => {
   return useMutation(getDeleteMemberMutationOptions(options));
+};
+
+/**
+ * @summary Generate a WhatsApp invite token for an adult member (admin only)
+ */
+export const getCreateMemberWaInviteUrl = (id: number) => {
+  return `/api/household/members/${id}/wa-invite`;
+};
+
+export const createMemberWaInvite = async (
+  id: number,
+  options?: RequestInit,
+): Promise<MemberWaInviteResult> => {
+  return customFetch<MemberWaInviteResult>(getCreateMemberWaInviteUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCreateMemberWaInviteMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createMemberWaInvite>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createMemberWaInvite>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["createMemberWaInvite"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createMemberWaInvite>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return createMemberWaInvite(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateMemberWaInviteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createMemberWaInvite>>
+>;
+
+export type CreateMemberWaInviteMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Generate a WhatsApp invite token for an adult member (admin only)
+ */
+export const useCreateMemberWaInvite = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createMemberWaInvite>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createMemberWaInvite>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getCreateMemberWaInviteMutationOptions(options));
+};
+
+/**
+ * @summary Unlink a member's WhatsApp number (admin only)
+ */
+export const getUnlinkMemberWaUrl = (id: number) => {
+  return `/api/household/members/${id}/wa-link`;
+};
+
+export const unlinkMemberWa = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Member> => {
+  return customFetch<Member>(getUnlinkMemberWaUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getUnlinkMemberWaMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof unlinkMemberWa>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof unlinkMemberWa>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["unlinkMemberWa"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof unlinkMemberWa>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return unlinkMemberWa(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UnlinkMemberWaMutationResult = NonNullable<
+  Awaited<ReturnType<typeof unlinkMemberWa>>
+>;
+
+export type UnlinkMemberWaMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Unlink a member's WhatsApp number (admin only)
+ */
+export const useUnlinkMemberWa = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof unlinkMemberWa>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof unlinkMemberWa>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getUnlinkMemberWaMutationOptions(options));
 };
 
 /**

@@ -24,6 +24,7 @@
 import { db, pool } from "@workspace/db";
 import {
   householdsTable,
+  membersTable,
   proactiveMessageQueueTable,
   calendarEventsTable,
   tasksTable,
@@ -31,7 +32,7 @@ import {
   waConversationsTable,
   inboxItemsTable,
 } from "@workspace/db";
-import { and, eq, gte, lte, lt, sql, count, or, min, desc } from "drizzle-orm";
+import { and, eq, gte, lte, lt, sql, count, or, min, desc, isNotNull } from "drizzle-orm";
 import { sendWhatsApp, resolveHouseholdAdminPhone, classifyWhatsAppError } from "./whatsapp";
 import { logger } from "./logger";
 
@@ -819,15 +820,11 @@ export async function scheduleProactiveMessages(householdId: number): Promise<vo
         logger.info({ householdId, scheduledAt, nowLocalHour }, "Proactive: weekly look-ahead enqueued");
       }
     } else {
-      // Weekday: enqueue the daily digest at briefing_hour local.
+      // Weekday: fan-out the daily digest to each adult member with a linked phone.
       //
-      // Scheduling semantics:
-      //   nowLocalHour < target  → deliver TODAY at targetH (nextLocalHourAfter returns today)
-      //   nowLocalHour === target → we are in the window; deliver NOW
-      //   nowLocalHour > target  → missed today; deliver TOMORROW at targetH
-      //
-      // Dedup key encodes the delivery local date so repeated hourly ticks
-      // (or restarts during the digest hour) cannot insert a second row.
+      // Dedup key encodes the delivery local date + member phone so that repeated
+      // hourly ticks or restarts cannot insert a second row for the same member.
+      // Falls back to the legacy single-row path when no members have linked phones.
       let scheduledAt: Date;
       if (nowLocalHour === targetLocalHour) {
         scheduledAt = enforceQuietHours(now, tz, qStart, qEnd);
@@ -835,19 +832,62 @@ export async function scheduleProactiveMessages(householdId: number): Promise<vo
         scheduledAt = enforceQuietHours(nextLocalHourAfter(now, targetLocalHour, tz), tz, qStart, qEnd);
       }
       const deliveryDateStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(scheduledAt);
-      const digestTemplateKey = `daily_digest_${deliveryDateStr}`;
-      const alreadyQueued = await alreadyScheduledByTemplateKey(householdId, digestTemplateKey);
-      if (!alreadyQueued) {
+
+      const linkedMembers = await db
+        .select({ id: membersTable.id, name: membersTable.name, phone: membersTable.phone })
+        .from(membersTable)
+        .where(and(
+          eq(membersTable.household_id, householdId),
+          eq(membersTable.relationship_type, "adult"),
+          isNotNull(membersTable.phone),
+        ));
+
+      if (linkedMembers.length > 0) {
         const { message, event_titles, task_titles } = await buildDailyDigestMessage(householdId, tz);
-        await db.insert(proactiveMessageQueueTable).values({
-          household_id: householdId,
-          trigger_type: "daily_digest",
-          template_name: digestTemplateKey,
-          payload: { message, event_titles, task_titles },
-          scheduled_at: scheduledAt,
-          status: "queued",
-        });
-        logger.info({ householdId, scheduledAt, deliveryDateStr }, "Proactive: daily digest enqueued");
+        for (const member of linkedMembers) {
+          const phone = member.phone!;
+          const phoneDigits = phone.replace(/\D/g, "").slice(-9);
+          const memberTemplateKey = `daily_digest_${deliveryDateStr}_${phoneDigits}`;
+          const alreadyQueued = await alreadyScheduledByTemplateKey(householdId, memberTemplateKey);
+          if (alreadyQueued) continue;
+
+          const personalizedMessage = message.replace(
+            /^(🏡 \*Resumo do dia)/m,
+            `🏡 *Bom dia, ${member.name}! Resumo do dia`,
+          );
+
+          await db.insert(proactiveMessageQueueTable).values({
+            household_id: householdId,
+            trigger_type: "daily_digest",
+            template_name: memberTemplateKey,
+            payload: {
+              message: personalizedMessage,
+              event_titles,
+              task_titles,
+              recipient_phone: phone,
+              recipient_name: member.name,
+            },
+            scheduled_at: scheduledAt,
+            status: "queued",
+          });
+          logger.info({ householdId, scheduledAt, deliveryDateStr, memberId: member.id }, "Proactive: daily digest enqueued for member");
+        }
+      } else {
+        // Fallback: no members have linked phones yet — enqueue once via admin phone resolver.
+        const digestTemplateKey = `daily_digest_${deliveryDateStr}`;
+        const alreadyQueued = await alreadyScheduledByTemplateKey(householdId, digestTemplateKey);
+        if (!alreadyQueued) {
+          const { message, event_titles, task_titles } = await buildDailyDigestMessage(householdId, tz);
+          await db.insert(proactiveMessageQueueTable).values({
+            household_id: householdId,
+            trigger_type: "daily_digest",
+            template_name: digestTemplateKey,
+            payload: { message, event_titles, task_titles },
+            scheduled_at: scheduledAt,
+            status: "queued",
+          });
+          logger.info({ householdId, scheduledAt, deliveryDateStr }, "Proactive: daily digest enqueued (no linked members)");
+        }
       }
     }
   }
@@ -1083,15 +1123,26 @@ async function processSingleMessage(
   }
 
   // ── Resolve destination ───────────────────────────────────────────────────
-  const adminPhone = await resolveHouseholdAdminPhone(householdId);
-  if (!adminPhone) {
+  // Fan-out digest entries store recipient_phone in the payload. Other message
+  // types (conflict, payment, nudge) always go to the admin phone.
+  const payload = row.payload as {
+    message?: string;
+    recipient_phone?: string;
+    recipient_name?: string;
+    contact_id?: number;
+    contact_name?: string;
+  } | null;
+
+  const destinationPhone = payload?.recipient_phone
+    ?? await resolveHouseholdAdminPhone(householdId);
+
+  if (!destinationPhone) {
     await db.update(proactiveMessageQueueTable)
       .set({ status: "cancelled" })
       .where(eq(proactiveMessageQueueTable.id, msgId));
     return;
   }
 
-  const payload = row.payload as { message?: string } | null;
   const messageBody = payload?.message;
   if (!messageBody) {
     await db.update(proactiveMessageQueueTable)
@@ -1101,7 +1152,7 @@ async function processSingleMessage(
   }
 
   // ── Send ──────────────────────────────────────────────────────────────────
-  const result = await sendWhatsApp(adminPhone, messageBody);
+  const result = await sendWhatsApp(destinationPhone, messageBody);
   if (result.ok) {
     await db.update(proactiveMessageQueueTable)
       .set({ status: "sent", sent_at: new Date() })
@@ -1120,7 +1171,7 @@ async function processSingleMessage(
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
         await db.insert(waConversationsTable).values({
           household_id: householdId,
-          sender_phone: adminPhone,
+          sender_phone: destinationPhone,
           state: "awaiting_confirmation",
           thread_context: "rating_request",
           // eslint-disable-next-line @typescript-eslint/no-explicit-any

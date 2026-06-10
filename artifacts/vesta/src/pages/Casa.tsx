@@ -12,6 +12,7 @@ import {
   useGetHousehold,
   useUpdateHousehold,
   useListMembers, useCreateMember, useUpdateMember, useDeleteMember,
+  useCreateMemberWaInvite, useUnlinkMemberWa,
   useCreateHouseholdInvite,
   useGetHouseholdPlanStatus,
   useListRules, useCreateRule, useToggleRule, useDeleteRule,
@@ -794,14 +795,19 @@ const MEMBER_COLOURS = ["#0E3B2E", "#2563EB", "#D97706", "#7C3AED", "#DB2777", "
 
 function MemberRow({
   member, isFirst, isSelf, confirmDeleteId, setConfirmDeleteId, onEdit, onDelete,
+  callerIsAdmin, onWaInvite, onWaUnlink,
 }: {
   member: Member; isFirst: boolean; isSelf: boolean;
   confirmDeleteId: number | null; setConfirmDeleteId: (id: number | null) => void;
   onEdit: () => void; onDelete: () => void;
+  callerIsAdmin?: boolean;
+  onWaInvite?: () => void;
+  onWaUnlink?: () => void;
 }) {
   const initial = member.name.charAt(0).toUpperCase();
   const bg = member.colour ?? V.primary;
   const isConfirming = confirmDeleteId === member.id;
+  const isAdult = member.relationship_type !== "child";
   const subtitle = member.school
     ? member.school + (member.grade ? ` · ${member.grade}` : "")
     : member.role === "admin" ? "Administrador" : "Membro";
@@ -814,8 +820,29 @@ function MemberRow({
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold truncate" style={{ color: V.ink }}>{member.name}</p>
           <p className="text-xs truncate" style={{ color: V.muted }}>{subtitle}</p>
+          {isAdult && member.phone && (
+            <span className="inline-flex items-center gap-1 mt-0.5 text-[10px] font-semibold px-2 py-0.5 rounded-full"
+              style={{ background: "#DCFCE7", color: "#166534" }}>
+              <MessageCircle className="h-2.5 w-2.5" /> WhatsApp vinculado
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {isAdult && !member.phone && callerIsAdmin && onWaInvite && (
+            <button onClick={onWaInvite}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors hover:opacity-80"
+              style={{ background: "#DCFCE7", color: "#166534" }}>
+              <MessageCircle className="h-3 w-3" /> Convidar WA
+            </button>
+          )}
+          {isAdult && member.phone && callerIsAdmin && onWaUnlink && (
+            <button onClick={onWaUnlink}
+              className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors hover:opacity-80"
+              title="Desvincular WhatsApp"
+              style={{ background: V.beige }}>
+              <Unlink className="h-3.5 w-3.5" style={{ color: V.muted }} />
+            </button>
+          )}
           <button onClick={onEdit}
             className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors hover:opacity-80"
             style={{ background: V.beige }}>
@@ -1030,6 +1057,36 @@ function FamiliaTab() {
   const deleteMember = useDeleteMember({ mutation: { onSuccess: () => { invalidateMembers(); setConfirmDeleteId(null); toast({ description: "Membro removido." }); }, onError: (e: { status?: number }) => toast({ title: e?.status === 403 ? "Não é possível remover sua própria conta" : "Erro ao remover", variant: "destructive" }) } });
   const createInvite = useCreateHouseholdInvite({ mutation: { onSuccess: () => { setShowInvite(false); setInvitePhone(""); toast({ title: "Convite enviado!", description: "O link chegará no WhatsApp deles." }); }, onError: () => toast({ title: "Erro ao enviar convite", variant: "destructive" }) } });
 
+  // WA member-invite state
+  const [waInvitePanel, setWaInvitePanel] = useState<{ memberId: number; memberName: string; text: string; token: string } | null>(null);
+  const [waCopied, setWaCopied] = useState(false);
+  const waInviteMut = useCreateMemberWaInvite({
+    mutation: {
+      onSuccess: (result, { id }) => {
+        const member = members.find(m => m.id === id);
+        setWaInvitePanel({ memberId: id, memberName: member?.name ?? "Membro", text: result.invite_text, token: result.token });
+        setWaCopied(false);
+      },
+      onError: () => toast({ title: "Erro ao gerar convite", variant: "destructive" }),
+    },
+  });
+  const waUnlinkMut = useUnlinkMemberWa({
+    mutation: {
+      onSuccess: () => { invalidateMembers(); toast({ description: "WhatsApp desvinculado." }); },
+      onError: () => toast({ title: "Erro ao desvincular", variant: "destructive" }),
+    },
+  });
+
+  const callerIsAdmin = members.some(m => m.user_id === user?.id && m.role === "admin");
+
+  function handleWaCopy() {
+    if (waInvitePanel) {
+      void navigator.clipboard.writeText(waInvitePanel.text);
+      setWaCopied(true);
+      setTimeout(() => setWaCopied(false), 2500);
+    }
+  }
+
   function openAdd(type: "adult" | "child") {
     setFormMode("add");
     setEditingId(null);
@@ -1080,6 +1137,35 @@ function FamiliaTab() {
     <div className="space-y-6 py-6">
 
       {showUpgrade && <UpgradePrompt limitLabel={upgradeLabel} used={upgradeUsed} limit={upgradeLimit} onClose={() => { setShowUpgrade(false); setUpgradeUsed(undefined); setUpgradeLimit(undefined); }} />}
+
+      {/* WA member invite panel */}
+      {waInvitePanel && (
+        <div className="p-5 rounded-3xl space-y-3" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.1)" }}>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold" style={{ color: V.ink }}>
+              Convite WhatsApp — {waInvitePanel.memberName}
+            </p>
+            <button onClick={() => setWaInvitePanel(null)}><X className="h-4 w-4" style={{ color: V.muted }} /></button>
+          </div>
+          <p className="text-xs" style={{ color: V.muted }}>
+            Envie a mensagem abaixo para {waInvitePanel.memberName} no WhatsApp. Quando enviarem o código de volta, o número deles será vinculado.
+          </p>
+          <div className="rounded-xl p-3 text-xs font-mono leading-relaxed break-all"
+            style={{ background: V.beige, color: V.ink }}>
+            {waInvitePanel.text}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setWaInvitePanel(null)}
+              className="flex-1 py-2.5 rounded-full text-xs font-semibold"
+              style={{ background: V.beige, color: V.ink }}>Fechar</button>
+            <button onClick={handleWaCopy}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-full text-xs font-semibold text-white transition-colors"
+              style={{ background: waCopied ? "#16A34A" : "#25D366" }}>
+              {waCopied ? <><Check className="h-3.5 w-3.5" /> Copiado!</> : <><Copy className="h-3.5 w-3.5" /> Copiar mensagem</>}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Member form panel */}
       {formMode !== "none" && (
@@ -1167,8 +1253,11 @@ function FamiliaTab() {
             <MemberRow key={m.id} member={m} isFirst={i === 0}
               isSelf={!!user && m.user_id === user.id}
               confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId}
-              onEdit={() => { openEdit(m); setShowInvite(false); }}
-              onDelete={() => deleteMember.mutate({ id: m.id })} />
+              onEdit={() => { openEdit(m); setShowInvite(false); setWaInvitePanel(null); }}
+              onDelete={() => deleteMember.mutate({ id: m.id })}
+              callerIsAdmin={callerIsAdmin}
+              onWaInvite={() => { setWaInvitePanel(null); waInviteMut.mutate({ id: m.id }); }}
+              onWaUnlink={() => waUnlinkMut.mutate({ id: m.id })} />
           ))}
         </div>
       </section>

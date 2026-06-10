@@ -5,6 +5,8 @@ export type WaOnboardingStep =
   | "NAME_CITY"
   | "HOUSEHOLD_COMPOSITION"
   | "RULE_TEMPLATES"
+  | "INVITE_LGPD"
+  | "INVITE_NAME"
   | "COMPLETE";
 
 export interface WaOnboardingData {
@@ -13,6 +15,8 @@ export interface WaOnboardingData {
   adults?: number;
   children?: number;
   selectedTemplates?: string[];
+  /** Stored during abbreviated invite onboarding (INVITE_LGPD / INVITE_NAME steps). */
+  invite_token?: string;
 }
 
 /**

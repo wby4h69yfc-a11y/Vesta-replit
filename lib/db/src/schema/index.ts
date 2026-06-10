@@ -18,4 +18,5 @@ export * from "./creche";
 export * from "./wa-rate-limits";
 export * from "./wa-qa-sessions";
 export * from "./wa-onboarding";
+export * from "./member-invites";
 export { ruleTemplatesTable } from "./rules";

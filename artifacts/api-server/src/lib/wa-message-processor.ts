@@ -9,6 +9,7 @@
  * cross-household reads or writes after the household is resolved.
  */
 
+import crypto from "crypto";
 import type { Logger } from "pino";
 import { db } from "@workspace/db";
 import {
@@ -20,6 +21,7 @@ import {
   waConversationsTable,
   auditLogTable,
   waMediaRateLimitsTable,
+  memberInvitesTable,
 } from "@workspace/db";
 import { applyContactRating } from "./provider-rating";
 import type { RatingKeyword } from "./provider-rating";
@@ -133,6 +135,124 @@ export type ProcessOutcome =
 /** Strip all non-digit chars for exact phone matching. */
 function normalisePhone(p: string): string {
   return p.replace(/\D/g, "");
+}
+
+// ── "Adicionar membro" WA admin command ───────────────────────────────────────
+
+/** Matches "Adicionar membro [nome]" and close variants (case-insensitive). */
+function isAddMemberCommand(text: string): boolean {
+  return /adicionar?\s+(?:membro|co-?respons[aá]vel|parceiro|familiar)/i.test(text.trim());
+}
+
+/** Extracts an optional name from "Adicionar membro [nome]". */
+function extractAddMemberName(text: string): string | null {
+  const m = text.match(/adicionar?\s+(?:membro|co-?respons[aá]vel|parceiro|familiar)\s+(.+)/i);
+  return m?.[1]?.trim() ?? null;
+}
+
+/** Generates a 6-char alphanumeric invite token that always contains ≥1 letter. */
+function genInviteToken(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const bytes = crypto.randomBytes(6);
+  const suffix = Array.from(bytes, b => chars[b % chars.length]);
+  if (!suffix.some(c => letters.includes(c))) {
+    suffix[0] = letters[crypto.randomBytes(1)[0] % letters.length];
+  }
+  return `VESTA-${suffix.join("")}`;
+}
+
+/**
+ * Handles "Adicionar membro [nome]" admin DM command.
+ * Finds unlinked adult members, generates an invite token, and returns
+ * a reply string the caller can forward directly to the invitee.
+ */
+async function handleAddMemberInviteCommand(
+  bodyText: string,
+  householdId: number,
+  log: Logger,
+): Promise<string> {
+  const requestedName = extractAddMemberName(bodyText);
+  const waNumber = process.env.TWILIO_WHATSAPP_FROM ?? process.env.DIALOG360_WHATSAPP_NUMBER ?? null;
+  const waDisplay = waNumber ? `+${waNumber.replace(/\D/g, "")}` : "o número do Vesta";
+
+  // Fetch all adult members without a linked WA phone.
+  const unlinked = await db
+    .select({ id: membersTable.id, name: membersTable.name })
+    .from(membersTable)
+    .where(
+      and(
+        eq(membersTable.household_id, householdId),
+        eq(membersTable.relationship_type, "adult"),
+        sql`${membersTable.phone} IS NULL`,
+      ),
+    );
+
+  if (unlinked.length === 0) {
+    return "✅ Todos os adultos da família já têm WhatsApp vinculado ao Vesta.";
+  }
+
+  // If no name given, list available members.
+  if (!requestedName) {
+    const list = unlinked.map(m => `• ${m.name}`).join("\n");
+    return (
+      "👥 Membros disponíveis para convidar (sem WhatsApp vinculado):\n\n" +
+      list +
+      "\n\nResponda:\n_Adicionar membro [nome]_\n\nExemplo: Adicionar membro Maria"
+    );
+  }
+
+  // Find member by name (case-insensitive fuzzy match).
+  const lower = requestedName.toLowerCase();
+  const matches = unlinked.filter(m => m.name.toLowerCase().includes(lower));
+
+  if (matches.length === 0) {
+    const list = unlinked.map(m => `• ${m.name}`).join("\n");
+    return (
+      `⚠️ Não encontrei um membro sem WhatsApp com o nome "${requestedName}".\n\n` +
+      `Membros disponíveis:\n${list}`
+    );
+  }
+
+  if (matches.length > 1) {
+    const list = matches.map(m => `• ${m.name}`).join("\n");
+    return (
+      `⚠️ Encontrei mais de um membro com "${requestedName}":\n${list}\n\nSeja mais específico no nome.`
+    );
+  }
+
+  const member = matches[0];
+
+  // Generate invite token and store it (replace any pending unused invite for this member).
+  const token = genInviteToken();
+  const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+  await db
+    .delete(memberInvitesTable)
+    .where(and(eq(memberInvitesTable.member_id, member.id), sql`${memberInvitesTable.used_at} IS NULL`));
+
+  await db.insert(memberInvitesTable).values({
+    household_id: householdId,
+    member_id: member.id,
+    token,
+    expires_at: expiresAt,
+  });
+
+  log.info({ memberId: member.id, householdId, tokenPrefix: token.slice(0, 9) }, "wa-invite: token generated via WA command");
+
+  const inviteText =
+    `Olá, *${member.name}*! Você foi convidado(a) para o Vesta — assistente de logística da família.\n\n` +
+    `Para vincular seu WhatsApp, envie a mensagem abaixo para ${waDisplay}:\n\n` +
+    `*${token}*\n\n` +
+    `_(Este código expira em 48 horas)_`;
+
+  return (
+    `✅ Convite gerado para *${member.name}*!\n\n` +
+    `Encaminhe a mensagem abaixo:\n\n` +
+    `───────────────\n` +
+    inviteText +
+    `\n───────────────`
+  );
 }
 
 // ── Per-sender media rate limiting (DB-backed) ────────────────────────────────
@@ -751,6 +871,17 @@ export async function processInboundWAMessage(
         }
       }
     }
+  }
+
+  // ── 4.58b. "Adicionar membro" — admin DM command to generate a member WA invite ──
+  // Recognised before the mutation handler so the LLM is never involved.
+  if (bodyText && senderIsAdmin && !payload.groupId && isAddMemberCommand(bodyText)) {
+    log.info(
+      { householdId, phone: phoneRaw, preview: bodyText.substring(0, 60) },
+      "wa-invite: admin issued add-member command",
+    );
+    const reply = await handleAddMemberInviteCommand(bodyText, householdId, log);
+    return { kind: "question_answered", reply, householdId, phone: phoneRaw };
   }
 
   // ── 4.59. Mutation intent proposal (DM only, admin only) ─────────────────

@@ -292,6 +292,14 @@ export interface MemberUpdate {
   medical_plan?: string;
 }
 
+export interface MemberWaInviteResult {
+  /** The VESTA-XXXXXX token the invitee must send to the Vesta WhatsApp number */
+  token: string;
+  /** Ready-to-share invite message text (for copy/share) */
+  invite_text: string;
+  expires_at: string;
+}
+
 export interface HouseholdInviteInput {
   /** @minLength 8 */
   phone: string;

@@ -36,6 +36,12 @@ export const proactiveMessageQueueTable = pgTable(
       event_titles?: string[];
       task_titles?: string[];
       conflict_pair?: [string, string];
+      contact_id?: number;
+      contact_name?: string;
+      /** If set, the specific member phone to send this message to. Falls back to admin phone. */
+      recipient_phone?: string;
+      /** Recipient display name used in personalised greeting. */
+      recipient_name?: string;
     }>(),
     scheduled_at: timestamp("scheduled_at", { withTimezone: true }).notNull(),
     sent_at: timestamp("sent_at", { withTimezone: true }),
