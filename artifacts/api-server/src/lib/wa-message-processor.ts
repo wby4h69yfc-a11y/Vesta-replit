@@ -384,6 +384,28 @@ async function handleVoiceConfirmResponse(
 
   // "sim" — resume classification pipeline
 
+  // Derive real consent state for this sender.
+  // The voice_confirm conversation was only opened for active-consent senders,
+  // but consent may have changed between voice receipt and this "sim" reply.
+  // We re-check here so the returned ingested outcome carries an accurate
+  // consentGranted value that webhook.ts uses to suppress WA replies if needed.
+  const [senderContact] = await db
+    .select({
+      consent_status: contactsTable.consent_status,
+      consent_check_in_due_at: contactsTable.consent_check_in_due_at,
+    })
+    .from(contactsTable)
+    .where(
+      and(
+        eq(contactsTable.household_id, householdId),
+        sql`regexp_replace(${contactsTable.phone}, '\\D', '', 'g') = ${phoneNorm}`,
+      ),
+    )
+    .limit(1);
+
+  const simSenderIsContact = senderContact !== undefined;
+  const simConsentGranted = !simSenderIsContact || isConsentActive(senderContact);
+
   // 1. Move inbox item to "classifying" so the classifier picks it up.
   await db
     .update(inboxItemsTable)
@@ -467,7 +489,7 @@ async function handleVoiceConfirmResponse(
     phone: phoneRaw,
     approvalLevel: savedAction?.approval_level ?? "one_tap",
     senderName: storedItem?.sender_name ?? null,
-    consentGranted: true,
+    consentGranted: simConsentGranted,
     actionId: savedAction?.id ?? null,
     actionTitle: savedAction?.title ?? null,
     actionType: savedAction?.type ?? null,
@@ -1282,12 +1304,15 @@ export async function processInboundWAMessage(
     // status and send the user an interactive Sim/Não confirmation before
     // running the classifier — avoids misclassifying garbled transcripts.
     // Group voice messages skip this gate (group DMs are admin-reviewed anyway).
+    // Contacts with inactive consent also skip the gate: no outbound WA message
+    // is sent to non-consented contacts (same policy as the normal ingestion path).
     const confidence = processed.transcriptionConfidence;
     if (
       processed.source === "voice" &&
       !payload.groupId &&
       confidence !== undefined &&
-      confidence < 0.70
+      confidence < 0.70 &&
+      (!senderIsContact || consentGranted)
     ) {
       const preview = rawContent.length > 100 ? rawContent.substring(0, 97) + "…" : rawContent;
       const phoneNorm = normalisePhone(phoneRaw);
