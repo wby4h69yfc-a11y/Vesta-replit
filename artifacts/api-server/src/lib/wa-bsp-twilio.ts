@@ -195,6 +195,28 @@ export class WaBspTwilioAdapter implements WaBspAdapter {
     const from = b.From ?? "";
     if (!from) return null;
 
+    // ── Silence non-actionable message types ─────────────────────────────────
+    // Twilio doesn't use a discrete `type` field for most message kinds.
+    // Instead, unrecognised or non-actionable message types are detected by
+    // the presence of specific payload fields or MIME types.  Each is logged
+    // at DEBUG (not WARN/ERROR) to avoid alert fatigue, then dropped.
+    //
+    // Location share: Twilio adds Latitude/Longitude fields.
+    if (b.Latitude) {
+      logger.debug({ type: "location", from }, "Twilio location message — silenced");
+      return null;
+    }
+    // vCard contact share: MediaContentType0 is text/x-vcard.
+    if ((b.MediaContentType0 ?? "").startsWith("text/x-vcard")) {
+      logger.debug({ type: "contacts", from }, "Twilio vCard contact message — silenced");
+      return null;
+    }
+    // Sticker: Twilio delivers stickers as WebP media.
+    if ((b.MediaContentType0 ?? "") === "image/webp") {
+      logger.debug({ type: "sticker", from }, "Twilio sticker message — silenced");
+      return null;
+    }
+
     // Group detection: Twilio sets To to the group JID (contains @g.us) for group messages.
     const rawTo = b.To ?? "";
     const groupSourced = rawTo.includes("@g.us");

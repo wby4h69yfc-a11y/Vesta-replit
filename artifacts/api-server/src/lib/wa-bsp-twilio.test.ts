@@ -144,6 +144,62 @@ test("parseInboundPayload: missing From returns null", () => {
   assert.equal(result, null);
 });
 
+// ── Silenced message types ─────────────────────────────────────────────────────
+
+test("parseInboundPayload: location share (Latitude field) returns null (silenced)", () => {
+  const adapter = new WaBspTwilioAdapter();
+  const result = adapter.parseInboundPayload({
+    From: "whatsapp:+5511999990000",
+    To: "whatsapp:+15000000000",
+    Body: "-23.5505, -46.6333",
+    Latitude: "-23.5505",
+    Longitude: "-46.6333",
+    NumMedia: "0",
+  });
+  assert.equal(result, null);
+});
+
+test("parseInboundPayload: vCard contact share (text/x-vcard) returns null (silenced)", () => {
+  const adapter = new WaBspTwilioAdapter();
+  const result = adapter.parseInboundPayload({
+    From: "whatsapp:+5511999990000",
+    To: "whatsapp:+15000000000",
+    Body: "",
+    MediaContentType0: "text/x-vcard",
+    MediaUrl0: "https://api.twilio.com/media/contact.vcf",
+    NumMedia: "1",
+  });
+  assert.equal(result, null);
+});
+
+test("parseInboundPayload: sticker (image/webp) returns null (silenced)", () => {
+  const adapter = new WaBspTwilioAdapter();
+  const result = adapter.parseInboundPayload({
+    From: "whatsapp:+5511999990000",
+    To: "whatsapp:+15000000000",
+    Body: "",
+    MediaContentType0: "image/webp",
+    MediaUrl0: "https://api.twilio.com/media/sticker.webp",
+    NumMedia: "1",
+  });
+  assert.equal(result, null);
+});
+
+test("parseInboundPayload: image/jpeg media (photo) is NOT silenced — passes through", () => {
+  // Photos should still be processed normally (not silenced like stickers).
+  const adapter = new WaBspTwilioAdapter();
+  const result = adapter.parseInboundPayload({
+    From: "whatsapp:+5511999990000",
+    To: "whatsapp:+15000000000",
+    Body: "Legenda da foto",
+    MediaContentType0: "image/jpeg",
+    MediaUrl0: "https://api.twilio.com/media/photo.jpg",
+    NumMedia: "1",
+  });
+  assert.ok(result, "Expected non-null result for image/jpeg media");
+  assert.equal(result.mediaContentType, "image/jpeg");
+});
+
 // ── Quoted-body stripping ──────────────────────────────────────────────────────
 
 test("parseInboundPayload: quoted lines (> prefix) are stripped from Body", () => {
