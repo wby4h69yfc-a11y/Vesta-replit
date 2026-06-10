@@ -3740,12 +3740,14 @@ components:
 
     ChangeWhatsAppStatus:
       type: object
-      required: [verified, verified_phone]
+      required: [verified, verified_phone, is_admin]
       properties:
         verified:
           type: boolean
         verified_phone:
           type: ["string", "null"]
+        is_admin:
+          type: boolean
 
     ChangeWhatsAppRequestBody:
       type: object

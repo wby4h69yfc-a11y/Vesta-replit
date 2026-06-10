@@ -1636,6 +1636,7 @@ export interface ChangeWhatsAppStatus {
   verified: boolean;
   /** @nullable */
   verified_phone: string | null;
+  is_admin: boolean;
 }
 
 export interface ChangeWhatsAppRequestBody {

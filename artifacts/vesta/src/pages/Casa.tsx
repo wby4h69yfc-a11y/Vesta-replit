@@ -725,7 +725,7 @@ function ChangeWhatsAppSection() {
             <p className="text-sm font-medium" style={{ color: V.ink }}>Número verificado</p>
             <p className="text-xs font-mono mt-0.5" style={{ color: V.muted }}>+{waStatus.verified_phone}</p>
           </div>
-          {step === "idle" && (
+          {step === "idle" && waStatus.is_admin && (
             <button
               onClick={() => setStep("request")}
               className="text-xs font-semibold px-3 py-1.5 rounded-full shrink-0 transition-opacity hover:opacity-80"

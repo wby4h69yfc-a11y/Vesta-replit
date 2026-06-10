@@ -601,21 +601,26 @@ router.delete("/household/members/:id/wa-link", async (req, res) => {
 
 // ── WhatsApp number change flow ───────────────────────────────────────────────
 
-router.get("/change-whatsapp/status", async (req, res) => {
+router.get("/household/change-whatsapp/status", async (req, res) => {
   try {
     const hid = getHouseholdId(req);
-    const [state] = await db
-      .select({
-        whatsapp_verified: onboardingStateTable.whatsapp_verified,
-        whatsapp_verified_phone: onboardingStateTable.whatsapp_verified_phone,
-      })
-      .from(onboardingStateTable)
-      .where(eq(onboardingStateTable.household_id, hid))
-      .limit(1);
+    const [role, state] = await Promise.all([
+      getCallerRole(req),
+      db
+        .select({
+          whatsapp_verified: onboardingStateTable.whatsapp_verified,
+          whatsapp_verified_phone: onboardingStateTable.whatsapp_verified_phone,
+        })
+        .from(onboardingStateTable)
+        .where(eq(onboardingStateTable.household_id, hid))
+        .limit(1)
+        .then((rows) => rows[0]),
+    ]);
 
     res.json({
       verified: state?.whatsapp_verified ?? false,
       verified_phone: state?.whatsapp_verified_phone ?? null,
+      is_admin: role === "admin",
     });
   } catch (err) {
     req.log.error({ err }, "change-whatsapp/status: failed");
@@ -623,7 +628,7 @@ router.get("/change-whatsapp/status", async (req, res) => {
   }
 });
 
-router.post("/change-whatsapp/request", async (req, res) => {
+router.post("/household/change-whatsapp/request", async (req, res) => {
   try {
     const hid = getHouseholdId(req);
 
@@ -678,7 +683,7 @@ router.post("/change-whatsapp/request", async (req, res) => {
     );
 
     if (!result.ok) {
-      req.log.warn({ normalized, error: result.error }, "change-whatsapp/request: failed to send OTP");
+      req.log.warn({ householdId: hid, ok: false }, "change-whatsapp/request: failed to send OTP");
       await db
         .update(onboardingStateTable)
         .set({ phone_change_otp: null, phone_change_new_phone: null, phone_change_expires_at: null })
@@ -695,9 +700,10 @@ router.post("/change-whatsapp/request", async (req, res) => {
   }
 });
 
-router.post("/change-whatsapp/confirm", async (req, res) => {
+router.post("/household/change-whatsapp/confirm", async (req, res) => {
   try {
     const hid = getHouseholdId(req);
+    const userId = req.user!.id;
 
     const role = await getCallerRole(req);
     if (role !== "admin") {
@@ -738,20 +744,47 @@ router.post("/change-whatsapp/confirm", async (req, res) => {
 
     const newPhone = state.phone_change_new_phone;
 
-    await db
-      .update(onboardingStateTable)
-      .set({
-        whatsapp_verified_phone: newPhone,
-        whatsapp_verified: true,
-        phone_change_otp: null,
-        phone_change_new_phone: null,
-        phone_change_expires_at: null,
-      })
-      .where(eq(onboardingStateTable.household_id, hid));
+    // Atomic swap: re-check cross-household uniqueness + update both tables in one transaction
+    await db.transaction(async (tx) => {
+      const conflict = await tx
+        .select({ household_id: onboardingStateTable.household_id })
+        .from(onboardingStateTable)
+        .where(
+          and(
+            eq(onboardingStateTable.whatsapp_verified_phone, newPhone),
+            ne(onboardingStateTable.household_id, hid),
+          ),
+        )
+        .limit(1);
 
-    req.log.info({ householdId: hid, newPhone }, "change-whatsapp/confirm: phone changed successfully");
+      if (conflict.length > 0) {
+        throw Object.assign(new Error("CONFLICT"), { isConflict: true });
+      }
+
+      await tx
+        .update(onboardingStateTable)
+        .set({
+          whatsapp_verified_phone: newPhone,
+          whatsapp_verified: true,
+          phone_change_otp: null,
+          phone_change_new_phone: null,
+          phone_change_expires_at: null,
+        })
+        .where(eq(onboardingStateTable.household_id, hid));
+
+      await tx
+        .update(membersTable)
+        .set({ phone: newPhone })
+        .where(and(eq(membersTable.user_id, userId), eq(membersTable.household_id, hid)));
+    });
+
+    req.log.info({ householdId: hid }, "change-whatsapp/confirm: phone changed successfully");
     res.json({ success: true, new_phone: newPhone });
   } catch (err) {
+    if (err instanceof Error && (err as Error & { isConflict?: boolean }).isConflict) {
+      res.status(409).json({ error: "Este número foi registrado por outra conta. Solicite um novo código com um número diferente." });
+      return;
+    }
     req.log.error({ err }, "change-whatsapp/confirm: failed");
     res.status(500).json({ error: "Internal server error" });
   }

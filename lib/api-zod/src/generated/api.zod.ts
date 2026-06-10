@@ -2768,6 +2768,7 @@ export const GetHouseholdPlanStatusResponse = zod.object({
 export const GetWhatsAppChangeStatusResponse = zod.object({
   verified: zod.boolean(),
   verified_phone: zod.string().nullable(),
+  is_admin: zod.boolean(),
 });
 
 /**
