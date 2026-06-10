@@ -1083,6 +1083,8 @@ export async function processInboundWAMessage(
       source: payload.groupId ? "group" : source,
       raw_content: rawContent,
       media_url: payload.mediaUrl ?? null,
+      media_type: payload.mediaContentType ?? null,
+      transcription: source === "voice" ? rawContent : null,
       status: "classifying",
       sender_name: senderName,
       twilio_message_sid: payload.messageSid ?? null,

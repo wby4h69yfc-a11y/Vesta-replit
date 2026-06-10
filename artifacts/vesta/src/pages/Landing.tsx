@@ -380,7 +380,6 @@ export default function Landing() {
             <span className="integbar__lead">Conecte uma vez o que a família já usa</span>
             <span className="integbar__item"><IconWave style={{ width: 20, height: 20, color: "var(--approval-deep)" } as React.CSSProperties} /> WhatsApp</span>
             <span className="integbar__item"><Calendar style={{ width: 20, height: 20, color: "var(--approval-deep)" }} /> Google Calendar</span>
-            <span className="integbar__item"><Calendar style={{ width: 20, height: 20, color: "var(--approval-deep)" }} /> Apple Calendar</span>
             <span className="integbar__item"><Calendar style={{ width: 20, height: 20, color: "var(--approval-deep)" }} /> Outlook</span>
             <span className="integbar__item" style={{ color: "var(--fg-soft)" }}>+ mais</span>
           </div>

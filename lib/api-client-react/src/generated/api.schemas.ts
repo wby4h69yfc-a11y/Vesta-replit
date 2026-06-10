@@ -554,6 +554,7 @@ export const InboxItemSource = {
   manual: "manual",
   photo: "photo",
   group: "group",
+  voice: "voice",
 } as const;
 
 export type InboxItemStatus =
@@ -575,6 +576,16 @@ export interface InboxItem {
   raw_content: string;
   /** @nullable */
   media_url?: string | null;
+  /**
+   * MIME type of the original media attachment (e.g. audio/ogg, image/jpeg)
+   * @nullable
+   */
+  media_type?: string | null;
+  /**
+   * Whisper transcription of an audio/voice message
+   * @nullable
+   */
+  transcription?: string | null;
   status: InboxItemStatus;
   /** @nullable */
   sender_name?: string | null;
@@ -1048,6 +1059,16 @@ export interface InboxItemDetail {
   raw_content: string;
   /** @nullable */
   media_url?: string | null;
+  /**
+   * MIME type of the original media attachment (e.g. audio/ogg, image/jpeg)
+   * @nullable
+   */
+  media_type?: string | null;
+  /**
+   * Whisper transcription of an audio/voice message
+   * @nullable
+   */
+  transcription?: string | null;
   status: string;
   /** @nullable */
   sender_name?: string | null;

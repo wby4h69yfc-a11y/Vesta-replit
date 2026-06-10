@@ -2640,11 +2640,17 @@ components:
           type: integer
         source:
           type: string
-          enum: [whatsapp, email, manual, photo, group]
+          enum: [whatsapp, email, manual, photo, group, voice]
         raw_content:
           type: string
         media_url:
           type: ["string", "null"]
+        media_type:
+          type: ["string", "null"]
+          description: MIME type of the original media attachment (e.g. audio/ogg, image/jpeg)
+        transcription:
+          type: ["string", "null"]
+          description: Whisper transcription of an audio/voice message
         status:
           type: string
           enum: [received, classifying, ready_for_review, approved, dismissed, failed, manual_review]
@@ -2671,6 +2677,12 @@ components:
           type: string
         media_url:
           type: ["string", "null"]
+        media_type:
+          type: ["string", "null"]
+          description: MIME type of the original media attachment (e.g. audio/ogg, image/jpeg)
+        transcription:
+          type: ["string", "null"]
+          description: Whisper transcription of an audio/voice message
         status:
           type: string
         sender_name:

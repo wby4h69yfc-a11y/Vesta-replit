@@ -11,6 +11,8 @@ export const inboxItemsTable = pgTable(
     source: text("source").notNull().default("manual"),
     raw_content: text("raw_content").notNull(),
     media_url: text("media_url"),
+    media_type: text("media_type"),
+    transcription: text("transcription"),
     status: text("status").notNull().default("received"),
     sender_name: text("sender_name"),
     twilio_message_sid: text("twilio_message_sid"),

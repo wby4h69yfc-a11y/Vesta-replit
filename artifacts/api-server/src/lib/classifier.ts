@@ -241,6 +241,8 @@ export function classifyText(text: string): ClassificationResult {
 ────────────────────────────────────────────── */
 const SYSTEM_PROMPT = `Você é um assistente que extrai informações de mensagens domésticas brasileiras recebidas via WhatsApp.
 
+Nota sobre mensagens de voz transcritas: Algumas mensagens chegam como transcrição automática de áudio (WhatsApp voice notes). Nesse caso espere linguagem oral informal com pausas preenchidas ("é...", "então...", "ah, e outra coisa..."), frases run-on sem pontuação, repetições e múltiplas intenções enumeradas verbalmente ("e também", "não esquece que"). Trate essas mensagens normalmente — ignore os marcadores de hesitação e extraia as ações concretas que o falante quis comunicar.
+
 Dado o texto de uma mensagem, retorne um JSON com exatamente estes campos:
 {
   "title": string,         // Título conciso da ação PRINCIPAL (máx 80 chars, em português)

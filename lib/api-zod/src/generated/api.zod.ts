@@ -256,9 +256,19 @@ export const ListInboxItemsQueryParams = zod.object({
 
 export const ListInboxItemsResponseItem = zod.object({
   id: zod.number(),
-  source: zod.enum(["whatsapp", "email", "manual", "photo", "group"]),
+  source: zod.enum(["whatsapp", "email", "manual", "photo", "group", "voice"]),
   raw_content: zod.string(),
   media_url: zod.string().nullish(),
+  media_type: zod
+    .string()
+    .nullish()
+    .describe(
+      "MIME type of the original media attachment (e.g. audio\/ogg, image\/jpeg)",
+    ),
+  transcription: zod
+    .string()
+    .nullish()
+    .describe("Whisper transcription of an audio\/voice message"),
   status: zod.enum([
     "received",
     "classifying",
@@ -301,6 +311,16 @@ export const GetInboxItemResponse = zod.object({
   source: zod.string(),
   raw_content: zod.string(),
   media_url: zod.string().nullish(),
+  media_type: zod
+    .string()
+    .nullish()
+    .describe(
+      "MIME type of the original media attachment (e.g. audio\/ogg, image\/jpeg)",
+    ),
+  transcription: zod
+    .string()
+    .nullish()
+    .describe("Whisper transcription of an audio\/voice message"),
   status: zod.string(),
   sender_name: zod.string().nullish(),
   group_id: zod
@@ -357,9 +377,19 @@ export const ClassifyInboxItemParams = zod.object({
 
 export const ClassifyInboxItemResponse = zod.object({
   id: zod.number(),
-  source: zod.enum(["whatsapp", "email", "manual", "photo", "group"]),
+  source: zod.enum(["whatsapp", "email", "manual", "photo", "group", "voice"]),
   raw_content: zod.string(),
   media_url: zod.string().nullish(),
+  media_type: zod
+    .string()
+    .nullish()
+    .describe(
+      "MIME type of the original media attachment (e.g. audio\/ogg, image\/jpeg)",
+    ),
+  transcription: zod
+    .string()
+    .nullish()
+    .describe("Whisper transcription of an audio\/voice message"),
   status: zod.enum([
     "received",
     "classifying",
@@ -1803,9 +1833,26 @@ export const ExportPrivacyDataResponse = zod.object({
     .array(
       zod.object({
         id: zod.number(),
-        source: zod.enum(["whatsapp", "email", "manual", "photo", "group"]),
+        source: zod.enum([
+          "whatsapp",
+          "email",
+          "manual",
+          "photo",
+          "group",
+          "voice",
+        ]),
         raw_content: zod.string(),
         media_url: zod.string().nullish(),
+        media_type: zod
+          .string()
+          .nullish()
+          .describe(
+            "MIME type of the original media attachment (e.g. audio\/ogg, image\/jpeg)",
+          ),
+        transcription: zod
+          .string()
+          .nullish()
+          .describe("Whisper transcription of an audio\/voice message"),
         status: zod.enum([
           "received",
           "classifying",

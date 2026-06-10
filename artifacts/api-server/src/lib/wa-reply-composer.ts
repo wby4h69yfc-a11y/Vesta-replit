@@ -45,6 +45,14 @@ export function replyIngestAck(): string {
 }
 
 /**
+ * Sent immediately when an audio/voice message arrives, before transcription
+ * begins. Gives the user instant feedback that the message was received.
+ */
+export function replyVoiceProcessingAck(): string {
+  return "🎙️ Ouvi! Processando...";
+}
+
+/**
  * Sent to the household admin when a high-stakes item requires explicit
  * review in the web app (payment, medical appointment, etc.).
  */
