@@ -86,11 +86,14 @@ export async function processWhatsAppMedia(
         transcriptionConfidence: result.confidence,
       };
     }
+    // Whisper failed — no confidence score. Omit transcriptionConfidence so the
+    // low-confidence gate in the processor is skipped and the item is classified
+    // immediately (or reviewed manually) rather than prompting the sender to
+    // confirm placeholder text.
     return {
       rawContent: textBody?.trim() || "(áudio recebido — transcrição indisponível)",
       source: "voice",
       mediaCategory: "audio",
-      transcriptionConfidence: 0,
     };
   }
 

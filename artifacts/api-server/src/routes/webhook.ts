@@ -37,7 +37,6 @@ import {
   replyMutationExecuted,
   replyMutationDismissed,
   replyMutationError,
-  replyVoiceProcessingAck,
   replyVoiceConfirmInteractive,
   composeApprovalInteractive,
   composeMutationConfirmInteractive,
@@ -491,16 +490,6 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       return;
     }
 
-    // Send immediate audio ACK before slow transcription + classification
-    const isVoiceDm =
-      !groupSourced &&
-      parseInt(parsed.numMedia ?? "0", 10) > 0 &&
-      (parsed.mediaContentType ?? "").startsWith("audio/");
-    if (isVoiceDm) {
-      const senderPhone = parsed.from.replace(/^whatsapp:/i, "");
-      void sendWhatsApp(senderPhone, replyVoiceProcessingAck());
-    }
-
     const outcome = await processInboundWAMessage(
       { ...parsed, body: effectiveBody },
       req.log,
@@ -614,15 +603,6 @@ router.post(
           );
         }
         return;
-      }
-
-      // Send immediate audio ACK before slow transcription + classification
-      const isVoiceDm =
-        parseInt(message.numMedia ?? "0", 10) > 0 &&
-        (message.mediaContentType ?? "").startsWith("audio/");
-      if (isVoiceDm) {
-        const senderPhone = message.from.replace(/^whatsapp:/i, "");
-        void sendWhatsApp(senderPhone, replyVoiceProcessingAck());
       }
 
       const outcome = await processInboundWAMessage(message, req.log);
