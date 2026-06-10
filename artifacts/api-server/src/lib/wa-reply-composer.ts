@@ -5,9 +5,14 @@
  * All copy is in Brazilian Portuguese.
  *
  * Keep replies short and scannable — WhatsApp is not email.
- * Quick-reply buttons (BSP template) fall back to numbered text
- * when buttons aren't available on sandbox numbers.
+ * Interactive proposals use native WhatsApp quick-reply buttons when
+ * supported; toPlainText() provides the text fallback for sandbox numbers.
  */
+
+import type { InteractivePayload } from "./wa-bsp";
+
+// Re-export so callers can import the type from the composer module.
+export type { InteractivePayload };
 
 /**
  * Sent after a user completes the onboarding VESTA-XXX token flow.
@@ -168,11 +173,9 @@ function capitalize(s: string): string {
 }
 
 /**
- * Sent to the sender right after their message is classified.
- * Shows what Vesta understood and asks for a one-tap confirmation.
- * Keep it short — this appears as a chat message, not an email.
+ * Builds the action proposal body text (shared between interactive and plain-text paths).
  */
-export function replyActionProposal(
+function buildActionProposalBody(
   title: string,
   type: string | null,
   category: string | null,
@@ -183,21 +186,88 @@ export function replyActionProposal(
   const cat = category ? capitalize(category) : null;
   const meta = cat ? `${label} · ${cat}` : label;
 
-  const lines: string[] = [
-    `${emoji} *${title}*`,
-    meta,
-  ];
+  const lines: string[] = [`${emoji} *${title}*`, meta];
+  if (datetime) lines.push(datetime);
+  return lines.join("\n");
+}
 
-  if (datetime) {
-    lines.push(datetime);
-  }
+/**
+ * Returns an InteractivePayload for an inbox approval proposal.
+ * Shows tappable "✅ Aprovar", "❌ Recusar", "✏️ Editar" buttons.
+ *
+ * Button reply IDs are "sim", "não", "editar" — exactly what the existing
+ * handleApprovalResponse patterns expect, so no changes are needed there.
+ */
+export function composeApprovalInteractive(
+  title: string,
+  type: string | null,
+  category: string | null,
+  datetime: string | null,
+): InteractivePayload {
+  return {
+    kind: "buttons",
+    body: buildActionProposalBody(title, type, category, datetime),
+    footer: "Toque para responder",
+    buttons: [
+      { id: "sim", title: "✅ Aprovar" },
+      { id: "não", title: "❌ Recusar" },
+      { id: "editar", title: "✏️ Editar" },
+    ],
+  };
+}
 
+/**
+ * Returns an InteractivePayload for a mutation confirmation prompt.
+ * Shows tappable "✅ Sim" / "❌ Não" buttons.
+ *
+ * The proposalText is displayed as the message body and is built by the
+ * mutation handler — it already contains the full human-readable summary.
+ * Button reply IDs are "SIM" and "NÃO" to match the mutation handler.
+ */
+export function composeMutationConfirmInteractive(proposalText: string): InteractivePayload {
+  return {
+    kind: "buttons",
+    body: proposalText,
+    buttons: [
+      { id: "SIM", title: "✅ Sim" },
+      { id: "NÃO", title: "❌ Não" },
+    ],
+  };
+}
+
+/**
+ * Converts an InteractivePayload to a plain-text string.
+ * Used as the fallback when the BSP or number tier doesn't support
+ * interactive messages (e.g. Twilio sandbox).
+ */
+export function toPlainText(payload: InteractivePayload): string {
+  const buttonLine = payload.buttons
+    .map((b) => `*${b.title.replace(/^[✅❌✏️]\s*/, "")}*`)
+    .join("  ·  ");
+  const parts = [payload.body, "", buttonLine];
+  if (payload.footer) parts.push(`_${payload.footer}_`);
+  return parts.join("\n");
+}
+
+/**
+ * Sent when an item's confidence is high enough for WhatsApp-native approval.
+ * Returns the legacy plain-text format for contexts that don't call the interactive path.
+ *
+ * @deprecated Prefer composeApprovalInteractive() + sendWhatsAppInteractive().
+ * Kept for backward compatibility with direct plain-text call sites.
+ */
+export function replyActionProposal(
+  title: string,
+  type: string | null,
+  category: string | null,
+  datetime: string | null,
+): string {
+  const lines: string[] = [buildActionProposalBody(title, type, category, datetime)];
   lines.push(
     "",
     "*sim* confirmar  ·  *não* descartar",
     "ou *editar: [nova versão]* para corrigir",
   );
-
   return lines.join("\n");
 }
 
@@ -375,9 +445,9 @@ export function replyMutationDismissed(): string {
 }
 
 /**
- * Sent to the admin when a mutation proposal was created (sim/não prompt).
- * The `proposalText` is built by the mutation handler and already contains the
- * full proposal with the confirmation options — pass it through unchanged.
+ * Sent to the admin when a mutation proposal was created.
+ * Returns the raw proposalText as plain text (used as fallback when interactive
+ * delivery fails, and for non-eligible mutation types).
  */
 export function replyMutationProposal(proposalText: string): string {
   return proposalText;

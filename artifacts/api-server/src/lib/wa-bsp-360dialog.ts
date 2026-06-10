@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import type { Request } from "express";
-import type { WaBspAdapter, InboundWAMessage, SendResult } from "./wa-bsp";
+import type { WaBspAdapter, InboundWAMessage, SendResult, InteractivePayload } from "./wa-bsp";
+import { InteractiveNotSupportedError } from "./wa-bsp";
 import { logger } from "./logger";
 
 const DIALOG360_API_BASE = "https://waba.360dialog.io/v1";
@@ -67,6 +68,86 @@ export class WaBsp360DialogAdapter implements WaBspAdapter {
     }
   }
 
+  /**
+   * Sends a WhatsApp interactive button message via the 360Dialog (Cloud API) endpoint.
+   *
+   * Uses the Cloud API native `type: "interactive"` format with `action.buttons`.
+   * If the API returns a 400/403 with an unsupported-feature error code, we
+   * throw InteractiveNotSupportedError so the caller can fall back to plain text.
+   */
+  async sendInteractive(to: string, payload: InteractivePayload): Promise<SendResult> {
+    const apiKey = process.env.DIALOG360_API_KEY;
+    if (!apiKey) {
+      logger.warn({ to }, "WaBsp360Dialog.sendInteractive: DIALOG360_API_KEY not set — skipping");
+      return { ok: false, error: "360Dialog not configured" };
+    }
+
+    const toNorm = to.replace(/^whatsapp:/i, "").replace(/^\+/, "");
+
+    const interactiveBody = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: toNorm,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        body: { text: payload.body },
+        ...(payload.footer ? { footer: { text: payload.footer } } : {}),
+        action: {
+          buttons: payload.buttons.map((btn) => ({
+            type: "reply",
+            reply: {
+              id: btn.id,
+              title: btn.title.substring(0, 20), // WhatsApp enforces 20-char limit
+            },
+          })),
+        },
+      },
+    };
+
+    try {
+      const res = await fetch(`${DIALOG360_API_BASE}/messages`, {
+        method: "POST",
+        headers: {
+          "D360-API-KEY": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(interactiveBody),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+
+        // Cloud API error 131047 = interactive message not supported for this account type/tier.
+        // We also catch generic 400 with "interactive" in the error body as a safety net.
+        if (
+          res.status === 400 ||
+          res.status === 403 ||
+          errText.includes("131047") ||
+          errText.toLowerCase().includes("interactive") ||
+          errText.toLowerCase().includes("not supported")
+        ) {
+          throw new InteractiveNotSupportedError(
+            `360Dialog ${res.status}: ${errText} — falling back to plain text`,
+          );
+        }
+
+        throw new Error(
+          `360Dialog sendInteractive failed: ${res.status} ${res.statusText} — ${errText}`,
+        );
+      }
+
+      const data = (await res.json()) as { messages?: Array<{ id?: string }> };
+      const sid = data.messages?.[0]?.id ?? "360dialog-interactive-unknown";
+      logger.info({ to: toNorm, sid }, "WhatsApp interactive sent via 360Dialog");
+      return { ok: true, sid };
+    } catch (err) {
+      if (err instanceof InteractiveNotSupportedError) throw err;
+      logger.error({ err, to }, "WhatsApp 360Dialog sendInteractive failed");
+      return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+    }
+  }
+
   async validateWebhookRequest(req: Request, rawBody?: Buffer): Promise<boolean> {
     const hubSecret = process.env.DIALOG360_HUB_SECRET;
 
@@ -110,7 +191,7 @@ export class WaBsp360DialogAdapter implements WaBspAdapter {
 
   parseInboundPayload(body: unknown): InboundWAMessage | null {
     // 360Dialog uses the simplified WhatsApp Cloud API envelope:
-    // { contacts: [{profile: {name}, wa_id}], messages: [{from, id, type, text|audio|image...}] }
+    // { contacts: [{profile: {name}, wa_id}], messages: [{from, id, type, text|audio|image|interactive...}] }
     const b = body as Record<string, unknown>;
     const contacts = b.contacts as
       | Array<{ profile?: { name?: string }; wa_id?: string }>
@@ -125,6 +206,11 @@ export class WaBsp360DialogAdapter implements WaBspAdapter {
           image?: { id?: string; mime_type?: string; caption?: string };
           video?: { id?: string; mime_type?: string; caption?: string };
           document?: { id?: string; mime_type?: string; filename?: string };
+          interactive?: {
+            type?: string;
+            button_reply?: { id?: string; title?: string };
+            list_reply?: { id?: string; title?: string };
+          };
         }>
       | undefined;
 
@@ -148,6 +234,23 @@ export class WaBsp360DialogAdapter implements WaBspAdapter {
       case "text":
         textBody = (msg.text?.body ?? "").trim();
         break;
+
+      case "interactive": {
+        // Interactive reply: user tapped a button or selected a list item.
+        // Normalise to the button/list reply ID so the existing Sim/Não handler
+        // receives the machine-readable token without any changes.
+        const interactive = msg.interactive;
+        if (interactive?.type === "button_reply" && interactive.button_reply?.id) {
+          textBody = interactive.button_reply.id.trim();
+        } else if (interactive?.type === "list_reply" && interactive.list_reply?.id) {
+          textBody = interactive.list_reply.id.trim();
+        } else {
+          // Unknown interactive subtype — ignore
+          return null;
+        }
+        break;
+      }
+
       case "audio":
         mediaId = msg.audio?.id ?? null;
         mimeType = msg.audio?.mime_type ?? "audio/ogg";

@@ -2,9 +2,11 @@ import { logger } from "./logger";
 import { db } from "@workspace/db";
 import { onboardingStateTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { getBspAdapter, type SendResult } from "./wa-bsp";
+import { getBspAdapter, type SendResult, type InteractivePayload, InteractiveNotSupportedError } from "./wa-bsp";
+import { toPlainText } from "./wa-reply-composer";
 
 export type { SendResult } from "./wa-bsp";
+export type { InteractivePayload } from "./wa-bsp";
 
 /**
  * Dev/test telemetry: every sendWhatsApp call is recorded here when
@@ -14,13 +16,13 @@ export type { SendResult } from "./wa-bsp";
  * Never populated in production — the guard is inlined at the call site.
  * Works regardless of which BSP adapter is active.
  */
-const _waSendLog: Array<{ to: string; body: string; at: string }> = [];
+const _waSendLog: Array<{ to: string; body: string; at: string; interactive?: boolean }> = [];
 
 /**
  * Returns all buffered sendWhatsApp calls since the last drain and resets
  * the buffer.  Dev/test only — not callable from production paths.
  */
-export function drainWaSendLog(): Array<{ to: string; body: string; at: string }> {
+export function drainWaSendLog(): Array<{ to: string; body: string; at: string; interactive?: boolean }> {
   return _waSendLog.splice(0);
 }
 
@@ -123,6 +125,68 @@ export async function sendWhatsApp(to: string, message: string): Promise<SendRes
   }
 
   return adapter.send(to, message);
+}
+
+/**
+ * Sends a WhatsApp interactive (button) message via the active BSP adapter.
+ * Falls back gracefully to plain text when the BSP or number tier doesn't
+ * support interactive messages (e.g. Twilio sandbox, non-business accounts).
+ *
+ * Never throws — returns a result object in all cases.
+ *
+ * Dev/test telemetry is recorded with `interactive: true` (or false on
+ * fallback) so test code can verify which path was taken.
+ */
+export async function sendWhatsAppInteractive(
+  to: string,
+  payload: InteractivePayload,
+): Promise<SendResult & { usedFallback: boolean }> {
+  const adapter = getBspAdapter();
+  const toAddr = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
+
+  try {
+    const result = await adapter.sendInteractive(to, payload);
+
+    if (process.env.NODE_ENV !== "production") {
+      _waSendLog.push({
+        to: toAddr,
+        body: `[interactive] ${payload.body}`,
+        at: new Date().toISOString(),
+        interactive: true,
+      });
+    }
+
+    return { ...result, usedFallback: false };
+  } catch (err) {
+    if (err instanceof InteractiveNotSupportedError) {
+      // Graceful fallback: send as plain text
+      logger.info(
+        { to, reason: err.message },
+        "sendWhatsAppInteractive: falling back to plain text",
+      );
+      const plainText = toPlainText(payload);
+
+      if (process.env.NODE_ENV !== "production") {
+        _waSendLog.push({
+          to: toAddr,
+          body: plainText,
+          at: new Date().toISOString(),
+          interactive: false,
+        });
+      }
+
+      const fallbackResult = await adapter.send(to, plainText);
+      return { ...fallbackResult, usedFallback: true };
+    }
+
+    // Unexpected error — log and return failure without re-throwing
+    logger.error({ err, to }, "sendWhatsAppInteractive: unexpected error");
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Unknown error",
+      usedFallback: false,
+    };
+  }
 }
 
 /**

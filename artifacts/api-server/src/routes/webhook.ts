@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { getBspAdapter } from "../lib/wa-bsp";
 import type { ProcessOutcome } from "../lib/wa-message-processor";
-import { isTwilioConfigured, sendWhatsApp, resolveHouseholdAdminPhone } from "../lib/whatsapp";
+import { isTwilioConfigured, sendWhatsApp, sendWhatsAppInteractive, resolveHouseholdAdminPhone } from "../lib/whatsapp";
 import { processInboundWAMessage } from "../lib/wa-message-processor";
 import { isGroupMessage, extractVestaTrigger } from "../lib/wa-group-trigger";
 import { db } from "@workspace/db";
@@ -11,7 +11,6 @@ import {
   replyVerificationSuccess,
   replyTokenExpired,
   replyIngestAck,
-  replyActionProposal,
   replyApproved,
   replyDismissed,
   replyEditPrompt,
@@ -38,6 +37,8 @@ import {
   replyMutationExecuted,
   replyMutationDismissed,
   replyMutationError,
+  composeApprovalInteractive,
+  composeMutationConfirmInteractive,
 } from "../lib/wa-reply-composer";
 
 const router = Router();
@@ -159,17 +160,25 @@ async function handleWaOutcome(
       if (outcome.waCanApproveViaWa) {
         req.log.info(
           { actionId: outcome.actionId, confidence: outcome.confidence },
-          "WA-native flow: sending inline action proposal",
+          "WA-native flow: sending interactive action proposal",
         );
-        void sendWhatsApp(
+        // Try interactive buttons first; falls back to plain text automatically
+        void sendWhatsAppInteractive(
           replyDest(outcome.phone),
-          replyActionProposal(
+          composeApprovalInteractive(
             outcome.actionTitle,
             outcome.actionType,
             outcome.actionCategory,
             outcome.actionDatetime,
           ),
-        );
+        ).then(({ usedFallback }) => {
+          if (usedFallback) {
+            req.log.info(
+              { actionId: outcome.actionId },
+              "WA approval proposal sent as plain text (interactive not supported)",
+            );
+          }
+        });
       } else {
         req.log.info(
           {
@@ -278,11 +287,20 @@ async function handleWaOutcome(
       break;
 
     case "mutation_proposed_via_wa":
-      void sendWhatsApp(replyDest(outcome.phone), replyMutationProposal(outcome.proposal));
-      req.log.info(
-        { householdId: outcome.householdId, preview: outcome.proposal.substring(0, 80) },
-        "Mutation proposal sent to admin via WhatsApp",
-      );
+      // Try interactive Sim/Não buttons first; fall back to plain text automatically.
+      void sendWhatsAppInteractive(
+        replyDest(outcome.phone),
+        composeMutationConfirmInteractive(outcome.proposal),
+      ).then(({ usedFallback }) => {
+        req.log.info(
+          {
+            householdId: outcome.householdId,
+            preview: outcome.proposal.substring(0, 80),
+            usedFallback,
+          },
+          "Mutation proposal sent to admin via WhatsApp",
+        );
+      });
       break;
 
     case "mutation_executed_via_wa":

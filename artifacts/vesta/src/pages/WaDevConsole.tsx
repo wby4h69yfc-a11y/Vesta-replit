@@ -6,9 +6,15 @@
  */
 import { useState } from "react";
 import { useAuth } from "@workspace/replit-auth-web";
-import { AlertTriangle, Terminal, Send, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { AlertTriangle, Terminal, Send, CheckCircle2, XCircle, Loader2, MessageSquare } from "lucide-react";
 
 const IS_DEV = import.meta.env.DEV;
+
+interface ProposedReply {
+  kind: "interactive" | "text";
+  body: string;
+  buttons?: string[];
+}
 
 interface SimulateResult {
   outcome: string;
@@ -16,6 +22,8 @@ interface SimulateResult {
   approvalLevel?: string;
   actionTitle?: string | null;
   senderName?: string | null;
+  waEligible?: boolean;
+  proposedReply?: ProposedReply | null;
   error?: string;
 }
 
@@ -57,11 +65,14 @@ export default function WaDevConsole() {
       const data = await res.json() as SimulateResult;
       setResult(data);
       const ts2 = new Date().toLocaleTimeString("pt-BR");
+      const replyKind = data.proposedReply?.kind === "interactive" ? " 🔘buttons" : data.proposedReply?.kind === "text" ? " 📝text" : "";
       const parts = [
         `outcome="${data.outcome}"`,
         data.inboxItemId ? `inbox_item=${data.inboxItemId}` : null,
         data.approvalLevel ? `approval=${data.approvalLevel}` : null,
         data.actionTitle ? `action="${data.actionTitle}"` : null,
+        data.waEligible !== undefined ? `wa_eligible=${data.waEligible}` : null,
+        replyKind ? `reply=${replyKind}` : null,
       ].filter(Boolean).join(" ");
       setLog((l) => [...l, `[${ts2}] ← ${res.status} ${parts}`]);
     } catch (e) {
@@ -163,7 +174,7 @@ export default function WaDevConsole() {
         {/* Result */}
         {result && (
           <div
-            className="rounded-2xl p-4 space-y-2"
+            className="rounded-2xl p-4 space-y-3"
             style={{
               background: isOk ? "#EAF1E5" : "#FEF2F2",
               border: `1px solid ${isOk ? "rgba(14,59,46,0.15)" : "#FECACA"}`,
@@ -178,7 +189,19 @@ export default function WaDevConsole() {
               <span className="text-sm font-semibold font-mono" style={{ color: "#12231C" }}>
                 {result.outcome}
               </span>
+              {result.waEligible !== undefined && (
+                <span
+                  className="ml-auto text-[10px] font-mono px-2 py-0.5 rounded-full"
+                  style={{
+                    background: result.waEligible ? "#D1E8C7" : "#FEE2E2",
+                    color: result.waEligible ? "#0E3B2E" : "#991B1B",
+                  }}
+                >
+                  {result.waEligible ? "✅ WA-eligible" : "📱 app-only"}
+                </span>
+              )}
             </div>
+
             {result.actionTitle && (
               <p className="text-xs font-mono" style={{ color: "#5F6B61" }}>
                 action: "{result.actionTitle}"
@@ -194,6 +217,58 @@ export default function WaDevConsole() {
                 sender: {result.senderName}
               </p>
             )}
+
+            {/* WhatsApp message preview */}
+            {result.proposedReply && (
+              <div className="mt-1 rounded-xl overflow-hidden" style={{ border: "1px solid rgba(14,59,46,0.15)" }}>
+                <div
+                  className="px-3 py-1.5 flex items-center gap-1.5"
+                  style={{ background: "#075E54" }}
+                >
+                  <MessageSquare className="h-3 w-3" style={{ color: "#D1E8C7" }} />
+                  <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#D1E8C7" }}>
+                    WhatsApp preview
+                    {result.proposedReply.kind === "interactive" ? " · botões interativos" : " · texto simples"}
+                  </span>
+                </div>
+                <div className="p-3 space-y-2" style={{ background: "#ECE5DD" }}>
+                  {/* Message bubble */}
+                  <div
+                    className="rounded-lg px-3 py-2 text-xs leading-relaxed"
+                    style={{ background: "#FFFFFF", color: "#111B21", maxWidth: "85%", marginLeft: "auto" }}
+                  >
+                    {result.proposedReply.body.split("\n").map((line, i) => (
+                      <span key={i}>
+                        {i > 0 && <br />}
+                        {line || "\u00A0"}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Interactive buttons */}
+                  {result.proposedReply.kind === "interactive" && result.proposedReply.buttons && (
+                    <div className="space-y-1.5">
+                      {result.proposedReply.buttons.map((btn, i) => (
+                        <div
+                          key={i}
+                          className="rounded-lg px-3 py-2 text-xs font-medium text-center cursor-default"
+                          style={{
+                            background: "#FFFFFF",
+                            color: "#075E54",
+                            border: "1px solid rgba(7,94,84,0.2)",
+                            maxWidth: "85%",
+                            marginLeft: "auto",
+                          }}
+                        >
+                          {btn}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {result.error && (
               <p className="text-xs font-mono" style={{ color: "#DC2626" }}>{result.error}</p>
             )}

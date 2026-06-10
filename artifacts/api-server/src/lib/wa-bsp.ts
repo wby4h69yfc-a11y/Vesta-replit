@@ -40,6 +40,40 @@ export type SendResult =
   | { ok: true; sid: string }
   | { ok: false; error: string };
 
+// ── Interactive message types ─────────────────────────────────────────────────
+
+/** A single quick-reply button in an interactive message. */
+export interface InteractiveButton {
+  /** Unique ID sent back in the inbound payload when the user taps the button.
+   *  Max 256 chars. Used to route the reply (e.g. "approve", "reject", "edit"). */
+  id: string;
+  /** Button label shown to the user. Max 20 chars (WhatsApp platform limit). */
+  title: string;
+}
+
+/** Content of a WhatsApp interactive button message. */
+export interface InteractivePayload {
+  kind: "buttons";
+  /** Main message body text. */
+  body: string;
+  /** Optional footer text (shown below buttons). */
+  footer?: string;
+  /** 1–3 quick-reply buttons. */
+  buttons: InteractiveButton[];
+}
+
+/**
+ * Thrown by sendInteractive() when the BSP or number tier does not support
+ * interactive messages (e.g. Twilio sandbox, non-business tier).
+ * Callers should catch this and fall back to plain-text via send().
+ */
+export class InteractiveNotSupportedError extends Error {
+  constructor(message?: string) {
+    super(message ?? "Interactive messages not supported by this BSP or number tier");
+    this.name = "InteractiveNotSupportedError";
+  }
+}
+
 /**
  * BSP adapter interface — implement once per WhatsApp Business Solution Provider.
  */
@@ -49,6 +83,13 @@ export interface WaBspAdapter {
   /** Sends a WhatsApp text message. Never throws — always returns a result object. */
   send(to: string, body: string): Promise<SendResult>;
   /**
+   * Sends a WhatsApp interactive (button) message.
+   * Throws InteractiveNotSupportedError when the BSP or number tier does not
+   * support interactive messages — callers must catch and fall back to send().
+   * All other errors are thrown as-is.
+   */
+  sendInteractive(to: string, payload: InteractivePayload): Promise<SendResult>;
+  /**
    * Validates the inbound webhook request's authenticity.
    * @param req      Express request (parsed body available for Twilio form posts).
    * @param rawBody  Raw request body Buffer (required for 360Dialog HMAC validation).
@@ -57,6 +98,7 @@ export interface WaBspAdapter {
   /**
    * Parses the BSP-specific inbound payload into the normalised InboundWAMessage shape.
    * Returns null when the payload contains no processable inbound message.
+   * Button-tap events are normalised to type "text" with the button's reply.id as body.
    */
   parseInboundPayload(body: unknown): InboundWAMessage | null;
   /**

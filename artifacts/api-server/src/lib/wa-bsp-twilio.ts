@@ -1,5 +1,6 @@
 import type { Request } from "express";
-import type { WaBspAdapter, InboundWAMessage, SendResult } from "./wa-bsp";
+import type { WaBspAdapter, InboundWAMessage, SendResult, InteractivePayload } from "./wa-bsp";
+import { InteractiveNotSupportedError } from "./wa-bsp";
 import { logger } from "./logger";
 
 const MAX_MEDIA_BYTES = 20 * 1024 * 1024;
@@ -35,6 +36,94 @@ export class WaBspTwilioAdapter implements WaBspAdapter {
       return { ok: true, sid: msg.sid };
     } catch (err) {
       logger.error({ err, to }, "WhatsApp Twilio send failed");
+      return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+    }
+  }
+
+  /**
+   * Sends a WhatsApp interactive button message via the Twilio Messages API.
+   *
+   * Twilio delivers WhatsApp interactive messages by including a JSON-encoded
+   * `Interactive` parameter alongside the standard To/From fields. This works
+   * for WhatsApp Business accounts within a 24-hour session window.
+   *
+   * Sandbox numbers (Twilio trial / sandbox) do not support interactive
+   * messages — Twilio returns a 21xxx error code. We convert that to
+   * InteractiveNotSupportedError so callers can fall back to plain text.
+   */
+  async sendInteractive(to: string, payload: InteractivePayload): Promise<SendResult> {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const from = process.env.TWILIO_WHATSAPP_FROM;
+
+    if (!accountSid || !authToken || !from) {
+      logger.warn({ to }, "WaBspTwilio.sendInteractive: not configured — skipping");
+      return { ok: false, error: "Twilio not configured" };
+    }
+
+    const toAddr = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
+    const fromAddr = from.startsWith("whatsapp:") ? from : `whatsapp:${from}`;
+
+    // Build the WhatsApp interactive payload in the format Twilio expects.
+    // Twilio maps this to the WhatsApp Cloud API interactive object.
+    const interactive = {
+      type: "button",
+      body: { text: payload.body },
+      ...(payload.footer ? { footer: { text: payload.footer } } : {}),
+      action: {
+        buttons: payload.buttons.map((btn) => ({
+          type: "reply",
+          reply: {
+            id: btn.id,
+            title: btn.title.substring(0, 20), // WhatsApp enforces 20-char limit
+          },
+        })),
+      },
+    };
+
+    try {
+      // Use the Twilio REST API directly so we can pass the Interactive param,
+      // which the twilio SDK's typed create() does not expose on the base interface.
+      const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+      const body = new URLSearchParams({
+        From: fromAddr,
+        To: toAddr,
+        Body: payload.body,
+        Interactive: JSON.stringify(interactive),
+      });
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: body.toString(),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { code?: number; message?: string };
+        const code = data.code ?? 0;
+        const message = data.message ?? `HTTP ${res.status}`;
+
+        // Twilio 21xxx codes indicate the feature is unavailable for this number/tier.
+        // 21608 = sandbox-only restriction; 21xxx range broadly covers capability issues.
+        if (code >= 21000 && code < 22000) {
+          throw new InteractiveNotSupportedError(
+            `Twilio ${code}: ${message} — falling back to plain text`,
+          );
+        }
+
+        throw new Error(`Twilio sendInteractive failed: ${code} ${message}`);
+      }
+
+      const data = await res.json() as { sid?: string };
+      const sid = data.sid ?? "twilio-interactive-unknown";
+      logger.info({ to, sid }, "WhatsApp interactive sent via Twilio");
+      return { ok: true, sid };
+    } catch (err) {
+      if (err instanceof InteractiveNotSupportedError) throw err;
+      logger.error({ err, to }, "WhatsApp Twilio sendInteractive failed");
       return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
     }
   }
@@ -82,9 +171,21 @@ export class WaBspTwilioAdapter implements WaBspAdapter {
     const rawTo = b.To ?? "";
     const groupSourced = rawTo.includes("@g.us");
 
+    // Interactive button-tap detection.
+    // When a user taps a quick-reply button, Twilio delivers:
+    //   ButtonPayload = the button's reply ID (e.g. "approve")
+    //   ButtonText    = the button's display label
+    //   Body          = the button's display label (same as ButtonText)
+    // We normalise button taps to their reply ID so the existing Sim/Não
+    // handler receives the machine-readable token, not the display label.
+    const buttonPayload = b.ButtonPayload;
+    const effectiveBody = buttonPayload
+      ? buttonPayload.trim()
+      : (b.Body ?? "").trim();
+
     return {
       from,
-      body: (b.Body ?? "").trim(),
+      body: effectiveBody,
       profileName: b.ProfileName ?? null,
       mediaUrl: b.MediaUrl0 ?? null,
       mediaContentType: b.MediaContentType0 ?? null,

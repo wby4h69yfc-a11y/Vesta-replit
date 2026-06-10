@@ -158,10 +158,48 @@ if (process.env.NODE_ENV !== "production") {
             type: suggestedActionsTable.type,
             title: suggestedActionsTable.title,
             confidence: suggestedActionsTable.confidence,
+            datetime: suggestedActionsTable.datetime,
+            cascade_check_needed: suggestedActionsTable.cascade_check_needed,
+            workflow_tags: suggestedActionsTable.workflow_tags,
           })
           .from(suggestedActionsTable)
           .where(eq(suggestedActionsTable.inbox_item_id, item.id))
           .limit(1);
+
+        // Determine what WhatsApp reply would be sent in the real webhook flow.
+        // waEligible mirrors the logic in wa-message-processor.ts.
+        const waEligible =
+          action !== undefined &&
+          (action.confidence ?? 0) >= 0.80 &&
+          !(action.cascade_check_needed ?? false) &&
+          !(action.workflow_tags ?? []).includes("payment_admin") &&
+          (action.approval_level ?? "one_tap") !== "explicit";
+
+        let proposedReply: { kind: "interactive"; buttons: string[]; body: string } | { kind: "text"; body: string } | null = null;
+        if (action?.title && waEligible) {
+          const { composeApprovalInteractive } = await import("../lib/wa-reply-composer");
+          const interactive = composeApprovalInteractive(
+            action.title,
+            action.type ?? null,
+            action.category ?? null,
+            action.datetime ?? null,
+          );
+          proposedReply = {
+            kind: "interactive",
+            body: interactive.body,
+            buttons: interactive.buttons.map((b) => b.title),
+          };
+        } else if (action?.title) {
+          const { replyAppDeepLink } = await import("../lib/wa-reply-composer");
+          const domain =
+            (process.env.REPLIT_DOMAINS ?? "").split(",").filter(Boolean)[0] ??
+            process.env.REPLIT_DEV_DOMAIN ??
+            null;
+          proposedReply = {
+            kind: "text",
+            body: replyAppDeepLink(action.title, domain),
+          };
+        }
 
         res.json({
           outcome: "ingested",
@@ -171,6 +209,8 @@ if (process.env.NODE_ENV !== "production") {
           type: action?.type,
           title: action?.title,
           confidence: action?.confidence,
+          waEligible,
+          proposedReply,
           senderName: sender_name?.trim() ?? "Dev Console",
           senderPhone: sender_phone ?? null,
         });
