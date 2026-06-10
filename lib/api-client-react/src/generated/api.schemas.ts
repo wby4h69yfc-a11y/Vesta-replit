@@ -1676,6 +1676,11 @@ export type HandleBrowserLoginCallbackParams = {
   iss?: string;
 };
 
+export type LogoutBrowserSession200 = {
+  /** OIDC end-session URL to redirect the browser to. */
+  url: string;
+};
+
 export type ListInboxItemsParams = {
   status?: ListInboxItemsStatus;
   limit?: number;

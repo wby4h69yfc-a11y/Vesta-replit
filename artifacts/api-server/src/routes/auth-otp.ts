@@ -9,6 +9,7 @@ import {
   type SessionData,
 } from "../lib/auth";
 import { sendWhatsApp, isTwilioConfigured } from "../lib/whatsapp";
+import { requireSameOrigin } from "../middlewares/requireSameOrigin";
 
 const router: IRouter = Router();
 
@@ -157,7 +158,7 @@ router.post("/auth/otp/send", async (req: Request, res: Response) => {
  * is performed as a single atomic SQL UPDATE so concurrent requests cannot
  * race past the cap.
  */
-router.post("/auth/otp/verify", async (req: Request, res: Response) => {
+router.post("/auth/otp/verify", requireSameOrigin, async (req: Request, res: Response) => {
   const { phone: rawPhone, code } = req.body as {
     phone?: unknown;
     code?: unknown;

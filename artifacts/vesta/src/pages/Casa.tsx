@@ -924,7 +924,15 @@ function InicioTab() {
         </div>
       </section>
 
-      <button onClick={() => { window.location.href = "/api/logout"; }}
+      <button onClick={async () => {
+        try {
+          const res = await fetch("/api/logout", { method: "POST", credentials: "include" });
+          const data = await res.json() as { url?: string };
+          window.location.href = data.url ?? "/";
+        } catch {
+          window.location.href = "/";
+        }
+      }}
         className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm font-medium"
         style={{ background: "#FEE2E2", color: "#DC2626" }}>
         <LogOut className="h-4 w-4" /> Sair da conta

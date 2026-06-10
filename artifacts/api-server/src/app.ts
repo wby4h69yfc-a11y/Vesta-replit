@@ -138,7 +138,7 @@ const PUBLIC_API_EXACT: ReadonlySet<string> = new Set([
   "/auth/user",
   "/login",
   "/callback",
-  "/logout",
+  "/logout", // POST — requireSameOrigin is applied at the route level
   "/auth/otp/send",
   "/auth/otp/verify",
   "/auth/google",

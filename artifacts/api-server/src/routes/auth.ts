@@ -6,6 +6,7 @@ import {
   ExchangeMobileAuthorizationCodeResponse,
   LogoutMobileSessionResponse,
 } from "@workspace/api-zod";
+import { requireSameOrigin } from "../middlewares/requireSameOrigin";
 import { db, usersTable, householdsTable, waOnboardingSessionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
@@ -212,20 +213,24 @@ router.get("/callback", async (req: Request, res: Response) => {
   res.redirect(returnTo);
 });
 
-router.get("/logout", async (req: Request, res: Response) => {
-  const config = await getOidcConfig();
-  const origin = getOrigin(req);
+router.post(
+  "/logout",
+  requireSameOrigin,
+  async (req: Request, res: Response) => {
+    const config = await getOidcConfig();
+    const origin = getOrigin(req);
 
-  const sid = getSessionId(req);
-  await clearSession(res, sid);
+    const sid = getSessionId(req);
+    await clearSession(res, sid);
 
-  const endSessionUrl = oidc.buildEndSessionUrl(config, {
-    client_id: process.env.REPL_ID!,
-    post_logout_redirect_uri: origin,
-  });
+    const endSessionUrl = oidc.buildEndSessionUrl(config, {
+      client_id: process.env.REPL_ID!,
+      post_logout_redirect_uri: origin,
+    });
 
-  res.redirect(endSessionUrl.href);
-});
+    res.json({ url: endSessionUrl.href });
+  },
+);
 
 router.post(
   "/mobile-auth/token-exchange",
@@ -319,7 +324,7 @@ router.post("/mobile-auth/logout", async (req: Request, res: Response) => {
 /** Milliseconds a claimed token stays alive for duplicate-claim recovery. */
 const MAGIC_CLAIM_GRACE_MS = 10_000;
 
-router.post("/auth/claim-magic", async (req: Request, res: Response) => {
+router.post("/auth/claim-magic", requireSameOrigin, async (req: Request, res: Response) => {
   const { token } = req.body as { token?: string };
   if (!token || typeof token !== "string") {
     res.status(400).json({ error: "Token required" });

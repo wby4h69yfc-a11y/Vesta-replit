@@ -70,6 +70,7 @@ import type {
   ListPatternsParams,
   ListPaymentObligationsParams,
   ListTasksParams,
+  LogoutBrowserSession200,
   LogoutSuccess,
   Member,
   MemberInput,
@@ -663,71 +664,77 @@ export const getLogoutBrowserSessionUrl = () => {
 
 export const logoutBrowserSession = async (
   options?: RequestInit,
-): Promise<unknown> => {
-  return customFetch<unknown>(getLogoutBrowserSessionUrl(), {
+): Promise<LogoutBrowserSession200> => {
+  return customFetch<LogoutBrowserSession200>(getLogoutBrowserSessionUrl(), {
     ...options,
-    method: "GET",
+    method: "POST",
   });
 };
 
-export const getLogoutBrowserSessionQueryKey = () => {
-  return [`/api/logout`] as const;
-};
-
-export const getLogoutBrowserSessionQueryOptions = <
-  TData = Awaited<ReturnType<typeof logoutBrowserSession>>,
+export const getLogoutBrowserSessionMutationOptions = <
   TError = ErrorType<void>,
+  TContext = unknown,
 >(options?: {
-  query?: UseQueryOptions<
+  mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof logoutBrowserSession>>,
     TError,
-    TData
+    void,
+    TContext
   >;
   request?: SecondParameter<typeof customFetch>;
-}) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof logoutBrowserSession>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["logoutBrowserSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
 
-  const queryKey = queryOptions?.queryKey ?? getLogoutBrowserSessionQueryKey();
-
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof logoutBrowserSession>>
-  > = ({ signal }) => logoutBrowserSession({ signal, ...requestOptions });
-
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+  const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof logoutBrowserSession>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
+    void
+  > = () => {
+    return logoutBrowserSession(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
 };
 
-export type LogoutBrowserSessionQueryResult = NonNullable<
+export type LogoutBrowserSessionMutationResult = NonNullable<
   Awaited<ReturnType<typeof logoutBrowserSession>>
 >;
-export type LogoutBrowserSessionQueryError = ErrorType<void>;
+
+export type LogoutBrowserSessionMutationError = ErrorType<void>;
 
 /**
  * @summary Clear the session and begin OIDC logout
  */
-
-export function useLogoutBrowserSession<
-  TData = Awaited<ReturnType<typeof logoutBrowserSession>>,
+export const useLogoutBrowserSession = <
   TError = ErrorType<void>,
+  TContext = unknown,
 >(options?: {
-  query?: UseQueryOptions<
+  mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof logoutBrowserSession>>,
     TError,
-    TData
+    void,
+    TContext
   >;
   request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getLogoutBrowserSessionQueryOptions(options);
-
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
+}): UseMutationResult<
+  Awaited<ReturnType<typeof logoutBrowserSession>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getLogoutBrowserSessionMutationOptions(options));
+};
 
 /**
  * @summary Exchange a mobile OIDC code for a session token
