@@ -164,8 +164,46 @@ export type ProcessOutcome =
     };
 
 /** Strip all non-digit chars for exact phone matching. */
-function normalisePhone(p: string): string {
+export function normalisePhone(p: string): string {
   return p.replace(/\D/g, "");
+}
+
+/**
+ * Pure routing-decision helper — no DB, no side effects.
+ *
+ * Given the pre-fetched verified members and all contacts, applies the
+ * two-tier priority model:
+ *   Tier 1 — verified members win unconditionally (phone_verified = true).
+ *   Tier 2 — contacts are used only when no verified member matched.
+ *
+ * Exported so security regression tests can exercise routing logic without
+ * a real database connection.
+ */
+export function computePhoneRouting(
+  phoneNorm: string,
+  verifiedMembers: Array<{ phone: string | null; household_id: number }>,
+  contacts: Array<{ phone: string | null; household_id: number }>,
+): { kind: "found"; householdId: number } | { kind: "unknown" } | { kind: "multi_household"; householdIds: number[] } {
+  const matchedMembers = verifiedMembers.filter(
+    (m) => m.phone && normalisePhone(m.phone) === phoneNorm,
+  );
+
+  if (matchedMembers.length > 0) {
+    const memberHouseholds = new Set(matchedMembers.map((m) => m.household_id));
+    if (memberHouseholds.size === 1) {
+      return { kind: "found", householdId: [...memberHouseholds][0]! };
+    }
+    return { kind: "multi_household", householdIds: [...memberHouseholds] };
+  }
+
+  const matchedContacts = contacts.filter(
+    (c) => c.phone && normalisePhone(c.phone) === phoneNorm,
+  );
+  const contactHouseholds = new Set(matchedContacts.map((c) => c.household_id));
+
+  if (contactHouseholds.size === 0) return { kind: "unknown" };
+  if (contactHouseholds.size === 1) return { kind: "found", householdId: [...contactHouseholds][0]! };
+  return { kind: "multi_household", householdIds: [...contactHouseholds] };
 }
 
 // ── "Adicionar membro" WA admin command ───────────────────────────────────────

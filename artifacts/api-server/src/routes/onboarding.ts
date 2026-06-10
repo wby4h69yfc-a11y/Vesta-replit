@@ -209,12 +209,14 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
               sql`SELECT pg_advisory_xact_lock(hashtext('wa_phone'::text), hashtext(${phoneNorm}::text))`,
             );
 
-            // Check ONLY members in other households — contacts are intentionally
-            // excluded. A pre-existing contact record for this phone in another
-            // household must not block the victim's legitimate onboarding (that
-            // would be a DoS attack by a household admin who pre-claimed the
-            // number). Contacts are external parties (diaristas, providers); they
-            // do not carry the same verified-identity weight as member records.
+            // Check ONLY verified members (phone_verified = true) in other
+            // households. Unverified admin-set member phones must not block
+            // legitimate onboarding — that would be a DoS attack: an attacker
+            // creates household A, adds victim's phone as a plain (unverified)
+            // member record, and victim can never complete onboarding.
+            //
+            // Contacts are also intentionally excluded: a contact pre-claim
+            // must not block the victim either (same DoS concern, separate path).
             const [cm] = await tx
               .select({ id: membersTable.id })
               .from(membersTable)
@@ -222,12 +224,13 @@ router.post("/onboarding/complete", async (req: Request, res: Response) => {
                 and(
                   sql`regexp_replace(${membersTable.phone}, '\\D', '', 'g') = ${phoneNorm}`,
                   ne(membersTable.household_id, householdId),
+                  eq(membersTable.phone_verified, true),
                 ),
               )
               .limit(1);
 
             if (cm) {
-              // Another household's verified member has already claimed this phone.
+              // Another household's VERIFIED member has already claimed this phone.
               // Log for ops visibility but do not block the user's onboarding.
               req.log.warn(
                 { householdId },
