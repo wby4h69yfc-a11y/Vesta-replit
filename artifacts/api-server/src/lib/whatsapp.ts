@@ -103,12 +103,74 @@ export async function resolveHouseholdAdminPhone(
 }
 
 /**
+ * Splits a WhatsApp free-form text message into parts that each fit within
+ * `limit` characters (default 4,096 — the WhatsApp hard cap).
+ *
+ * Split priority:
+ *   1. Paragraph boundary (\n\n)
+ *   2. Line boundary (\n)
+ *   3. Word boundary (space)
+ *   4. Hard cut at the effective limit (fallback; avoids mid-word truncation
+ *      only when no whitespace is present in the window)
+ *
+ * When N > 1 each part is labelled "(i/N) " so recipients know more follows.
+ * The label overhead is reserved up front (max 10 chars handles N ≤ 999).
+ *
+ * Returns a single-element array when no splitting is needed.
+ */
+export function splitMessage(text: string, limit = 4096): string[] {
+  if (text.length <= limit) return [text];
+
+  // Reserve space for the longest possible label "(NNN/NNN) " = 10 chars.
+  const LABEL_RESERVE = 10;
+  const effectiveLimit = limit - LABEL_RESERVE;
+
+  const parts: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > effectiveLimit) {
+    let splitAt = effectiveLimit;
+
+    // 1. Prefer paragraph boundary
+    const paraIdx = remaining.lastIndexOf("\n\n", splitAt);
+    if (paraIdx > 0) {
+      splitAt = paraIdx + 2;
+    } else {
+      // 2. Prefer line boundary
+      const lineIdx = remaining.lastIndexOf("\n", splitAt);
+      if (lineIdx > 0) {
+        splitAt = lineIdx + 1;
+      } else {
+        // 3. Prefer word boundary
+        const spaceIdx = remaining.lastIndexOf(" ", splitAt);
+        if (spaceIdx > 0) {
+          splitAt = spaceIdx + 1;
+        }
+        // 4. Hard cut — no whitespace found (unusual; avoids infinite loop)
+      }
+    }
+
+    parts.push(remaining.slice(0, splitAt).trimEnd());
+    remaining = remaining.slice(splitAt).trimStart();
+  }
+
+  if (remaining.length > 0) parts.push(remaining);
+
+  const N = parts.length;
+  return parts.map((part, i) => `(${i + 1}/${N}) ${part}`);
+}
+
+/**
  * Sends a WhatsApp message via the active BSP adapter (Twilio or 360Dialog).
  * Returns a result object — never throws.
  *
  * The active BSP is determined by the WA_BSP env var (default: "twilio").
  * Dev/test telemetry is recorded in _waSendLog regardless of which BSP is
  * active so existing E2E tests continue to work with either adapter.
+ *
+ * Long messages (> 4,096 chars) are automatically split into labelled parts
+ * via splitMessage() before sending. Parts are delivered in order; the first
+ * failure aborts the sequence and is returned to the caller.
  */
 export async function sendWhatsApp(to: string, message: string): Promise<SendResult> {
   const adapter = getBspAdapter();
@@ -124,7 +186,23 @@ export async function sendWhatsApp(to: string, message: string): Promise<SendRes
     _waSendLog.push({ to: toAddr, body: message, at: new Date().toISOString() });
   }
 
-  return adapter.send(to, message);
+  const parts = splitMessage(message);
+
+  if (parts.length === 1) {
+    return adapter.send(to, parts[0]);
+  }
+
+  logger.info(
+    { to, parts: parts.length, totalChars: message.length },
+    "sendWhatsApp: message exceeds 4096 chars — splitting into parts",
+  );
+
+  let lastResult: SendResult = { ok: false, error: "No parts to send" };
+  for (const part of parts) {
+    lastResult = await adapter.send(to, part);
+    if (!lastResult.ok) return lastResult;
+  }
+  return lastResult;
 }
 
 /**
