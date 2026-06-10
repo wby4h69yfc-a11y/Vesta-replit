@@ -39,6 +39,13 @@ import { clearQaSession } from "./wa-qa-session-store";
 import { handleMutationIntent, executeConfirmedMutation } from "./wa-mutation-handler";
 import type { MutationProposedPayload } from "./wa-mutation-handler";
 import { isCalendarQuery, handleCalendarQueryIntent } from "./wa-calendar-query-handler";
+import {
+  isReminderIntent,
+  isCancelReminderIntent,
+  handleSetReminderIntent,
+  handleCancelReminderIntent,
+  handleReminderQuietConfirm,
+} from "./wa-reminder-handler";
 
 /** Payload shape normalised by the webhook handler before calling us. */
 export interface InboundWAMessage {
@@ -849,6 +856,27 @@ export async function processInboundWAMessage(
     }
   }
 
+  // ── 4.5a-1. Reminder quiet-hour confirmation (SIM / NÃO) ─────────────────
+  // When a reminder was blocked by quiet hours and the user is replying to the
+  // reschedule prompt ("reagendar para 07h?"), handle that before the standard
+  // mutation/approval checks so we don't misinterpret "sim" as an action approval.
+  // Any verified household member (not just admins) can set reminders.
+  if (bodyText) {
+    const reminderQuietReply = await handleReminderQuietConfirm(
+      bodyText,
+      householdId,
+      phoneRaw,
+      log,
+    );
+    if (reminderQuietReply !== undefined) {
+      log.info(
+        { householdId, phone: phoneRaw },
+        "wa-reminder: handled quiet-hour reschedule reply",
+      );
+      return { kind: "question_answered", reply: reminderQuietReply, householdId, phone: phoneRaw };
+    }
+  }
+
   // ── 4.5b. WhatsApp-native approval / dismiss / edit / undo ────────────────
   if (bodyText && senderIsAdmin) {
     const approvalOutcome = await handleApprovalResponse(bodyText, householdId, phoneRaw, log);
@@ -1137,6 +1165,31 @@ export async function processInboundWAMessage(
       return { kind: "question_answered", reply: calResult.reply, householdId, phone: phoneRaw };
     }
     // handler returned null → not a calendar query after deeper inspection, fall through
+  }
+
+  // ── 4.58d. "Cancela lembrete" — cancel most recent unfired reminder ─────────
+  // Any verified household member (not just admins) can cancel their own reminders.
+  // Handled before the mutation interceptor so the LLM is never involved.
+  if (bodyText && !payload.groupId && isCancelReminderIntent(bodyText)) {
+    log.info(
+      { householdId, phone: phoneRaw, preview: bodyText.substring(0, 60) },
+      "wa-reminder: cancel lembrete command detected",
+    );
+    const reply = await handleCancelReminderIntent(householdId, phoneRaw, log);
+    return { kind: "question_answered", reply, householdId, phone: phoneRaw };
+  }
+
+  // ── 4.58e. "Me lembra de X às Y" — set an ad-hoc reminder ─────────────────
+  // Any verified household member (not just admins) can set reminders in a DM.
+  // Handled before the mutation interceptor; group reminders are excluded
+  // because reminder confirmation (quiet hours) relies on a 1:1 DM flow.
+  if (bodyText && !payload.groupId && isReminderIntent(bodyText)) {
+    log.info(
+      { householdId, phone: phoneRaw, preview: bodyText.substring(0, 60) },
+      "wa-reminder: reminder intent detected",
+    );
+    const reply = await handleSetReminderIntent(bodyText, householdId, phoneRaw, log);
+    return { kind: "question_answered", reply, householdId, phone: phoneRaw };
   }
 
   // ── 4.59. Mutation intent proposal (DM only, admin only) ─────────────────

@@ -19,4 +19,5 @@ export * from "./wa-rate-limits";
 export * from "./wa-qa-sessions";
 export * from "./wa-onboarding";
 export * from "./member-invites";
+export * from "./reminders";
 export { ruleTemplatesTable } from "./rules";

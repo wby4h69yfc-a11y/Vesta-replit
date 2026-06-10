@@ -13,6 +13,7 @@ import {
   scheduleProactiveMessages,
   sendDueProactiveMessages,
 } from "./lib/proactive-scheduler";
+import { sendDueReminders } from "./lib/wa-reminder-handler";
 import { resolveHouseholdAdminPhone, sendWhatsApp } from "./lib/whatsapp";
 
 const TICK_INTERVAL_MS = 60_000;
@@ -34,6 +35,7 @@ let proactiveSendIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let paymentReminderIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let qaSessionPruneIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let onboardingReminderIntervalHandle: ReturnType<typeof setInterval> | null = null;
+let reminderSendIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
 function localHourInTimezone(date: Date, timezone: string): number {
   try {
@@ -189,6 +191,14 @@ async function onboardingReminderTick(): Promise<void> {
   }
 }
 
+async function reminderSendTick(): Promise<void> {
+  try {
+    await sendDueReminders();
+  } catch (err) {
+    logger.error({ err }, "Scheduler: reminder send tick error");
+  }
+}
+
 async function paymentReminderTick(): Promise<void> {
   try {
     const now = new Date();
@@ -302,6 +312,12 @@ export function startScheduler(): void {
     void onboardingReminderTick();
   }, ONBOARDING_REMINDER_INTERVAL_MS);
   logger.info({ intervalMs: ONBOARDING_REMINDER_INTERVAL_MS }, "WA onboarding reminder tick started");
+
+  void reminderSendTick();
+  reminderSendIntervalHandle = setInterval(() => {
+    void reminderSendTick();
+  }, TICK_INTERVAL_MS);
+  logger.info({ intervalMs: TICK_INTERVAL_MS }, "WA reminder send tick started");
 }
 
 export function stopScheduler(): void {
@@ -349,5 +365,10 @@ export function stopScheduler(): void {
     clearInterval(onboardingReminderIntervalHandle);
     onboardingReminderIntervalHandle = null;
     logger.info("WA onboarding reminder tick stopped");
+  }
+  if (reminderSendIntervalHandle !== null) {
+    clearInterval(reminderSendIntervalHandle);
+    reminderSendIntervalHandle = null;
+    logger.info("WA reminder send tick stopped");
   }
 }
