@@ -71,6 +71,12 @@ export async function transcribeVoice(
 
     return { transcription, confidence };
   } catch (err) {
+    // Deliberate null-return on failure: the caller (media-analysis.ts) converts
+    // null into a placeholder inbox item with status "classifying" so the user's
+    // audio is never silently discarded.  Returning null (rather than rethrowing)
+    // keeps the webhook alive and lets manual review happen via the inbox UI.
+    // transcriptionConfidence is intentionally omitted on the null return path so
+    // the low-confidence Sim/Não gate is skipped for placeholder messages.
     logger.error({ err }, "voice-transcriber: download or transcription failed");
     return null;
   }

@@ -37,6 +37,7 @@ import {
   replyMutationExecuted,
   replyMutationDismissed,
   replyMutationError,
+  replyVoiceProcessingAck,
   replyVoiceConfirmInteractive,
   composeApprovalInteractive,
   composeMutationConfirmInteractive,
@@ -490,6 +491,27 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       return;
     }
 
+    // Send an immediate audio ACK to known senders before the slow Whisper
+    // transcription runs.  We verify the sender is a known household admin first
+    // so unknown/spam senders never receive a reply (which would leak that the
+    // endpoint is active).  Group voice messages are excluded — they use the
+    // group JID as destination and have different UX expectations.
+    if (
+      !groupSourced &&
+      parseInt(parsed.numMedia ?? "0", 10) > 0 &&
+      (parsed.mediaContentType ?? "").startsWith("audio/")
+    ) {
+      const senderPhone = parsed.from.replace(/^whatsapp:/i, "");
+      const [knownSender] = await db
+        .select({ household_id: onboardingStateTable.household_id })
+        .from(onboardingStateTable)
+        .where(eq(onboardingStateTable.whatsapp_verified_phone, senderPhone))
+        .limit(1);
+      if (knownSender) {
+        void sendWhatsApp(senderPhone, replyVoiceProcessingAck());
+      }
+    }
+
     const outcome = await processInboundWAMessage(
       { ...parsed, body: effectiveBody },
       req.log,
@@ -603,6 +625,22 @@ router.post(
           );
         }
         return;
+      }
+
+      // Same sender-verified audio ACK as the Twilio path above.
+      if (
+        parseInt(message.numMedia ?? "0", 10) > 0 &&
+        (message.mediaContentType ?? "").startsWith("audio/")
+      ) {
+        const senderPhone = message.from.replace(/^whatsapp:/i, "");
+        const [knownSender] = await db
+          .select({ household_id: onboardingStateTable.household_id })
+          .from(onboardingStateTable)
+          .where(eq(onboardingStateTable.whatsapp_verified_phone, senderPhone))
+          .limit(1);
+        if (knownSender) {
+          void sendWhatsApp(senderPhone, replyVoiceProcessingAck());
+        }
       }
 
       const outcome = await processInboundWAMessage(message, req.log);
