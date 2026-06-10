@@ -191,11 +191,13 @@ async function handleWaOutcome(
       break;
 
     // ── WhatsApp group: admin issued a mutation command in a group thread ───
+    // Reply goes to the admin's DM (outcome.phone), not the group, so the
+    // instruction to "use DM" is delivered privately and is immediately actionable.
     case "group_mutation_blocked":
-      void sendWhatsApp(outcome.groupId, replyGroupMutationBlocked());
+      void sendWhatsApp(outcome.phone, replyGroupMutationBlocked());
       req.log.info(
         { groupId: outcome.groupId, phone: outcome.phone, source: "group" },
-        "Group /vesta mutation command blocked — redirect to DM sent",
+        "Group /vesta mutation command blocked — redirect notice sent to admin DM",
       );
       break;
 
@@ -568,10 +570,12 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
       const senderPhone = parsed.from.replace(/^whatsapp:/i, "");
 
       if (groupSourced) {
-        void sendWhatsApp(groupId!, replyGroupMutationBlocked());
+        // Send the blocked-mutation notice to the admin's DM, not the group,
+        // so it is delivered privately and is immediately actionable.
+        void sendWhatsApp(senderPhone, replyGroupMutationBlocked());
         req.log.info(
           { senderPhone, group_id: groupId, command: normalizedBody, source: "group" },
-          "Group Tier-0 command rejected — DM-only",
+          "Group Tier-0 command rejected — redirect notice sent to admin DM",
         );
         return;
       }
@@ -802,17 +806,19 @@ router.post(
         normalizedBody === "RETOMAR" ||
         BSP_STOP_KEYWORDS_360.has(normalizedBody)
       ) {
-        // Tier-0 commands are DM-only — redirect group senders to their DM
+        // Extract sender phone up front — needed by both the group redirect and the DM path.
+        const senderPhone = message.from.replace(/^whatsapp:/i, "");
+
+        // Tier-0 commands are DM-only — send the redirect notice to the admin's
+        // DM (senderPhone), not the group, so it is private and actionable.
         if (groupSourced) {
-          void sendWhatsApp(groupId!, replyGroupMutationBlocked());
+          void sendWhatsApp(senderPhone, replyGroupMutationBlocked());
           req.log.info(
-            { from: message.from, group_id: groupId, command: normalizedBody, source: "group" },
-            "Group Tier-0 command rejected — DM-only",
+            { from: senderPhone, group_id: groupId, command: normalizedBody, source: "group" },
+            "Group Tier-0 command rejected — redirect notice sent to admin DM",
           );
           return;
         }
-
-        const senderPhone = message.from.replace(/^whatsapp:/i, "");
 
         const [onboarding] = await db
           .select({ household_id: onboardingStateTable.household_id })
