@@ -316,6 +316,17 @@ export function classifyWhatsAppError(errorMsg: string): string {
     return "rate_limited";
   }
 
+  if (
+    msg.includes("21610") ||
+    msg.includes("opted out") ||
+    msg.includes("opt-out") ||
+    msg.includes("opt_out") ||
+    msg.includes("has chosen to not receive") ||
+    msg.includes("unsubscribed recipient")
+  ) {
+    return "opted_out";
+  }
+
   if (msg.includes("twilio not configured")) {
     return "not_configured";
   }

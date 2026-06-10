@@ -50,6 +50,7 @@ function waFailureHint(reason: string | null | undefined): string {
     case "account_blocked":   return "Conta Twilio bloqueada — verifique suas credenciais no console Twilio";
     case "rate_limited":      return "Limite de mensagens atingido — tente novamente mais tarde";
     case "not_configured":    return "Twilio não configurado — configure abaixo para enviar mensagens";
+    case "opted_out":         return "Você cancelou o recebimento de mensagens — mande RETOMAR pelo WhatsApp para reativar";
     default:                  return "Falha temporária do serviço — aguarde e tente novamente";
   }
 }

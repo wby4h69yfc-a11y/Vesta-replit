@@ -193,16 +193,21 @@ export async function sendHouseholdBriefing(
   if (!result.ok) {
     // Revert the cooldown claim so last_briefing_sent_at reflects the last
     // *successful* delivery rather than a failed attempt.
+    const failureReason = classifyWhatsAppError(result.error);
+    const optOutUpdate = failureReason === "opted_out"
+      ? { digest_stopped: true, digest_enabled: false }
+      : {};
     await db
       .update(householdsTable)
       .set({
         last_briefing_sent_at: claimed[0].prev ?? null,
         whatsapp_consecutive_failures: sql`${householdsTable.whatsapp_consecutive_failures} + 1`,
         whatsapp_last_failure_at: new Date(),
-        whatsapp_last_failure_reason: classifyWhatsAppError(result.error),
+        whatsapp_last_failure_reason: failureReason,
+        ...optOutUpdate,
       })
       .where(eq(householdsTable.id, householdId));
-    logger.warn({ householdId, error: result.error }, "Briefing send failed");
+    logger.warn({ householdId, error: result.error, failureReason }, "Briefing send failed");
     return { ok: false, reason: "send_failed", error: result.error };
   }
 

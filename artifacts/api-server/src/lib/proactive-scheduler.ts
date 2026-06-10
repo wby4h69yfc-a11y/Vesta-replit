@@ -1203,16 +1203,22 @@ async function processSingleMessage(
       })
       .where(eq(proactiveMessageQueueTable.id, msgId));
 
-    // Increment consecutive-failure counter so the app can surface a warning
+    // Increment consecutive-failure counter so the app can surface a warning.
+    // opted_out means the user sent STOP at the BSP level — disable all sends.
+    const failureReason = classifyWhatsAppError(result.error);
+    const optOutUpdate = failureReason === "opted_out"
+      ? { digest_stopped: true, digest_enabled: false }
+      : {};
     await db.update(householdsTable)
       .set({
         whatsapp_consecutive_failures: sql`${householdsTable.whatsapp_consecutive_failures} + 1`,
         whatsapp_last_failure_at: now,
-        whatsapp_last_failure_reason: classifyWhatsAppError(result.error),
+        whatsapp_last_failure_reason: failureReason,
+        ...optOutUpdate,
       })
       .where(eq(householdsTable.id, householdId));
 
-    logger.warn({ msgId, householdId, retry: retryCount, giveUp }, "Proactive: send failed");
+    logger.warn({ msgId, householdId, retry: retryCount, giveUp, failureReason }, "Proactive: send failed");
   }
 }
 

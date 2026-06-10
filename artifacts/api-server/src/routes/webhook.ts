@@ -485,11 +485,19 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
     // or directly to the sender's phone for DMs.
     const replyDest = (phone: string): string => groupId ?? phone;
 
-    // ── Tier-0: PAUSAR / PARAR / RETOMAR ────────────────────────────────
+    // ── Tier-0: PAUSAR / PARAR / RETOMAR + BSP opt-out aliases ─────────
     // Handled before the normal processor to give users immediate control
     // over proactive messages without any AI involvement.
+    // STOP, CANCELAR, UNSUBSCRIBE, QUIT are BSP-standard opt-out keywords
+    // that map to the same digest_stopped = true action as PARAR.
     const normalizedBody = effectiveBody.toUpperCase();
-    if (normalizedBody === "PAUSAR" || normalizedBody === "PARAR" || normalizedBody === "RETOMAR") {
+    const BSP_STOP_KEYWORDS = new Set(["STOP", "CANCELAR", "UNSUBSCRIBE", "QUIT"]);
+    if (
+      normalizedBody === "PAUSAR" ||
+      normalizedBody === "PARAR" ||
+      normalizedBody === "RETOMAR" ||
+      BSP_STOP_KEYWORDS.has(normalizedBody)
+    ) {
       const senderPhone = parsed.from.replace(/^whatsapp:/i, "");
 
       if (groupSourced) {
@@ -515,12 +523,12 @@ router.post("/webhook/whatsapp", async (req: Request, res: Response) => {
             .set({ digest_paused_until: pausedUntil, digest_stopped: false })
             .where(eq(householdsTable.id, onboarding.household_id));
           void sendWhatsApp(replyDest(senderPhone), "⏸ Pausei por 24h. Manda *RETOMAR* pra voltar.");
-        } else if (normalizedBody === "PARAR") {
+        } else if (normalizedBody === "PARAR" || BSP_STOP_KEYWORDS.has(normalizedBody)) {
           await db
             .update(householdsTable)
             .set({ digest_stopped: true, digest_paused_until: null })
             .where(eq(householdsTable.id, onboarding.household_id));
-          void sendWhatsApp(replyDest(senderPhone), "🔕 Parei. Manda *RETOMAR* pra voltar.");
+          void sendWhatsApp(replyDest(senderPhone), "🔕 Tudo bem! Para retomar, mande *RETOMAR*.");
         } else {
           await db
             .update(householdsTable)
@@ -624,12 +632,16 @@ router.post(
       // are treated as direct messages.
       const replyDest = (phone: string): string => phone;
 
-      // ── Tier-0: PAUSAR / PARAR / RETOMAR ──────────────────────────────────
+      // ── Tier-0: PAUSAR / PARAR / RETOMAR + BSP opt-out aliases ──────────
+      // STOP, CANCELAR, UNSUBSCRIBE, QUIT are BSP-standard opt-out keywords
+      // that map to digest_stopped = true, same as PARAR.
       const normalizedBody = message.body.toUpperCase();
+      const BSP_STOP_KEYWORDS_360 = new Set(["STOP", "CANCELAR", "UNSUBSCRIBE", "QUIT"]);
       if (
         normalizedBody === "PAUSAR" ||
         normalizedBody === "PARAR" ||
-        normalizedBody === "RETOMAR"
+        normalizedBody === "RETOMAR" ||
+        BSP_STOP_KEYWORDS_360.has(normalizedBody)
       ) {
         const senderPhone = message.from.replace(/^whatsapp:/i, "");
 
@@ -647,12 +659,12 @@ router.post(
               .set({ digest_paused_until: pausedUntil, digest_stopped: false })
               .where(eq(householdsTable.id, onboarding.household_id));
             void sendWhatsApp(senderPhone, "⏸ Pausei por 24h. Manda *RETOMAR* pra voltar.");
-          } else if (normalizedBody === "PARAR") {
+          } else if (normalizedBody === "PARAR" || BSP_STOP_KEYWORDS_360.has(normalizedBody)) {
             await db
               .update(householdsTable)
               .set({ digest_stopped: true, digest_paused_until: null })
               .where(eq(householdsTable.id, onboarding.household_id));
-            void sendWhatsApp(senderPhone, "🔕 Parei. Manda *RETOMAR* pra voltar.");
+            void sendWhatsApp(senderPhone, "🔕 Tudo bem! Para retomar, mande *RETOMAR*.");
           } else {
             await db
               .update(householdsTable)
