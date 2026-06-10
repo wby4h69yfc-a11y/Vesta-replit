@@ -1632,6 +1632,31 @@ export interface CrecheWaitlistUpdate {
   notes?: string | null;
 }
 
+export interface ChangeWhatsAppStatus {
+  verified: boolean;
+  /** @nullable */
+  verified_phone: string | null;
+}
+
+export interface ChangeWhatsAppRequestBody {
+  /** New WhatsApp number in international format (digits only, e.g. 5511987654321) */
+  new_phone: string;
+}
+
+export interface ChangeWhatsAppRequestResponse {
+  sent: boolean;
+}
+
+export interface ChangeWhatsAppConfirmBody {
+  /** 6-digit OTP received via WhatsApp on the new number */
+  otp: string;
+}
+
+export interface ChangeWhatsAppConfirmResponse {
+  success: boolean;
+  new_phone: string;
+}
+
 /**
  * Opaque session token — `Bearer <sid>`.
  */

@@ -21,6 +21,9 @@ import {
   useGetContactsConsentDue,
   useListAuditLog,
   useDeleteAccount,
+  useGetWhatsAppChangeStatus,
+  useRequestWhatsAppChange,
+  useConfirmWhatsAppChange,
   exportPrivacyData,
   getPrivacyExportSummary,
   type PrivacyExportSummary,
@@ -666,6 +669,145 @@ function BriefingHourSelector() {
 }
 
 /* ── Início tab ──────────────────────────────────────────────────────────── */
+/* ── ChangeWhatsAppSection ────────────────────────────────────────────────── */
+function ChangeWhatsAppSection() {
+  const { data: waStatus, refetch: refetchStatus } = useGetWhatsAppChangeStatus();
+  const requestChange = useRequestWhatsAppChange();
+  const confirmChange = useConfirmWhatsAppChange();
+  const { toast } = useToast();
+
+  const [step, setStep] = useState<"idle" | "request" | "confirm">("idle");
+  const [newPhone, setNewPhone] = useState("");
+  const [otp, setOtp] = useState("");
+
+  if (!waStatus?.verified_phone) return null;
+
+  async function handleRequest() {
+    try {
+      await requestChange.mutateAsync({ data: { new_phone: newPhone } });
+      setStep("confirm");
+    } catch (err: unknown) {
+      const raw = err instanceof Error ? err.message : "";
+      const msg = raw.includes("{") ? (() => { try { return (JSON.parse(raw) as { error?: string }).error ?? raw; } catch { return raw; } })() : raw;
+      toast({ title: "Erro ao enviar código", description: msg || "Tente novamente.", variant: "destructive" });
+    }
+  }
+
+  async function handleConfirm() {
+    try {
+      const result = await confirmChange.mutateAsync({ data: { otp } });
+      toast({
+        title: "Número atualizado!",
+        description: `Novo número: +${result.new_phone}`,
+      });
+      setStep("idle");
+      setNewPhone("");
+      setOtp("");
+      void refetchStatus();
+    } catch (err: unknown) {
+      const raw = err instanceof Error ? err.message : "";
+      const msg = raw.includes("{") ? (() => { try { return (JSON.parse(raw) as { error?: string }).error ?? raw; } catch { return raw; } })() : raw;
+      toast({ title: "Código inválido", description: msg || "Verifique o código e tente novamente.", variant: "destructive" });
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: V.muted }}>
+        Número do WhatsApp
+      </h2>
+      <div className="rounded-3xl overflow-hidden" style={{ background: V.cream, border: "1px solid rgba(14,59,46,0.08)" }}>
+        <div className="flex items-center gap-3 px-5 py-4">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#EAF1E5" }}>
+            <Phone className="h-4 w-4" style={{ color: V.primary }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium" style={{ color: V.ink }}>Número verificado</p>
+            <p className="text-xs font-mono mt-0.5" style={{ color: V.muted }}>+{waStatus.verified_phone}</p>
+          </div>
+          {step === "idle" && (
+            <button
+              onClick={() => setStep("request")}
+              className="text-xs font-semibold px-3 py-1.5 rounded-full shrink-0 transition-opacity hover:opacity-80"
+              style={{ background: "#EAF1E5", color: V.primary }}
+            >
+              Trocar número
+            </button>
+          )}
+        </div>
+
+        {step === "request" && (
+          <div className="px-5 pb-5 space-y-3" style={{ borderTop: "1px solid rgba(14,59,46,0.06)", paddingTop: "1rem" }}>
+            <p className="text-xs" style={{ color: V.muted }}>
+              Digite o novo número com DDI (ex: 5511987654321). Enviaremos um código de verificação por WhatsApp.
+            </p>
+            <input
+              type="tel"
+              value={newPhone}
+              onChange={(e) => setNewPhone(e.target.value)}
+              placeholder="5511987654321"
+              className="w-full px-4 py-3 rounded-2xl text-sm outline-none"
+              style={{ background: V.beige, color: V.ink, border: "1px solid rgba(14,59,46,0.12)" }}
+            />
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => { setStep("idle"); setNewPhone(""); }}
+                className="flex-1 py-2.5 rounded-2xl text-sm font-medium"
+                style={{ background: V.beige, color: V.muted }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => void handleRequest()}
+                disabled={newPhone.replace(/\D/g, "").length < 10 || requestChange.isPending}
+                className="flex-1 py-2.5 rounded-2xl text-sm font-semibold disabled:opacity-50"
+                style={{ background: V.primary, color: "white" }}
+              >
+                {requestChange.isPending ? "Enviando…" : "Enviar código"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === "confirm" && (
+          <div className="px-5 pb-5 space-y-3" style={{ borderTop: "1px solid rgba(14,59,46,0.06)", paddingTop: "1rem" }}>
+            <p className="text-xs" style={{ color: V.muted }}>
+              Digite o código de 6 dígitos enviado para <span className="font-mono">+{newPhone.replace(/\D/g, "")}</span> pelo WhatsApp.
+            </p>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              className="w-full px-4 py-3 rounded-2xl text-sm text-center font-mono tracking-widest outline-none"
+              style={{ background: V.beige, color: V.ink, border: "1px solid rgba(14,59,46,0.12)", letterSpacing: "0.35em" }}
+            />
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => { setStep("request"); setOtp(""); }}
+                className="flex-1 py-2.5 rounded-2xl text-sm font-medium"
+                style={{ background: V.beige, color: V.muted }}
+              >
+                Reenviar
+              </button>
+              <button
+                onClick={() => void handleConfirm()}
+                disabled={otp.length !== 6 || confirmChange.isPending}
+                className="flex-1 py-2.5 rounded-2xl text-sm font-semibold disabled:opacity-50"
+                style={{ background: V.primary, color: "white" }}
+              >
+                {confirmChange.isPending ? "Confirmando…" : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function InicioTab() {
   const { data: household } = useGetHousehold();
   const plan = household?.plan ?? "free";
@@ -700,6 +842,7 @@ function InicioTab() {
         </div>
       )}
       <WhatsAppConnectionScreen />
+      <ChangeWhatsAppSection />
 
       {household && (
         <div className="p-5 rounded-3xl flex items-center gap-4"

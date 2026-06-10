@@ -2763,6 +2763,43 @@ export const GetHouseholdPlanStatusResponse = zod.object({
 });
 
 /**
+ * @summary Get the current verified WhatsApp phone for this household
+ */
+export const GetWhatsAppChangeStatusResponse = zod.object({
+  verified: zod.boolean(),
+  verified_phone: zod.string().nullable(),
+});
+
+/**
+ * @summary Send OTP to a new WhatsApp number to begin the number-change flow
+ */
+export const RequestWhatsAppChangeBody = zod.object({
+  new_phone: zod
+    .string()
+    .describe(
+      "New WhatsApp number in international format (digits only, e.g. 5511987654321)",
+    ),
+});
+
+export const RequestWhatsAppChangeResponse = zod.object({
+  sent: zod.boolean(),
+});
+
+/**
+ * @summary Verify the OTP and atomically swap the household WhatsApp number
+ */
+export const ConfirmWhatsAppChangeBody = zod.object({
+  otp: zod
+    .string()
+    .describe("6-digit OTP received via WhatsApp on the new number"),
+});
+
+export const ConfirmWhatsAppChangeResponse = zod.object({
+  success: zod.boolean(),
+  new_phone: zod.string(),
+});
+
+/**
  * @summary List pattern observations and suggestions
  */
 export const ListPatternsQueryParams = zod.object({

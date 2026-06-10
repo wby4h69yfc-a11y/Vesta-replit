@@ -83,6 +83,9 @@ export const onboardingStateTable = pgTable("onboarding_state", {
   whatsapp_verified: boolean("whatsapp_verified").notNull().default(false),
   whatsapp_verified_phone: text("whatsapp_verified_phone"),
   calendar_connected: boolean("calendar_connected").notNull().default(false),
+  phone_change_otp: text("phone_change_otp"),
+  phone_change_new_phone: text("phone_change_new_phone"),
+  phone_change_expires_at: timestamp("phone_change_expires_at", { withTimezone: true }),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

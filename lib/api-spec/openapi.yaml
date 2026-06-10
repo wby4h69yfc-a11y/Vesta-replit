@@ -1506,6 +1506,99 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /household/change-whatsapp/status:
+    get:
+      operationId: getWhatsAppChangeStatus
+      tags: [household]
+      summary: Get the current verified WhatsApp phone for this household
+      responses:
+        "200":
+          description: WhatsApp status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeWhatsAppStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /household/change-whatsapp/request:
+    post:
+      operationId: requestWhatsAppChange
+      tags: [household]
+      summary: Send OTP to a new WhatsApp number to begin the number-change flow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeWhatsAppRequestBody"
+      responses:
+        "200":
+          description: OTP sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeWhatsAppRequestResponse"
+        "400":
+          description: Invalid phone number or number already in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /household/change-whatsapp/confirm:
+    post:
+      operationId: confirmWhatsAppChange
+      tags: [household]
+      summary: Verify the OTP and atomically swap the household WhatsApp number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeWhatsAppConfirmBody"
+      responses:
+        "200":
+          description: Number changed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeWhatsAppConfirmResponse"
+        "400":
+          description: Invalid or expired OTP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   # ── Patterns ─────────────────────────────────────────────────────
   /patterns:
     get:
@@ -3644,3 +3737,44 @@ components:
             $ref: "#/components/schemas/CrecheWaitlistDocItem"
         notes:
           type: ["string", "null"]
+
+    ChangeWhatsAppStatus:
+      type: object
+      required: [verified, verified_phone]
+      properties:
+        verified:
+          type: boolean
+        verified_phone:
+          type: ["string", "null"]
+
+    ChangeWhatsAppRequestBody:
+      type: object
+      required: [new_phone]
+      properties:
+        new_phone:
+          type: string
+          description: New WhatsApp number in international format (digits only, e.g. 5511987654321)
+
+    ChangeWhatsAppRequestResponse:
+      type: object
+      required: [sent]
+      properties:
+        sent:
+          type: boolean
+
+    ChangeWhatsAppConfirmBody:
+      type: object
+      required: [otp]
+      properties:
+        otp:
+          type: string
+          description: 6-digit OTP received via WhatsApp on the new number
+
+    ChangeWhatsAppConfirmResponse:
+      type: object
+      required: [success, new_phone]
+      properties:
+        success:
+          type: boolean
+        new_phone:
+          type: string

@@ -1,10 +1,11 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { db } from "@workspace/db";
-import { householdsTable, membersTable, rulesTable, contactsTable, memberInvitesTable, usersTable } from "@workspace/db";
+import { householdsTable, membersTable, rulesTable, contactsTable, memberInvitesTable, usersTable, onboardingStateTable } from "@workspace/db";
 import { eq, and, count, sql, ne, isNull } from "drizzle-orm";
 import { getHouseholdId, getCallerRole } from "../lib/tenant";
 import { getPlanLimits } from "../lib/freemium";
+import { sendWhatsApp } from "../lib/whatsapp";
 
 const router = Router();
 
@@ -594,6 +595,164 @@ router.delete("/household/members/:id/wa-link", async (req, res) => {
     res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to unlink member WA");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── WhatsApp number change flow ───────────────────────────────────────────────
+
+router.get("/change-whatsapp/status", async (req, res) => {
+  try {
+    const hid = getHouseholdId(req);
+    const [state] = await db
+      .select({
+        whatsapp_verified: onboardingStateTable.whatsapp_verified,
+        whatsapp_verified_phone: onboardingStateTable.whatsapp_verified_phone,
+      })
+      .from(onboardingStateTable)
+      .where(eq(onboardingStateTable.household_id, hid))
+      .limit(1);
+
+    res.json({
+      verified: state?.whatsapp_verified ?? false,
+      verified_phone: state?.whatsapp_verified_phone ?? null,
+    });
+  } catch (err) {
+    req.log.error({ err }, "change-whatsapp/status: failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/change-whatsapp/request", async (req, res) => {
+  try {
+    const hid = getHouseholdId(req);
+
+    const role = await getCallerRole(req);
+    if (role !== "admin") {
+      res.status(403).json({ error: "Somente administradores podem trocar o número do WhatsApp" });
+      return;
+    }
+
+    const { new_phone } = req.body as { new_phone?: string };
+    if (!new_phone || typeof new_phone !== "string") {
+      res.status(400).json({ error: "new_phone é obrigatório" });
+      return;
+    }
+
+    const normalized = new_phone.replace(/\D/g, "");
+    if (normalized.length < 10 || normalized.length > 15) {
+      res.status(400).json({ error: "Número de telefone inválido" });
+      return;
+    }
+
+    const existing = await db
+      .select({ household_id: onboardingStateTable.household_id })
+      .from(onboardingStateTable)
+      .where(
+        and(
+          eq(onboardingStateTable.whatsapp_verified_phone, normalized),
+          ne(onboardingStateTable.household_id, hid),
+        ),
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      res.status(400).json({ error: "Este número já está cadastrado em outra conta" });
+      return;
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await db
+      .update(onboardingStateTable)
+      .set({
+        phone_change_otp: otp,
+        phone_change_new_phone: normalized,
+        phone_change_expires_at: expiresAt,
+      })
+      .where(eq(onboardingStateTable.household_id, hid));
+
+    const result = await sendWhatsApp(
+      normalized,
+      `Seu código de verificação Vesta é: *${otp}*. Válido por 10 minutos. Não compartilhe com ninguém.`,
+    );
+
+    if (!result.ok) {
+      req.log.warn({ normalized, error: result.error }, "change-whatsapp/request: failed to send OTP");
+      await db
+        .update(onboardingStateTable)
+        .set({ phone_change_otp: null, phone_change_new_phone: null, phone_change_expires_at: null })
+        .where(eq(onboardingStateTable.household_id, hid));
+      res.status(400).json({ error: "Não foi possível enviar o código. Verifique o número e tente novamente." });
+      return;
+    }
+
+    req.log.info({ householdId: hid }, "change-whatsapp/request: OTP sent");
+    res.json({ sent: true });
+  } catch (err) {
+    req.log.error({ err }, "change-whatsapp/request: failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/change-whatsapp/confirm", async (req, res) => {
+  try {
+    const hid = getHouseholdId(req);
+
+    const role = await getCallerRole(req);
+    if (role !== "admin") {
+      res.status(403).json({ error: "Somente administradores podem trocar o número do WhatsApp" });
+      return;
+    }
+
+    const { otp } = req.body as { otp?: string };
+    if (!otp || typeof otp !== "string") {
+      res.status(400).json({ error: "otp é obrigatório" });
+      return;
+    }
+
+    const [state] = await db
+      .select({
+        phone_change_otp: onboardingStateTable.phone_change_otp,
+        phone_change_new_phone: onboardingStateTable.phone_change_new_phone,
+        phone_change_expires_at: onboardingStateTable.phone_change_expires_at,
+      })
+      .from(onboardingStateTable)
+      .where(eq(onboardingStateTable.household_id, hid))
+      .limit(1);
+
+    if (!state?.phone_change_otp || !state.phone_change_new_phone || !state.phone_change_expires_at) {
+      res.status(400).json({ error: "Nenhuma solicitação de troca de número pendente" });
+      return;
+    }
+
+    if (state.phone_change_expires_at < new Date()) {
+      res.status(400).json({ error: "Código expirado. Solicite um novo código." });
+      return;
+    }
+
+    if (state.phone_change_otp !== otp.trim()) {
+      res.status(400).json({ error: "Código incorreto. Verifique e tente novamente." });
+      return;
+    }
+
+    const newPhone = state.phone_change_new_phone;
+
+    await db
+      .update(onboardingStateTable)
+      .set({
+        whatsapp_verified_phone: newPhone,
+        whatsapp_verified: true,
+        phone_change_otp: null,
+        phone_change_new_phone: null,
+        phone_change_expires_at: null,
+      })
+      .where(eq(onboardingStateTable.household_id, hid));
+
+    req.log.info({ householdId: hid, newPhone }, "change-whatsapp/confirm: phone changed successfully");
+    res.json({ success: true, new_phone: newPhone });
+  } catch (err) {
+    req.log.error({ err }, "change-whatsapp/confirm: failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

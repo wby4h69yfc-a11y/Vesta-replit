@@ -32,6 +32,11 @@ import type {
   CascadeApprovalBody,
   CascadeBulkResult,
   CategoryCount,
+  ChangeWhatsAppConfirmBody,
+  ChangeWhatsAppConfirmResponse,
+  ChangeWhatsAppRequestBody,
+  ChangeWhatsAppRequestResponse,
+  ChangeWhatsAppStatus,
   ComprovanteAttachResult,
   ConsentRateLimitError,
   ConsentRequestResponse,
@@ -5988,6 +5993,262 @@ export function useGetHouseholdPlanStatus<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Get the current verified WhatsApp phone for this household
+ */
+export const getGetWhatsAppChangeStatusUrl = () => {
+  return `/api/household/change-whatsapp/status`;
+};
+
+export const getWhatsAppChangeStatus = async (
+  options?: RequestInit,
+): Promise<ChangeWhatsAppStatus> => {
+  return customFetch<ChangeWhatsAppStatus>(getGetWhatsAppChangeStatusUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetWhatsAppChangeStatusQueryKey = () => {
+  return [`/api/household/change-whatsapp/status`] as const;
+};
+
+export const getGetWhatsAppChangeStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getWhatsAppChangeStatus>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getWhatsAppChangeStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetWhatsAppChangeStatusQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getWhatsAppChangeStatus>>
+  > = ({ signal }) => getWhatsAppChangeStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getWhatsAppChangeStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetWhatsAppChangeStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getWhatsAppChangeStatus>>
+>;
+export type GetWhatsAppChangeStatusQueryError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Get the current verified WhatsApp phone for this household
+ */
+
+export function useGetWhatsAppChangeStatus<
+  TData = Awaited<ReturnType<typeof getWhatsAppChangeStatus>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getWhatsAppChangeStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetWhatsAppChangeStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Send OTP to a new WhatsApp number to begin the number-change flow
+ */
+export const getRequestWhatsAppChangeUrl = () => {
+  return `/api/household/change-whatsapp/request`;
+};
+
+export const requestWhatsAppChange = async (
+  changeWhatsAppRequestBody: ChangeWhatsAppRequestBody,
+  options?: RequestInit,
+): Promise<ChangeWhatsAppRequestResponse> => {
+  return customFetch<ChangeWhatsAppRequestResponse>(
+    getRequestWhatsAppChangeUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(changeWhatsAppRequestBody),
+    },
+  );
+};
+
+export const getRequestWhatsAppChangeMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestWhatsAppChange>>,
+    TError,
+    { data: BodyType<ChangeWhatsAppRequestBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestWhatsAppChange>>,
+  TError,
+  { data: BodyType<ChangeWhatsAppRequestBody> },
+  TContext
+> => {
+  const mutationKey = ["requestWhatsAppChange"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestWhatsAppChange>>,
+    { data: BodyType<ChangeWhatsAppRequestBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return requestWhatsAppChange(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestWhatsAppChangeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestWhatsAppChange>>
+>;
+export type RequestWhatsAppChangeMutationBody =
+  BodyType<ChangeWhatsAppRequestBody>;
+export type RequestWhatsAppChangeMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Send OTP to a new WhatsApp number to begin the number-change flow
+ */
+export const useRequestWhatsAppChange = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestWhatsAppChange>>,
+    TError,
+    { data: BodyType<ChangeWhatsAppRequestBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestWhatsAppChange>>,
+  TError,
+  { data: BodyType<ChangeWhatsAppRequestBody> },
+  TContext
+> => {
+  return useMutation(getRequestWhatsAppChangeMutationOptions(options));
+};
+
+/**
+ * @summary Verify the OTP and atomically swap the household WhatsApp number
+ */
+export const getConfirmWhatsAppChangeUrl = () => {
+  return `/api/household/change-whatsapp/confirm`;
+};
+
+export const confirmWhatsAppChange = async (
+  changeWhatsAppConfirmBody: ChangeWhatsAppConfirmBody,
+  options?: RequestInit,
+): Promise<ChangeWhatsAppConfirmResponse> => {
+  return customFetch<ChangeWhatsAppConfirmResponse>(
+    getConfirmWhatsAppChangeUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(changeWhatsAppConfirmBody),
+    },
+  );
+};
+
+export const getConfirmWhatsAppChangeMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmWhatsAppChange>>,
+    TError,
+    { data: BodyType<ChangeWhatsAppConfirmBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof confirmWhatsAppChange>>,
+  TError,
+  { data: BodyType<ChangeWhatsAppConfirmBody> },
+  TContext
+> => {
+  const mutationKey = ["confirmWhatsAppChange"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof confirmWhatsAppChange>>,
+    { data: BodyType<ChangeWhatsAppConfirmBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return confirmWhatsAppChange(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ConfirmWhatsAppChangeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof confirmWhatsAppChange>>
+>;
+export type ConfirmWhatsAppChangeMutationBody =
+  BodyType<ChangeWhatsAppConfirmBody>;
+export type ConfirmWhatsAppChangeMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Verify the OTP and atomically swap the household WhatsApp number
+ */
+export const useConfirmWhatsAppChange = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmWhatsAppChange>>,
+    TError,
+    { data: BodyType<ChangeWhatsAppConfirmBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof confirmWhatsAppChange>>,
+  TError,
+  { data: BodyType<ChangeWhatsAppConfirmBody> },
+  TContext
+> => {
+  return useMutation(getConfirmWhatsAppChangeMutationOptions(options));
+};
 
 /**
  * @summary List pattern observations and suggestions
